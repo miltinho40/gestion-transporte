@@ -1,0 +1,481 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EstadoVehiculo {
+  DISPONIBLE       @map("disponible")
+  EN_VIAJE         @map("en_viaje")
+  EN_MANTENIMIENTO @map("en_mantenimiento")
+  INACTIVO         @map("inactivo")
+
+  @@map("estado_vehiculo")
+}
+
+enum EstadoConductor {
+  ACTIVO            @map("activo")
+  INACTIVO          @map("inactivo")
+  LICENCIA_VENCIDA  @map("licencia_vencida")
+
+  @@map("estado_conductor")
+}
+
+enum EstadoViaje {
+  PROGRAMADO @map("programado")
+  EN_CURSO   @map("en_curso")
+  COMPLETADO @map("completado")
+  CANCELADO  @map("cancelado")
+
+  @@map("estado_viaje")
+}
+
+enum EstadoMantenimiento {
+  PROGRAMADO @map("programado")
+  REALIZADO  @map("realizado")
+  CANCELADO  @map("cancelado")
+  VENCIDO    @map("vencido")
+
+  @@map("estado_mantenimiento")
+}
+
+enum SentidoPeaje {
+  IDA     @map("ida")
+  RETORNO @map("retorno")
+  AMBOS   @map("ambos")
+
+  @@map("sentido_peaje")
+}
+
+model Propietario {
+  id              BigInt   @id @default(autoincrement())
+  nombre          String   @db.VarChar(150)
+  ruc_cedula      String   @unique @db.VarChar(20)
+  contacto_nombre String?  @db.VarChar(120)
+  telefono        String?  @db.VarChar(30)
+  email           String?  @db.VarChar(150)
+  direccion       String?  @db.VarChar(255)
+  activo          Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @updatedAt @db.Timestamptz(6)
+
+  usuarios_propietarios    UsuarioPropietario[]
+  clientes                 Cliente[]
+  conductores              Conductor[]
+  categorias_peaje         CategoriaPeaje[]
+  vehiculos                Vehiculo[]
+  rutas                    Ruta[]
+  tarifas_ruta             TarifaRuta[]
+  peajes                   Peaje[]
+  tarifas_peaje            TarifaPeaje[]
+  rutas_peajes             RutaPeaje[]
+  viajes                   Viaje[]
+  configuraciones          ConfiguracionOperativa[]
+  tipos_mantenimiento      TipoMantenimiento[]
+  mantenimientos           Mantenimiento[]
+
+  @@map("propietarios")
+}
+
+model Rol {
+  id          BigInt   @id @default(autoincrement())
+  nombre      String   @unique @db.VarChar(50)
+  descripcion String?  @db.VarChar(255)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @updatedAt @db.Timestamptz(6)
+
+  usuarios_propietarios UsuarioPropietario[]
+
+  @@map("roles")
+}
+
+model Usuario {
+  id               BigInt   @id @default(autoincrement())
+  nombre           String   @db.VarChar(120)
+  email            String   @unique @db.VarChar(150)
+  password_hash    String   @db.VarChar(255)
+  fecha_nacimiento DateTime? @db.Date
+  es_super_admin   Boolean  @default(false)
+  activo           Boolean  @default(true)
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime @updatedAt @db.Timestamptz(6)
+
+  usuarios_propietarios UsuarioPropietario[]
+
+  @@map("usuarios")
+}
+
+model UsuarioPropietario {
+  id             BigInt   @id @default(autoincrement())
+  usuario_id     BigInt
+  propietario_id BigInt
+  rol_id         BigInt
+  activo         Boolean  @default(true)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @updatedAt @db.Timestamptz(6)
+
+  usuario     Usuario     @relation(fields: [usuario_id], references: [id])
+  propietario Propietario @relation(fields: [propietario_id], references: [id])
+  rol         Rol         @relation(fields: [rol_id], references: [id])
+
+  @@unique([usuario_id, propietario_id])
+  @@index([propietario_id])
+  @@index([rol_id])
+  @@map("usuarios_propietarios")
+}
+
+model Cliente {
+  id                  BigInt   @id @default(autoincrement())
+  propietario_id      BigInt
+  nombre              String   @db.VarChar(150)
+  ruc_cedula          String   @db.VarChar(20)
+  contacto_nombre     String?  @db.VarChar(120)
+  telefono            String?  @db.VarChar(30)
+  email               String?  @db.VarChar(150)
+  direccion           String?  @db.VarChar(255)
+  porcentaje_comision Decimal  @default(0) @db.Decimal(5, 2)
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario Propietario @relation(fields: [propietario_id], references: [id])
+  viajes      Viaje[]
+
+  @@unique([propietario_id, ruc_cedula])
+  @@index([propietario_id])
+  @@map("clientes")
+}
+
+model Conductor {
+  id                         BigInt          @id @default(autoincrement())
+  propietario_id             BigInt
+  nombre                     String          @db.VarChar(120)
+  cedula                     String          @db.VarChar(20)
+  fecha_nacimiento           DateTime?       @db.Date
+  numero_licencia            String          @db.VarChar(50)
+  fecha_caducidad_licencia   DateTime        @db.Date
+  telefono                   String          @db.VarChar(30)
+  email                      String?         @db.VarChar(150)
+  estado                     EstadoConductor @default(ACTIVO)
+  created_at                 DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime        @updatedAt @db.Timestamptz(6)
+
+  propietario Propietario @relation(fields: [propietario_id], references: [id])
+  viajes      Viaje[]
+
+  @@unique([propietario_id, cedula])
+  @@unique([propietario_id, numero_licencia])
+  @@index([propietario_id, estado])
+  @@map("conductores")
+}
+
+model CategoriaPeaje {
+  id             BigInt   @id @default(autoincrement())
+  propietario_id BigInt?
+  nombre         String   @db.VarChar(80)
+  numero_ejes    Int?
+  descripcion    String?  @db.VarChar(255)
+  activo         Boolean  @default(true)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario    Propietario?  @relation(fields: [propietario_id], references: [id])
+  vehiculos      Vehiculo[]
+  tarifas_peaje  TarifaPeaje[]
+
+  @@index([propietario_id])
+  @@map("categorias_peaje")
+}
+
+model Vehiculo {
+  id                    BigInt         @id @default(autoincrement())
+  propietario_id        BigInt
+  categoria_peaje_id    BigInt
+  placa                 String         @db.VarChar(20)
+  marca                 String         @db.VarChar(80)
+  modelo                String?        @db.VarChar(80)
+  color                 String?        @db.VarChar(50)
+  anio                  Int?
+  capacidad             Int
+  toneladas             Decimal        @db.Decimal(10, 2)
+  kilometraje_actual    Int            @default(0)
+  rendimiento_km_galon  Decimal        @db.Decimal(10, 2)
+  estado                EstadoVehiculo @default(DISPONIBLE)
+  created_at            DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime       @updatedAt @db.Timestamptz(6)
+
+  propietario      Propietario     @relation(fields: [propietario_id], references: [id])
+  categoria_peaje  CategoriaPeaje  @relation(fields: [categoria_peaje_id], references: [id])
+  viajes           Viaje[]
+  mantenimientos   Mantenimiento[]
+
+  @@unique([propietario_id, placa])
+  @@index([propietario_id, estado])
+  @@index([categoria_peaje_id])
+  @@map("vehiculos")
+}
+
+model Ruta {
+  id                       BigInt   @id @default(autoincrement())
+  propietario_id           BigInt?
+  origen                   String   @db.VarChar(120)
+  destino                  String   @db.VarChar(120)
+  distancia_km             Decimal  @default(0) @db.Decimal(10, 2)
+  duracion_estimada_horas  Decimal? @db.Decimal(10, 2)
+  activa                   Boolean  @default(true)
+  created_at               DateTime @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario   Propietario? @relation(fields: [propietario_id], references: [id])
+  tarifas_ruta  TarifaRuta[]
+  rutas_peajes  RutaPeaje[]
+
+  @@index([propietario_id])
+  @@map("rutas")
+}
+
+model TipoCarga {
+  id          BigInt   @id @default(autoincrement())
+  nombre      String   @unique @db.VarChar(80)
+  descripcion String?  @db.VarChar(255)
+  activo      Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @updatedAt @db.Timestamptz(6)
+
+  tarifas_ruta TarifaRuta[]
+
+  @@map("tipos_carga")
+}
+
+model TarifaRuta {
+  id             BigInt   @id @default(autoincrement())
+  propietario_id BigInt
+  ruta_id        BigInt
+  tipo_carga_id  BigInt
+  capacidad      Int?
+  toneladas      Decimal? @db.Decimal(10, 2)
+  precio         Decimal  @db.Decimal(12, 2)
+  vigente_desde  DateTime @default(dbgenerated("CURRENT_DATE")) @db.Date
+  vigente_hasta  DateTime? @db.Date
+  activa         Boolean  @default(true)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario Propietario @relation(fields: [propietario_id], references: [id])
+  ruta        Ruta        @relation(fields: [ruta_id], references: [id])
+  tipo_carga  TipoCarga   @relation(fields: [tipo_carga_id], references: [id])
+  viajes      Viaje[]
+
+  @@index([propietario_id, ruta_id, tipo_carga_id])
+  @@map("tarifas_ruta")
+}
+
+model Peaje {
+  id             BigInt   @id @default(autoincrement())
+  propietario_id BigInt?
+  nombre         String   @db.VarChar(120)
+  ubicacion      String?  @db.VarChar(180)
+  activo         Boolean  @default(true)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario    Propietario?  @relation(fields: [propietario_id], references: [id])
+  tarifas_peaje  TarifaPeaje[]
+  rutas_peajes   RutaPeaje[]
+
+  @@index([propietario_id])
+  @@map("peajes")
+}
+
+model TarifaPeaje {
+  id                  BigInt   @id @default(autoincrement())
+  propietario_id      BigInt?
+  peaje_id            BigInt
+  categoria_peaje_id  BigInt
+  valor               Decimal  @db.Decimal(12, 2)
+  vigente_desde       DateTime @default(dbgenerated("CURRENT_DATE")) @db.Date
+  vigente_hasta       DateTime? @db.Date
+  activa              Boolean  @default(true)
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario      Propietario?    @relation(fields: [propietario_id], references: [id])
+  peaje            Peaje           @relation(fields: [peaje_id], references: [id])
+  categoria_peaje  CategoriaPeaje  @relation(fields: [categoria_peaje_id], references: [id])
+
+  @@index([propietario_id])
+  @@index([peaje_id, categoria_peaje_id])
+  @@map("tarifas_peaje")
+}
+
+model RutaPeaje {
+  id             BigInt      @id @default(autoincrement())
+  propietario_id BigInt?
+  ruta_id        BigInt
+  peaje_id       BigInt
+  orden          Int?
+  sentido        SentidoPeaje @default(AMBOS)
+  created_at     DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime    @updatedAt @db.Timestamptz(6)
+
+  propietario Propietario? @relation(fields: [propietario_id], references: [id])
+  ruta        Ruta         @relation(fields: [ruta_id], references: [id])
+  peaje       Peaje        @relation(fields: [peaje_id], references: [id])
+
+  @@index([propietario_id])
+  @@index([ruta_id])
+  @@map("rutas_peajes")
+}
+
+model Viaje {
+  id                            BigInt       @id @default(autoincrement())
+  propietario_id                BigInt
+  cliente_id                    BigInt
+  vehiculo_id                   BigInt
+  conductor_id                  BigInt
+  tarifa_ruta_id                BigInt
+  fecha_salida                  DateTime     @default(dbgenerated("CURRENT_DATE")) @db.Date
+  fecha_llegada                 DateTime?    @db.Date
+  descripcion_carga             String?
+  peso_carga_kg                 Decimal?     @db.Decimal(12, 2)
+  numeros_guia_remision         String[]     @default([])
+  precio_flete                  Decimal      @db.Decimal(12, 2)
+  porcentaje_comision_aplicado  Decimal      @default(0) @db.Decimal(5, 2)
+  valor_comision                Decimal      @default(0) @db.Decimal(12, 2)
+  precio_real_flete             Decimal      @default(0) @db.Decimal(12, 2)
+  galones_diesel                Decimal      @default(0) @db.Decimal(12, 2)
+  costo_diesel                  Decimal      @default(0) @db.Decimal(12, 2)
+  costo_peajes                  Decimal      @default(0) @db.Decimal(12, 2)
+  costo_estimado_gastos         Decimal      @default(0) @db.Decimal(12, 2)
+  costo_real_gastos             Decimal?     @db.Decimal(12, 2)
+  estado                        EstadoViaje  @default(PROGRAMADO)
+  observaciones                 String?
+  created_at                    DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at                    DateTime     @updatedAt @db.Timestamptz(6)
+
+  propietario    Propietario @relation(fields: [propietario_id], references: [id])
+  cliente        Cliente     @relation(fields: [cliente_id], references: [id])
+  vehiculo       Vehiculo    @relation(fields: [vehiculo_id], references: [id])
+  conductor      Conductor   @relation(fields: [conductor_id], references: [id])
+  tarifa_ruta    TarifaRuta  @relation(fields: [tarifa_ruta_id], references: [id])
+  gastos_viaje   GastoViaje[]
+
+  @@index([propietario_id, fecha_salida])
+  @@index([propietario_id, cliente_id])
+  @@index([propietario_id, vehiculo_id])
+  @@index([propietario_id, conductor_id])
+  @@index([propietario_id, estado])
+  @@index([tarifa_ruta_id])
+  @@map("viajes")
+}
+
+model TipoGastoViaje {
+  id          BigInt   @id @default(autoincrement())
+  nombre      String   @unique @db.VarChar(80)
+  descripcion String?  @db.VarChar(255)
+  activo      Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @updatedAt @db.Timestamptz(6)
+
+  gastos_viaje GastoViaje[]
+
+  @@map("tipos_gasto_viaje")
+}
+
+model GastoViaje {
+  id             BigInt   @id @default(autoincrement())
+  viaje_id       BigInt
+  tipo_gasto_id  BigInt
+  descripcion    String?  @db.VarChar(255)
+  monto          Decimal  @db.Decimal(12, 2)
+  fecha_gasto    DateTime @db.Date
+  es_estimado    Boolean  @default(true)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @updatedAt @db.Timestamptz(6)
+
+  viaje      Viaje            @relation(fields: [viaje_id], references: [id])
+  tipo_gasto TipoGastoViaje   @relation(fields: [tipo_gasto_id], references: [id])
+
+  @@index([viaje_id])
+  @@index([tipo_gasto_id])
+  @@map("gastos_viaje")
+}
+
+model ConfiguracionOperativa {
+  id             BigInt   @id @default(autoincrement())
+  propietario_id BigInt?
+  clave          String   @db.VarChar(100)
+  valor          String   @db.VarChar(255)
+  descripcion    String?  @db.VarChar(255)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario Propietario? @relation(fields: [propietario_id], references: [id])
+
+  @@index([propietario_id])
+  @@map("configuraciones_operativas")
+}
+
+model TipoMantenimiento {
+  id             BigInt   @id @default(autoincrement())
+  propietario_id BigInt?
+  nombre         String   @db.VarChar(100)
+  descripcion    String?  @db.VarChar(255)
+  es_periodico   Boolean  @default(false)
+  intervalo_km   Int?
+  intervalo_dias Int?
+  activo         Boolean  @default(true)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario      Propietario?     @relation(fields: [propietario_id], references: [id])
+  mantenimientos   Mantenimiento[]
+
+  @@index([propietario_id])
+  @@map("tipos_mantenimiento")
+}
+
+model Mantenimiento {
+  id                              BigInt               @id @default(autoincrement())
+  propietario_id                  BigInt
+  vehiculo_id                     BigInt
+  tipo_mantenimiento_id           BigInt
+  fecha_mantenimiento             DateTime             @default(dbgenerated("CURRENT_DATE")) @db.Date
+  kilometraje_actual_vehiculo     Int
+  descripcion                     String?
+  costo_mano_obra                 Decimal              @default(0) @db.Decimal(12, 2)
+  costo_repuestos                 Decimal              @default(0) @db.Decimal(12, 2)
+  costo_total                     Decimal              @default(0) @db.Decimal(12, 2)
+  proximo_mantenimiento_km        Int?
+  proximo_mantenimiento_fecha     DateTime?            @db.Date
+  estado                          EstadoMantenimiento  @default(REALIZADO)
+  created_at                      DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at                      DateTime             @updatedAt @db.Timestamptz(6)
+
+  propietario          Propietario         @relation(fields: [propietario_id], references: [id])
+  vehiculo             Vehiculo            @relation(fields: [vehiculo_id], references: [id])
+  tipo_mantenimiento   TipoMantenimiento   @relation(fields: [tipo_mantenimiento_id], references: [id])
+  repuestos            RepuestoMantenimiento[]
+
+  @@index([propietario_id, fecha_mantenimiento])
+  @@index([vehiculo_id])
+  @@map("mantenimientos")
+}
+
+model RepuestoMantenimiento {
+  id                  BigInt   @id @default(autoincrement())
+  mantenimiento_id    BigInt
+  nombre_repuesto     String   @db.VarChar(150)
+  cantidad            Decimal  @default(1) @db.Decimal(10, 2)
+  costo_unitario      Decimal  @db.Decimal(12, 2)
+  costo_total         Decimal  @db.Decimal(12, 2)
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @updatedAt @db.Timestamptz(6)
+
+  mantenimiento Mantenimiento @relation(fields: [mantenimiento_id], references: [id])
+
+  @@index([mantenimiento_id])
+  @@map("repuestos_mantenimiento")
+}
