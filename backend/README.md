@@ -13,16 +13,26 @@ Backend base para el sistema de gestion de transporte de carga.
 
 ## Arranque local
 
-```bash
-cp .env.example .env
+PowerShell:
+
+```powershell
+Copy-Item .env.example .env
 npm install
 npm run prisma:generate
-npm run prisma:migrate -- --name init
+npx prisma migrate dev --create-only --name init
+```
+
+Luego agrega el contenido de `prisma/manual-indexes.sql` al final del archivo SQL generado en `prisma/migrations/*/migration.sql`.
+
+Despues ejecuta:
+
+```powershell
+npx prisma migrate dev
 npm run prisma:seed
 npm run dev
 ```
 
-Despues de crear la primera migracion Prisma, revisar `prisma/manual-indexes.sql` para agregar los indices parciales de PostgreSQL que Prisma no modela directamente.
+Los indices parciales son necesarios para garantizar unicidad entre registros globales (`propietario_id IS NULL`) y registros propios de cada propietario.
 
 ## Endpoints base
 
