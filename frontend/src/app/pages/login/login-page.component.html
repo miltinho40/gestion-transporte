@@ -1,0 +1,52 @@
+<main class="login-page">
+  <section class="login-panel">
+    <div class="brand-mark">
+      <svg lucideTruck size="28"></svg>
+    </div>
+
+    <div class="mb-4">
+      <h1>Gestión de transporte</h1>
+      <p>Acceso operativo para flota, viajes, cierres y reportes.</p>
+    </div>
+
+    @if (error()) {
+      <div class="alert alert-danger py-2">{{ error() }}</div>
+    }
+
+    <form [formGroup]="form" (ngSubmit)="submit()" class="vstack gap-3">
+      <div>
+        <label class="form-label" for="email">Email</label>
+        <input id="email" class="form-control" type="email" formControlName="email" />
+      </div>
+
+      <div>
+        <label class="form-label" for="password">Clave</label>
+        <input id="password" class="form-control" type="password" formControlName="password" />
+      </div>
+
+      @if (needsOwner()) {
+        <div>
+          <label class="form-label" for="propietario">Propietario</label>
+          <select id="propietario" class="form-select" formControlName="propietario_id">
+            @for (propietario of propietarios(); track propietario.id) {
+              <option [value]="propietario.id">
+                {{ propietario.nombre }} - {{ propietario.rol.nombre }}
+              </option>
+            }
+          </select>
+        </div>
+      }
+
+      <button type="submit" class="btn btn-primary d-inline-flex align-items-center gap-2">
+        <svg lucideLogIn size="18"></svg>
+        @if (loading()) {
+          Entrando...
+        } @else if (needsOwner()) {
+          Entrar con propietario
+        } @else {
+          Entrar
+        }
+      </button>
+    </form>
+  </section>
+</main>

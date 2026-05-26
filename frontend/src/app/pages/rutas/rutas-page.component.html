@@ -1,0 +1,298 @@
+<div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+  <div>
+    <h1 class="h3 mb-1">Rutas</h1>
+    <p class="text-secondary mb-0">Origen, destino, distancia y peajes del recorrido.</p>
+  </div>
+  <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
+    <svg lucidePlus size="17"></svg>
+    Nueva
+  </button>
+</div>
+
+@if (error() && !formOpen()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+}
+
+@if (message()) {
+  <div class="alert alert-success">{{ message() }}</div>
+}
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white d-flex align-items-center justify-content-between gap-3">
+    <div class="input-group input-group-sm resource-search">
+      <span class="input-group-text bg-white">
+        <svg lucideSearch size="15"></svg>
+      </span>
+      <input
+        class="form-control"
+        type="search"
+        placeholder="Buscar rutas"
+        [ngModel]="search()"
+        (ngModelChange)="search.set($event)"
+      />
+    </div>
+    <button type="button" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2" (click)="load()">
+      <svg lucideRefreshCw size="15"></svg>
+      Actualizar
+    </button>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Origen</th>
+          <th>Destino</th>
+          <th>Distancia km</th>
+          <th>Duración</th>
+          <th>Peajes</th>
+          <th>Activa</th>
+          <th class="text-end actions-column">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of filteredRows(); track row.id) {
+          <tr>
+            <td>{{ row.origen }}</td>
+            <td>{{ row.destino }}</td>
+            <td>{{ row.distancia_km }}</td>
+            <td>{{ duration(row) }}</td>
+            <td>{{ peajesLabel(row) }}</td>
+            <td>
+              @if (row.activa) {
+                <span class="badge badge-soft">Sí</span>
+              } @else {
+                <span class="badge text-bg-light">No</span>
+              }
+            </td>
+            <td class="text-end">
+              <div class="btn-group btn-group-sm">
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary"
+                  (click)="openEdit(row)"
+                  [disabled]="!canEditRuta(row)"
+                  [title]="canEditRuta(row) ? 'Editar' : 'Solo el superadmin puede modificar rutas globales'"
+                >
+                  <svg lucidePencil size="15"></svg>
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-outline-danger"
+                  (click)="delete(row)"
+                  [disabled]="deletingId() === row.id || !canEditRuta(row)"
+                  [title]="canEditRuta(row) ? 'Eliminar o desactivar' : 'Solo el superadmin puede modificar rutas globales'"
+                >
+                  <svg lucideTrash2 size="15"></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="7" class="text-center text-secondary py-4">
+              @if (loading()) {
+                Cargando rutas...
+              } @else {
+                Sin rutas para mostrar.
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</div>
+
+@if (formOpen()) {
+  <div class="modal d-block" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow">
+        <form [formGroup]="form" (ngSubmit)="save()">
+          <div class="modal-header">
+            <div>
+              <h2 class="modal-title h5 mb-0">
+                @if (editingRow()) {
+                  Editar Ruta
+                } @else {
+                  Nueva Ruta
+                }
+              </h2>
+              <span class="text-secondary small">Completa los datos de la ruta y asigna los peajes.</span>
+            </div>
+            <button type="button" class="btn-close" aria-label="Cerrar" (click)="closeForm()"></button>
+          </div>
+
+          <div class="modal-body">
+            @if (error()) {
+              <div class="alert alert-danger mb-3">{{ error() }}</div>
+            }
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label" for="origen">Origen <span class="text-danger">*</span></label>
+                <input id="origen" class="form-control" type="text" formControlName="origen" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="destino">Destino <span class="text-danger">*</span></label>
+                <input id="destino" class="form-control" type="text" formControlName="destino" />
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="distancia_km">Distancia km</label>
+                <input id="distancia_km" class="form-control" type="number" min="0" step="0.01" formControlName="distancia_km" />
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="duracion_estimada_horas">Duración estimada</label>
+                <input id="duracion_estimada_horas" class="form-control" type="time" formControlName="duracion_estimada_horas" />
+              </div>
+              <div class="col-md-2">
+                <div class="form-check form-switch mt-4">
+                  <input id="activa" class="form-check-input" type="checkbox" formControlName="activa" />
+                  <label class="form-check-label" for="activa">Activa</label>
+                </div>
+              </div>
+              @if (isSuperAdmin) {
+                <div class="col-md-2">
+                  <div class="form-check form-switch mt-4">
+                    <input id="global" class="form-check-input" type="checkbox" formControlName="global" />
+                    <label class="form-check-label" for="global">Global</label>
+                  </div>
+                </div>
+              }
+            </div>
+
+            <hr class="my-4" />
+
+            <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+              <div>
+                <h3 class="h6 mb-1">Peajes de la ruta</h3>
+                <p class="text-secondary small mb-0">Agrega los peajes en el orden del recorrido.</p>
+              </div>
+              <span class="badge text-bg-light">{{ peajesRuta().length }} peajes</span>
+            </div>
+
+            <div class="row g-2 align-items-end mb-3">
+              <div class="col-md-10">
+                <label class="form-label" for="buscar_peaje">Buscar peaje</label>
+                <div class="catalog-combobox">
+                  <input
+                    id="buscar_peaje"
+                    class="form-control"
+                    type="search"
+                    autocomplete="off"
+                    placeholder="Buscar o seleccionar peaje"
+                    [ngModel]="peajeSearch()"
+                    [ngModelOptions]="{ standalone: true }"
+                    (focus)="openPeajeCatalog()"
+                    (blur)="closePeajeCatalogSoon()"
+                    (ngModelChange)="setPeajeSearch($event)"
+                  />
+                  @if (peajeCatalogOpen()) {
+                    <div class="catalog-options shadow-sm">
+                      @for (peaje of filteredPeajes(); track peaje.id) {
+                        <button
+                          type="button"
+                          class="catalog-option"
+                          [class.active]="selectedPeajeId() === peaje.id"
+                          (mousedown)="selectPeaje(peaje, $event)"
+                        >
+                          <span>{{ peaje.nombre }}</span>
+                          @if (peaje.ubicacion) {
+                            <small class="d-block text-secondary">{{ peaje.ubicacion }}</small>
+                          }
+                        </button>
+                      } @empty {
+                        <span class="catalog-empty">Sin coincidencias</span>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+              <div class="col-md-2 d-grid">
+                <button type="button" class="btn btn-outline-primary" (click)="addPeaje()" [disabled]="!selectedPeajeId()">
+                  <svg lucidePlus size="15"></svg>
+                  Agregar
+                </button>
+              </div>
+            </div>
+
+            <div class="table-responsive border rounded">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Orden</th>
+                    <th>Peaje</th>
+                    <th>Sentido</th>
+                    <th class="text-end">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (item of peajesRuta(); track item.peaje_id; let index = $index) {
+                    <tr>
+                      <td class="nested-order-cell">
+                        <input
+                          class="form-control form-control-sm"
+                          type="number"
+                          min="1"
+                          [ngModel]="item.orden"
+                          [ngModelOptions]="{ standalone: true }"
+                          (ngModelChange)="updatePeaje(index, { orden: +$event })"
+                        />
+                      </td>
+                      <td>{{ item.peaje_nombre }}</td>
+                      <td class="nested-select-cell">
+                        <select
+                          class="form-select form-select-sm"
+                          [ngModel]="item.sentido"
+                          [ngModelOptions]="{ standalone: true }"
+                          (ngModelChange)="updatePeaje(index, { sentido: $event })"
+                        >
+                          <option value="ida">Ida</option>
+                          <option value="retorno">Retorno</option>
+                          <option value="ambos">Ambos</option>
+                        </select>
+                      </td>
+                      <td class="text-end">
+                        <div class="btn-group btn-group-sm">
+                          <button type="button" class="btn btn-outline-secondary" (click)="movePeaje(index, -1)" title="Subir">
+                            <svg lucideArrowUp size="14"></svg>
+                          </button>
+                          <button type="button" class="btn btn-outline-secondary" (click)="movePeaje(index, 1)" title="Bajar">
+                            <svg lucideArrowDown size="14"></svg>
+                          </button>
+                          <button type="button" class="btn btn-outline-danger" (click)="removePeaje(index)" title="Quitar">
+                            <svg lucideTrash2 size="14"></svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  } @empty {
+                    <tr>
+                      <td colspan="4" class="text-center text-secondary py-3">Sin peajes asignados.</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2" (click)="closeForm()">
+              <svg lucideX size="17"></svg>
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary d-inline-flex align-items-center gap-2" [disabled]="saving()">
+              <svg lucideSave size="17"></svg>
+              @if (saving()) {
+                Guardando...
+              } @else {
+                Guardar
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop show"></div>
+}

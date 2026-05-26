@@ -1,0 +1,401 @@
+<div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+  <div>
+    <h1 class="h3 mb-1">Mantenimientos</h1>
+    <p class="text-secondary mb-0">Historial de mantenimientos, costos y repuestos por vehículo.</p>
+  </div>
+  <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
+    <svg lucidePlus size="17"></svg>
+    Nuevo
+  </button>
+</div>
+
+@if (error() && !formOpen()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+}
+
+@if (message()) {
+  <div class="alert alert-success">{{ message() }}</div>
+}
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white d-flex align-items-center justify-content-between gap-3">
+    <div class="input-group input-group-sm resource-search">
+      <span class="input-group-text bg-white">
+        <svg lucideSearch size="15"></svg>
+      </span>
+      <input
+        class="form-control"
+        type="search"
+        placeholder="Buscar mantenimientos"
+        [ngModel]="search()"
+        (ngModelChange)="search.set($event)"
+      />
+    </div>
+    <button type="button" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2" (click)="load()">
+      <svg lucideRefreshCw size="15"></svg>
+      Actualizar
+    </button>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Vehículo</th>
+          <th>Tipo</th>
+          <th>Descripción</th>
+          <th>Mano obra</th>
+          <th>Repuestos</th>
+          <th>Total</th>
+          <th>Próx. km</th>
+          <th>Estado</th>
+          <th class="text-end actions-column">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of filteredRows(); track row.id) {
+          <tr>
+            <td>{{ row.fecha_mantenimiento | date: 'yyyy-MM-dd' }}</td>
+            <td>{{ vehiculoLabel(row.vehiculo) }}</td>
+            <td>{{ tipoMantenimientoLabel(row.tipo_mantenimiento) }}</td>
+            <td>{{ row.descripcion || '-' }}</td>
+            <td>$ {{ money(row.costo_mano_obra) }}</td>
+            <td>$ {{ money(row.costo_repuestos) }}</td>
+            <td>$ {{ money(row.costo_total) }}</td>
+            <td>{{ row.proximo_mantenimiento_km ?? '-' }}</td>
+            <td><span class="badge" [class]="badgeClass(row.estado)">{{ estadoLabel(row.estado) }}</span></td>
+            <td class="text-end">
+              <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary" (click)="openEdit(row)" title="Editar">
+                  <svg lucidePencil size="15"></svg>
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-outline-danger"
+                  (click)="delete(row)"
+                  [disabled]="deletingId() === row.id"
+                  title="Cancelar"
+                >
+                  <svg lucideTrash2 size="15"></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="10" class="text-center text-secondary py-4">
+              @if (loading()) {
+                Cargando mantenimientos...
+              } @else {
+                Sin mantenimientos para mostrar.
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</div>
+
+@if (formOpen()) {
+  <div class="modal d-block" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-mantenimientos">
+      <div class="modal-content border-0 shadow">
+        <form [formGroup]="form" (ngSubmit)="save()">
+          <div class="modal-header">
+            <div>
+              <h2 class="modal-title h5 mb-0">
+                @if (editingRow()) {
+                  Editar Mantenimiento
+                } @else {
+                  Nuevo Mantenimiento
+                }
+              </h2>
+              <span class="text-secondary small">Registra el mantenimiento y sus repuestos.</span>
+            </div>
+            <button type="button" class="btn-close" aria-label="Cerrar" (click)="closeForm()"></button>
+          </div>
+
+          <div class="modal-body">
+            @if (error()) {
+              <div class="alert alert-danger mb-3">{{ error() }}</div>
+            }
+
+            <div class="mantenimiento-form-stack">
+              <div class="mantenimiento-main-grid">
+                <div>
+                  <label class="form-label" for="vehiculo_id">Vehículo <span class="text-danger">*</span></label>
+                  <div class="catalog-combobox">
+                    <input
+                      id="vehiculo_id"
+                      class="form-control"
+                      type="search"
+                      autocomplete="off"
+                      placeholder="Buscar vehículo..."
+                      [ngModel]="catalogInputValue('vehiculo_id')"
+                      [ngModelOptions]="{ standalone: true }"
+                      (focus)="openCatalog('vehiculo_id')"
+                      (blur)="closeCatalogSoon('vehiculo_id')"
+                      (ngModelChange)="setCatalogInput('vehiculo_id', $event)"
+                    />
+                    @if (catalogOpen('vehiculo_id')) {
+                      <div class="catalog-options shadow-sm">
+                        @for (option of limitedCatalogOptions('vehiculo_id'); track option.value) {
+                          <button type="button" class="catalog-option" (mousedown)="selectCatalogOption('vehiculo_id', option, $event)">
+                            {{ option.label }}
+                          </button>
+                        } @empty {
+                          <span class="catalog-empty">Sin coincidencias</span>
+                        }
+                      </div>
+                    }
+                  </div>
+                  @if (controlInvalid('vehiculo_id')) {
+                    <div class="invalid-feedback d-block">Selecciona un vehículo.</div>
+                  }
+                </div>
+
+                <div>
+                  <label class="form-label" for="tipo_mantenimiento_id">Tipo mantenimiento <span class="text-danger">*</span></label>
+                  <div class="catalog-combobox">
+                    <input
+                      id="tipo_mantenimiento_id"
+                      class="form-control"
+                      type="search"
+                      autocomplete="off"
+                      placeholder="Buscar tipo..."
+                      [ngModel]="catalogInputValue('tipo_mantenimiento_id')"
+                      [ngModelOptions]="{ standalone: true }"
+                      (focus)="openCatalog('tipo_mantenimiento_id')"
+                      (blur)="closeCatalogSoon('tipo_mantenimiento_id')"
+                      (ngModelChange)="setCatalogInput('tipo_mantenimiento_id', $event)"
+                    />
+                    @if (catalogOpen('tipo_mantenimiento_id')) {
+                      <div class="catalog-options shadow-sm">
+                        @for (option of limitedCatalogOptions('tipo_mantenimiento_id'); track option.value) {
+                          <button type="button" class="catalog-option" (mousedown)="selectCatalogOption('tipo_mantenimiento_id', option, $event)">
+                            {{ option.label }}
+                          </button>
+                        } @empty {
+                          <span class="catalog-empty">Sin coincidencias</span>
+                        }
+                      </div>
+                    }
+                  </div>
+                  @if (controlInvalid('tipo_mantenimiento_id')) {
+                    <div class="invalid-feedback d-block">Selecciona un tipo.</div>
+                  }
+                </div>
+
+                <div class="mantenimiento-date-field">
+                  <label class="form-label" for="fecha_mantenimiento">Fecha <span class="text-danger">*</span></label>
+                  <input
+                    id="fecha_mantenimiento"
+                    class="form-control"
+                    type="date"
+                    formControlName="fecha_mantenimiento"
+                    (change)="onBaseMantenimientoChanged()"
+                  />
+                </div>
+
+                <div class="mantenimiento-number-field">
+                  <label class="form-label" for="kilometraje_actual_vehiculo">Km actual <span class="text-danger">*</span></label>
+                  <input
+                    id="kilometraje_actual_vehiculo"
+                    class="form-control"
+                    type="number"
+                    min="0"
+                    step="1"
+                    formControlName="kilometraje_actual_vehiculo"
+                    (input)="onBaseMantenimientoChanged()"
+                  />
+                </div>
+              </div>
+
+              <div class="mantenimiento-detail-grid">
+                <div>
+                  <label class="form-label" for="descripcion">Descripción</label>
+                  <textarea
+                    id="descripcion"
+                    class="form-control"
+                    rows="2"
+                    placeholder="Detalle del trabajo realizado..."
+                    formControlName="descripcion"
+                  ></textarea>
+                </div>
+
+                <div class="mantenimiento-state-field">
+                  <label class="form-label" for="estado">Estado <span class="text-danger">*</span></label>
+                  <select id="estado" class="form-select" formControlName="estado">
+                    <option value="programado">Programado</option>
+                    <option value="realizado">Realizado</option>
+                    <option value="cancelado">Cancelado</option>
+                    <option value="vencido">Vencido</option>
+                  </select>
+                </div>
+
+                <div class="mantenimiento-check-field">
+                  <label class="form-label d-block" for="actualizar_kilometraje_vehiculo">Actualizar vehículo</label>
+                  <div class="form-check form-switch mantenimiento-switch-box">
+                    <input
+                      id="actualizar_kilometraje_vehiculo"
+                      class="form-check-input"
+                      type="checkbox"
+                      formControlName="actualizar_kilometraje_vehiculo"
+                    />
+                    <label class="form-check-label" for="actualizar_kilometraje_vehiculo">Km</label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mantenimiento-next-grid">
+                <div>
+                  <label class="form-label" for="proximo_mantenimiento_km">Próximo mantenimiento km</label>
+                  <input id="proximo_mantenimiento_km" class="form-control" type="number" min="0" step="1" formControlName="proximo_mantenimiento_km" />
+                </div>
+
+                <div>
+                  <label class="form-label" for="proximo_mantenimiento_fecha">Próxima fecha</label>
+                  <input id="proximo_mantenimiento_fecha" class="form-control" type="date" formControlName="proximo_mantenimiento_fecha" />
+                </div>
+              </div>
+            </div>
+
+            <hr class="my-4" />
+
+            <div class="mantenimiento-costos-grid">
+              <div>
+                <label class="form-label" for="costo_mano_obra">Costo mano de obra</label>
+                <input
+                  id="costo_mano_obra"
+                  class="form-control"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  formControlName="costo_mano_obra"
+                  (input)="recalculateTotals()"
+                />
+              </div>
+
+              <div>
+                <label class="form-label" for="costo_repuestos">Costo repuestos</label>
+                <input id="costo_repuestos" class="form-control" type="number" readonly formControlName="costo_repuestos" />
+              </div>
+
+              <div>
+                <label class="form-label" for="costo_total">Costo total</label>
+                <input id="costo_total" class="form-control" type="number" readonly formControlName="costo_total" />
+              </div>
+            </div>
+
+            <hr class="my-4" />
+
+            <div class="mantenimiento-repuestos-layout">
+              <div>
+                <div class="mb-3">
+                  <h3 class="h6 mb-1">Repuestos</h3>
+                  <p class="text-secondary small mb-0">Agrega uno o más repuestos cambiados durante el mantenimiento.</p>
+                </div>
+
+                <div class="mantenimiento-repuesto-form-grid mb-3" [formGroup]="repuestoForm">
+                  <div>
+                    <label class="form-label" for="nombre_repuesto">Repuesto <span class="text-danger">*</span></label>
+                    <input id="nombre_repuesto" class="form-control" type="text" placeholder="Nombre del repuesto..." formControlName="nombre_repuesto" />
+                    @if (repuestoControlInvalid('nombre_repuesto')) {
+                      <div class="invalid-feedback d-block">Ingresa el repuesto.</div>
+                    }
+                  </div>
+
+                  <div>
+                    <label class="form-label" for="cantidad">Cantidad <span class="text-danger">*</span></label>
+                    <input id="cantidad" class="form-control" type="number" min="0.01" step="0.01" formControlName="cantidad" />
+                  </div>
+
+                  <div>
+                    <label class="form-label" for="costo_unitario">Costo unitario <span class="text-danger">*</span></label>
+                    <input id="costo_unitario" class="form-control" type="number" min="0" step="0.01" formControlName="costo_unitario" />
+                  </div>
+
+                  <div>
+                    <label class="form-label">Total</label>
+                    <input class="form-control" type="number" readonly [value]="money(repuestoFormTotal())" />
+                  </div>
+
+                  <div>
+                    <label class="form-label d-block">Acción</label>
+                    <button type="button" class="btn btn-outline-primary w-100" (click)="addRepuesto()">
+                      <svg lucidePlus size="14"></svg>
+                    </button>
+                  </div>
+                </div>
+
+                @if (repuestos().length) {
+                  <div class="table-responsive border rounded">
+                    <table class="table table-sm align-middle mb-0">
+                      <thead>
+                        <tr>
+                          <th>Repuesto</th>
+                          <th>Cantidad</th>
+                          <th>Costo unitario</th>
+                          <th>Total</th>
+                          <th class="text-end">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (repuesto of repuestos(); track repuesto.id ?? $index; let index = $index) {
+                          <tr>
+                            <td>{{ repuesto.nombre_repuesto }}</td>
+                            <td>{{ repuesto.cantidad }}</td>
+                            <td>$ {{ money(repuesto.costo_unitario) }}</td>
+                            <td>$ {{ money(repuesto.costo_total) }}</td>
+                            <td class="text-end">
+                              <button type="button" class="btn btn-outline-danger btn-sm" (click)="removeRepuesto(index)" title="Eliminar">
+                                <svg lucideTrash2 size="14"></svg>
+                              </button>
+                            </td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              </div>
+
+              <div class="mantenimiento-summary-stack">
+                <div class="mantenimiento-summary-card">
+                  <div class="text-secondary small">Mano de obra</div>
+                  <div class="h5 mb-0">$ {{ money(form.controls.costo_mano_obra.value) }}</div>
+                </div>
+                <div class="mantenimiento-summary-card">
+                  <div class="text-secondary small">Repuestos</div>
+                  <div class="h5 mb-0">$ {{ money(repuestosTotal()) }}</div>
+                </div>
+                <div class="mantenimiento-summary-card mantenimiento-summary-card-primary">
+                  <div class="text-secondary small">Costo total</div>
+                  <div class="h5 mb-0">$ {{ money(totalMantenimiento()) }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2" (click)="closeForm()">
+              <svg lucideX size="15"></svg>
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary d-inline-flex align-items-center gap-2" [disabled]="saving()">
+              <svg lucideSave size="15"></svg>
+              @if (saving()) {
+                Guardando...
+              } @else {
+                Guardar
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop show"></div>
+}

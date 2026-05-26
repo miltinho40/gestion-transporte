@@ -10,7 +10,11 @@ export const authMiddleware = (req: Request, _res: Response, next: NextFunction)
   }
 
   const token = authorization.slice('Bearer '.length);
-  req.user = verifyToken(token);
+  try {
+    req.user = verifyToken(token);
+  } catch {
+    throw new AppError('Token invalido o expirado', 401);
+  }
 
   next();
 };

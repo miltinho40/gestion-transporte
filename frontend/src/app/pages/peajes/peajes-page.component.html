@@ -1,0 +1,289 @@
+<div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+  <div>
+    <h1 class="h3 mb-1">Peajes</h1>
+    <p class="text-secondary mb-0">Peajes y tarifas por categoría de vehículo.</p>
+  </div>
+  <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
+    <svg lucidePlus size="17"></svg>
+    Nuevo
+  </button>
+</div>
+
+@if (error() && !formOpen()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+}
+
+@if (message()) {
+  <div class="alert alert-success">{{ message() }}</div>
+}
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white d-flex align-items-center justify-content-between gap-3">
+    <div class="input-group input-group-sm resource-search">
+      <span class="input-group-text bg-white">
+        <svg lucideSearch size="15"></svg>
+      </span>
+      <input
+        class="form-control"
+        type="search"
+        placeholder="Buscar peajes"
+        [ngModel]="search()"
+        (ngModelChange)="search.set($event)"
+      />
+    </div>
+    <button type="button" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2" (click)="load()">
+      <svg lucideRefreshCw size="15"></svg>
+      Actualizar
+    </button>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Ubicación</th>
+          <th>Tarifas</th>
+          <th>Activo</th>
+          <th class="text-end actions-column">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of filteredRows(); track row.id) {
+          <tr>
+            <td>{{ row.nombre }}</td>
+            <td>{{ row.ubicacion || '-' }}</td>
+            <td>{{ tarifasLabel(row) }}</td>
+            <td>
+              @if (row.activo) {
+                <span class="badge badge-soft">Sí</span>
+              } @else {
+                <span class="badge text-bg-light">No</span>
+              }
+            </td>
+            <td class="text-end">
+              <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary" (click)="openEdit(row)" title="Editar">
+                  <svg lucidePencil size="15"></svg>
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-outline-danger"
+                  (click)="delete(row)"
+                  [disabled]="deletingId() === row.id"
+                  title="Eliminar o desactivar"
+                >
+                  <svg lucideTrash2 size="15"></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="5" class="text-center text-secondary py-4">
+              @if (loading()) {
+                Cargando peajes...
+              } @else {
+                Sin peajes para mostrar.
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</div>
+
+@if (formOpen()) {
+  <div class="modal d-block" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow">
+        <form [formGroup]="form" (ngSubmit)="save()">
+          <div class="modal-header">
+            <div>
+              <h2 class="modal-title h5 mb-0">
+                @if (editingRow()) {
+                  Editar Peaje
+                } @else {
+                  Nuevo Peaje
+                }
+              </h2>
+              <span class="text-secondary small">Define el peaje y sus tarifas por categoría.</span>
+            </div>
+            <button type="button" class="btn-close" aria-label="Cerrar" (click)="closeForm()"></button>
+          </div>
+
+          <div class="modal-body">
+            @if (error()) {
+              <div class="alert alert-danger mb-3">{{ error() }}</div>
+            }
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label" for="nombre">Nombre <span class="text-danger">*</span></label>
+                <input id="nombre" class="form-control" type="text" formControlName="nombre" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="ubicacion">Ubicación</label>
+                <input id="ubicacion" class="form-control" type="text" formControlName="ubicacion" />
+              </div>
+              <div class="col-md-3">
+                <div class="form-check form-switch mt-4">
+                  <input id="activo" class="form-check-input" type="checkbox" formControlName="activo" />
+                  <label class="form-check-label" for="activo">Activo</label>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="form-check form-switch mt-4">
+                  <input id="global" class="form-check-input" type="checkbox" formControlName="global" />
+                  <label class="form-check-label" for="global">Registro global</label>
+                </div>
+              </div>
+            </div>
+
+            <hr class="my-4" />
+
+            <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+              <div>
+                <h3 class="h6 mb-1">Tarifas por categoría</h3>
+                <p class="text-secondary small mb-0">Configura el valor del peaje para cada categoría de vehículo.</p>
+              </div>
+              <span class="badge text-bg-light">{{ tarifas().length }} tarifas</span>
+            </div>
+
+            <div class="row g-2 align-items-end mb-3" [formGroup]="tarifaForm">
+              <div class="col-md-6">
+                <label class="form-label" for="buscar_categoria">Categoría de peaje</label>
+                <div class="catalog-combobox">
+                  <input
+                    id="buscar_categoria"
+                    class="form-control"
+                    type="search"
+                    autocomplete="off"
+                    placeholder="Buscar o seleccionar categoría"
+                    [ngModel]="categoriaSearch()"
+                    [ngModelOptions]="{ standalone: true }"
+                    (focus)="openCategoriaCatalog()"
+                    (blur)="closeCategoriaCatalogSoon()"
+                    (ngModelChange)="setCategoriaSearch($event)"
+                  />
+                  @if (categoriaCatalogOpen()) {
+                    <div class="catalog-options shadow-sm">
+                      @for (categoria of filteredCategorias(); track categoria.id) {
+                        <button
+                          type="button"
+                          class="catalog-option"
+                          [class.active]="selectedCategoriaId() === categoria.id"
+                          (mousedown)="selectCategoria(categoria, $event)"
+                        >
+                          {{ categoria.nombre }}
+                        </button>
+                      } @empty {
+                        <span class="catalog-empty">Sin coincidencias</span>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+              <div class="col-md-2">
+                <label class="form-label" for="valor">Valor</label>
+                <input id="valor" class="form-control" type="number" min="0" step="0.01" formControlName="valor" />
+              </div>
+              <div class="col-md-2">
+                <label class="form-label" for="vigente_desde">Vigente desde</label>
+                <input id="vigente_desde" class="form-control" type="date" formControlName="vigente_desde" />
+              </div>
+              <div class="col-md-2">
+                <label class="form-label" for="vigente_hasta">Vigente hasta</label>
+                <input id="vigente_hasta" class="form-control" type="date" formControlName="vigente_hasta" />
+              </div>
+              <div class="col-md-2">
+                <div class="form-check form-switch mt-4">
+                  <input id="tarifa_activa" class="form-check-input" type="checkbox" formControlName="activa" />
+                  <label class="form-check-label" for="tarifa_activa">Activa</label>
+                </div>
+              </div>
+              <div class="col-md-3 d-grid">
+                <button type="button" class="btn btn-outline-primary" (click)="addOrUpdateTarifa()">
+                  <svg lucidePlus size="15"></svg>
+                  @if (editingTarifaIndex() === null) {
+                    Agregar tarifa
+                  } @else {
+                    Actualizar tarifa
+                  }
+                </button>
+              </div>
+              <div class="col-md-2 d-grid">
+                <button type="button" class="btn btn-outline-secondary" (click)="resetTarifaForm()">
+                  Limpiar
+                </button>
+              </div>
+            </div>
+
+            <div class="table-responsive border rounded">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Categoría</th>
+                    <th>Valor</th>
+                    <th>Desde</th>
+                    <th>Hasta</th>
+                    <th>Activa</th>
+                    <th class="text-end">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (tarifa of tarifas(); track tarifa.categoria_peaje_id + tarifa.vigente_desde; let index = $index) {
+                    <tr>
+                      <td>{{ tarifa.categoria_nombre }}</td>
+                      <td>$ {{ tarifa.valor }}</td>
+                      <td>{{ tarifa.vigente_desde }}</td>
+                      <td>{{ tarifa.vigente_hasta || '-' }}</td>
+                      <td>
+                        @if (tarifa.activa) {
+                          <span class="badge badge-soft">Sí</span>
+                        } @else {
+                          <span class="badge text-bg-light">No</span>
+                        }
+                      </td>
+                      <td class="text-end">
+                        <div class="btn-group btn-group-sm">
+                          <button type="button" class="btn btn-outline-secondary" (click)="editTarifa(index)" title="Editar">
+                            <svg lucidePencil size="14"></svg>
+                          </button>
+                          <button type="button" class="btn btn-outline-danger" (click)="removeTarifa(index)" title="Quitar">
+                            <svg lucideTrash2 size="14"></svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  } @empty {
+                    <tr>
+                      <td colspan="6" class="text-center text-secondary py-3">Sin tarifas configuradas.</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2" (click)="closeForm()">
+              <svg lucideX size="17"></svg>
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary d-inline-flex align-items-center gap-2" [disabled]="saving()">
+              <svg lucideSave size="17"></svg>
+              @if (saving()) {
+                Guardando...
+              } @else {
+                Guardar
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop show"></div>
+}

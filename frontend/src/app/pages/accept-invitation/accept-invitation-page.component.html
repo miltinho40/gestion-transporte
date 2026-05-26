@@ -1,0 +1,49 @@
+<main class="login-page">
+  <section class="login-panel">
+    <div class="brand-mark">
+      <svg lucideTruck size="28"></svg>
+    </div>
+
+    <div class="mb-4">
+      <h1>Crear clave</h1>
+      <p>Define tu clave para activar el acceso al sistema.</p>
+    </div>
+
+    @if (error()) {
+      <div class="alert alert-danger py-2">{{ error() }}</div>
+    }
+
+    @if (message()) {
+      <div class="alert alert-success py-2">
+        {{ message() }}
+        <a routerLink="/login" class="alert-link">Ir al login</a>
+      </div>
+    }
+
+    <form [formGroup]="form" (ngSubmit)="submit()" class="vstack gap-3">
+      <div>
+        <label class="form-label" for="password">Nueva clave</label>
+        <input id="password" class="form-control" type="password" formControlName="password" />
+      </div>
+
+      <div>
+        <label class="form-label" for="confirm_password">Confirmar clave</label>
+        <input
+          id="confirm_password"
+          class="form-control"
+          type="password"
+          formControlName="confirm_password"
+        />
+      </div>
+
+      <button type="submit" class="btn btn-primary d-inline-flex align-items-center gap-2" [disabled]="loading()">
+        <svg lucideKeyRound size="18"></svg>
+        @if (loading()) {
+          Guardando...
+        } @else {
+          Crear clave
+        }
+      </button>
+    </form>
+  </section>
+</main>

@@ -1,0 +1,251 @@
+@if (config(); as cfg) {
+  <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+    <div>
+      <h1 class="h3 mb-1">{{ cfg.title }}</h1>
+      <p class="text-secondary mb-0">{{ cfg.description }}</p>
+    </div>
+    <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
+      <svg lucidePlus size="17"></svg>
+      Nuevo
+    </button>
+  </div>
+
+  @if (error() && !formOpen()) {
+    <div class="alert alert-danger">{{ error() }}</div>
+  }
+
+  @if (message()) {
+    <div class="alert alert-success">{{ message() }}</div>
+  }
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white d-flex align-items-center justify-content-between gap-3">
+      <div class="input-group input-group-sm resource-search">
+        <span class="input-group-text bg-white">
+          <svg lucideSearch size="15"></svg>
+        </span>
+        <input
+          class="form-control"
+          type="search"
+          placeholder="Buscar en resultados"
+          [ngModel]="search()"
+          (ngModelChange)="search.set($event)"
+        />
+      </div>
+      <button type="button" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2" (click)="load()">
+        <svg lucideRefreshCw size="15"></svg>
+        Actualizar
+      </button>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            @for (column of cfg.columns; track column.path) {
+              <th>{{ column.label }}</th>
+            }
+            <th class="text-end actions-column">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of filteredRows(); track row['id'] ?? $index) {
+            <tr>
+              @for (column of cfg.columns; track column.path) {
+                <td>
+                  @if (column.type === 'date') {
+                    {{ dateValue(row, column.path) | date: 'yyyy-MM-dd' }}
+                  } @else if (column.type === 'money') {
+                    $ {{ textValue(row, column) }}
+                  } @else if (column.type === 'hoursTime') {
+                    {{ hoursTimeValue(row, column.path) }}
+                  } @else if (column.type === 'boolean') {
+                    @if (value(row, column.path)) {
+                      <span class="badge badge-soft">Sí</span>
+                    } @else {
+                      <span class="badge text-bg-light">No</span>
+                    }
+                  } @else if (column.type === 'badge') {
+                    <span class="badge" [class]="badgeClass(value(row, column.path))">
+                      {{ textValue(row, column) }}
+                    </span>
+                  } @else {
+                    {{ textValue(row, column) }}
+                  }
+                </td>
+              }
+              <td class="text-end">
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-secondary" (click)="openEdit(row)" title="Editar">
+                    <svg lucidePencil size="15"></svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-outline-danger"
+                    (click)="delete(row)"
+                    [disabled]="deletingId() === idOf(row)"
+                    title="Eliminar o desactivar"
+                  >
+                    <svg lucideTrash2 size="15"></svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td [attr.colspan]="cfg.columns.length + 1" class="text-center text-secondary py-4">
+                @if (loading()) {
+                  Cargando datos...
+                } @else {
+                  Sin registros para mostrar.
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  @if (formOpen()) {
+    <div class="modal d-block" tabindex="-1" role="dialog">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow">
+          <form [formGroup]="form" (ngSubmit)="save()">
+            <div class="modal-header">
+              <div>
+                <h2 class="modal-title h5 mb-0">
+                  @if (editingRow()) {
+                    Editar {{ cfg.title }}
+                  } @else {
+                    Nuevo {{ cfg.title }}
+                  }
+                </h2>
+                <span class="text-secondary small">Completa los campos requeridos para guardar.</span>
+              </div>
+              <button type="button" class="btn-close" aria-label="Cerrar" (click)="closeForm()"></button>
+            </div>
+
+            <div class="modal-body">
+              @if (error()) {
+                <div class="alert alert-danger mb-3">{{ error() }}</div>
+              }
+
+              <div class="row g-3">
+                @for (field of visibleFields(cfg.fields); track field.name) {
+                  <div [class]="field.colClass ?? 'col-md-6'">
+                    @if (field.type === 'checkbox') {
+                      <div class="form-check form-switch mt-4">
+                        <input
+                          class="form-check-input"
+                          type="checkbox"
+                          [id]="field.name"
+                          [formControlName]="field.name"
+                        />
+                        <label class="form-check-label" [for]="field.name">{{ field.label }}</label>
+                      </div>
+                    } @else {
+                      <label class="form-label" [for]="field.name">
+                        {{ field.label }}
+                        @if (field.required) {
+                          <span class="text-danger">*</span>
+                        }
+                      </label>
+
+                      @if (field.type === 'select') {
+                        @if (field.catalog) {
+                          <div class="catalog-combobox">
+                            <input
+                              class="form-control"
+                              [id]="field.name"
+                              type="search"
+                              autocomplete="off"
+                              placeholder="Buscar o seleccionar"
+                              [ngModel]="catalogInputValue(field.name)"
+                              [ngModelOptions]="{ standalone: true }"
+                              [class.is-invalid]="controlInvalid(field.name)"
+                              (focus)="openCatalog(field.name)"
+                              (blur)="closeCatalogSoon(field.name)"
+                              (ngModelChange)="setCatalogInput(field, $event)"
+                            />
+                            @if (catalogOpen(field)) {
+                              <div class="catalog-options shadow-sm">
+                                @for (option of limitedFilteredOptionsFor(field); track option.value) {
+                                  <button
+                                    type="button"
+                                    class="catalog-option"
+                                    [class.active]="form.controls[field.name].value === option.value"
+                                    (mousedown)="selectCatalogOption(field, option, $event)"
+                                  >
+                                    {{ option.label }}
+                                  </button>
+                                } @empty {
+                                  <span class="catalog-empty">Sin coincidencias</span>
+                                }
+                              </div>
+                            }
+                          </div>
+                        } @else {
+                          <select
+                            class="form-select"
+                            [id]="field.name"
+                            [formControlName]="field.name"
+                            [class.is-invalid]="controlInvalid(field.name)"
+                          >
+                            <option value="">Seleccione...</option>
+                            @for (option of filteredOptionsFor(field); track option.value) {
+                              <option [value]="option.value">{{ option.label }}</option>
+                            }
+                          </select>
+                        }
+                      } @else if (field.type === 'textarea') {
+                        <textarea
+                          class="form-control"
+                          [id]="field.name"
+                          [rows]="field.rows ?? 3"
+                          [formControlName]="field.name"
+                          [class.is-invalid]="controlInvalid(field.name)"
+                        ></textarea>
+                      } @else {
+                        <input
+                          class="form-control"
+                          [id]="field.name"
+                          [type]="field.type"
+                          [attr.min]="field.min ?? null"
+                          [attr.max]="field.max ?? null"
+                          [attr.step]="field.step ?? null"
+                          [formControlName]="field.name"
+                          [class.is-invalid]="controlInvalid(field.name)"
+                        />
+                      }
+
+                      @if (controlInvalid(field.name)) {
+                        <div class="invalid-feedback">Revisa este campo.</div>
+                      }
+                    }
+                  </div>
+                }
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2" (click)="closeForm()">
+                <svg lucideX size="17"></svg>
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary d-inline-flex align-items-center gap-2" [disabled]="saving()">
+                <svg lucideSave size="17"></svg>
+                @if (saving()) {
+                  Guardando...
+                } @else {
+                  Guardar
+                }
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+  }
+}

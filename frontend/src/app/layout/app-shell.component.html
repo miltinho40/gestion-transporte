@@ -1,0 +1,170 @@
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-icon"><svg lucideTruck size="22"></svg></div>
+      <div>
+        <strong>Transporte</strong>
+        <span>{{ auth.contexto()?.propietario_nombre }}</span>
+      </div>
+    </div>
+
+    <nav class="nav-list">
+      <a routerLink="/app/dashboard" routerLinkActive="active">
+        <svg lucideBell size="17"></svg>
+        Alertas
+      </a>
+      <a routerLink="/app/clientes" routerLinkActive="active">
+        <svg lucideUsers size="17"></svg>
+        Clientes
+      </a>
+      <a routerLink="/app/conductores" routerLinkActive="active">
+        <svg lucideUsers size="17"></svg>
+        Conductores
+      </a>
+      <a routerLink="/app/vehiculos" routerLinkActive="active">
+        <svg lucideTruck size="17"></svg>
+        Vehículos
+      </a>
+
+      @if (isSuperAdmin()) {
+        <button
+          type="button"
+          class="nav-section-toggle"
+          (click)="toggleSection('peajes')"
+          [attr.aria-expanded]="isSectionOpen('peajes')"
+        >
+          <span>PEAJES</span>
+          <svg lucideChevronDown size="14" [class.collapsed]="!isSectionOpen('peajes')"></svg>
+        </button>
+        @if (isSectionOpen('peajes')) {
+          <div class="nav-section-items">
+            <a routerLink="/app/peajes" routerLinkActive="active">
+              <svg lucideMap size="17"></svg>
+              Peajes
+            </a>
+            <a routerLink="/app/categorias-peaje" routerLinkActive="active">
+              <svg lucideMap size="17"></svg>
+              Categorías de peaje
+            </a>
+          </div>
+        }
+      }
+
+      <button
+        type="button"
+        class="nav-section-toggle"
+        (click)="toggleSection('transporte')"
+        [attr.aria-expanded]="isSectionOpen('transporte')"
+      >
+        <span>TRANSPORTE</span>
+        <svg lucideChevronDown size="14" [class.collapsed]="!isSectionOpen('transporte')"></svg>
+      </button>
+      @if (isSectionOpen('transporte')) {
+        <div class="nav-section-items">
+          <a routerLink="/app/rutas" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
+            <svg lucideRoute size="17"></svg>
+            Rutas
+          </a>
+          <a routerLink="/app/tarifas-ruta" routerLinkActive="active">
+            <svg lucideFileSpreadsheet size="17"></svg>
+            Tarifas Ruta
+          </a>
+          <a routerLink="/app/tipos-carga" routerLinkActive="active">
+            <svg lucideFileSpreadsheet size="17"></svg>
+            Tipo Carga
+          </a>
+          <a routerLink="/app/viajes" routerLinkActive="active">
+            <svg lucideClipboardList size="17"></svg>
+            Viajes
+          </a>
+          <a routerLink="/app/cierre-semanal" routerLinkActive="active">
+            <svg lucideFileSpreadsheet size="17"></svg>
+            Cierre semanal
+          </a>
+        </div>
+      }
+
+      <button
+        type="button"
+        class="nav-section-toggle"
+        (click)="toggleSection('mantenimiento')"
+        [attr.aria-expanded]="isSectionOpen('mantenimiento')"
+      >
+        <span>MANTENIMIENTO</span>
+        <svg lucideChevronDown size="14" [class.collapsed]="!isSectionOpen('mantenimiento')"></svg>
+      </button>
+      @if (isSectionOpen('mantenimiento')) {
+        <div class="nav-section-items">
+          <a routerLink="/app/tipos-mantenimiento" routerLinkActive="active">
+            <svg lucideWrench size="17"></svg>
+            Tipos de mantenimiento
+          </a>
+          <a routerLink="/app/mantenimientos" routerLinkActive="active">
+            <svg lucideWrench size="17"></svg>
+            Mantenimientos
+          </a>
+        </div>
+      }
+
+      @if (isSuperAdmin()) {
+        <button
+          type="button"
+          class="nav-section-toggle"
+          (click)="toggleSection('administrador')"
+          [attr.aria-expanded]="isSectionOpen('administrador')"
+        >
+          <span>ADMINISTRADOR</span>
+          <svg lucideChevronDown size="14" [class.collapsed]="!isSectionOpen('administrador')"></svg>
+        </button>
+        @if (isSectionOpen('administrador')) {
+          <div class="nav-section-items">
+            <a routerLink="/app/propietarios" routerLinkActive="active">
+              <svg lucideUsers size="17"></svg>
+              Propietarios
+            </a>
+          </div>
+        }
+      }
+
+      <button
+        type="button"
+        class="nav-section-toggle"
+        (click)="toggleSection('reportes')"
+        [attr.aria-expanded]="isSectionOpen('reportes')"
+      >
+        <span>REPORTES</span>
+        <svg lucideChevronDown size="14" [class.collapsed]="!isSectionOpen('reportes')"></svg>
+      </button>
+      @if (isSectionOpen('reportes')) {
+        <div class="nav-section-items">
+          <a routerLink="/app/reportes" routerLinkActive="active">
+            <svg lucideFileSpreadsheet size="17"></svg>
+            Reportes
+          </a>
+        </div>
+      }
+    </nav>
+
+    <button class="logout-button" type="button" (click)="logout()">
+      <svg lucideLogOut size="17"></svg>
+      Salir
+    </button>
+  </aside>
+
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <span class="context-label">Propietario</span>
+        <strong>{{ auth.contexto()?.propietario_nombre }}</strong>
+      </div>
+      <div class="user-meta">
+        <span>{{ auth.usuario()?.nombre }}</span>
+        <span class="badge badge-soft">{{ auth.contexto()?.rol }}</span>
+      </div>
+    </header>
+
+    <section class="page-content">
+      <router-outlet />
+    </section>
+  </main>
+</div>

@@ -1,0 +1,121 @@
+<div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">Alertas operativas</h1>
+    <p class="text-secondary mb-0">Mantenimientos, licencias y viajes pendientes de cobro.</p>
+  </div>
+  <button type="button" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2" (click)="load()">
+    <svg lucideRefreshCw size="17"></svg>
+    Actualizar
+  </button>
+</div>
+
+@if (error()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+}
+
+@if (data(); as alertas) {
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <span class="text-secondary small">Alertas totales</span>
+          <div class="display-6 fw-semibold">{{ alertas.resumen.total }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <span class="text-secondary small">Mantenimientos</span>
+          <div class="display-6 fw-semibold">{{ alertas.resumen.mantenimientos.total }}</div>
+          <span class="small text-secondary">
+            {{ alertas.resumen.mantenimientos.vencidos }} vencidos
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <span class="text-secondary small">Licencias</span>
+          <div class="display-6 fw-semibold">{{ alertas.resumen.licencias.total }}</div>
+          <span class="small text-secondary">
+            {{ alertas.resumen.licencias.por_caducar }} por caducar
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <span class="text-secondary small">Viajes sin cobrar</span>
+          <div class="display-6 fw-semibold">{{ alertas.resumen.viajes_sin_cobrar.total }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header bg-white fw-semibold">Mantenimientos</div>
+        <div class="list-group list-group-flush">
+          @for (item of alertas.mantenimientos.slice(0, 6); track $index) {
+            @let row = asRecord(item);
+            <div class="list-group-item">
+              <div class="fw-semibold">{{ row['placa'] }}</div>
+              <div class="small text-secondary">
+                {{ row['estado_alerta'] }} - km restantes: {{ row['km_restantes'] }}
+              </div>
+            </div>
+          } @empty {
+            <div class="list-group-item text-secondary">Sin mantenimientos en alerta.</div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header bg-white fw-semibold">Licencias</div>
+        <div class="list-group list-group-flush">
+          @for (item of alertas.licencias.slice(0, 6); track $index) {
+            @let row = asRecord(item);
+            <div class="list-group-item">
+              <div class="fw-semibold">{{ row['nombre'] }}</div>
+              <div class="small text-secondary">
+                {{ asDate(row['fecha_caducidad_licencia']) | date: 'yyyy-MM-dd' }} -
+                {{ row['dias_restantes'] }} días
+              </div>
+            </div>
+          } @empty {
+            <div class="list-group-item text-secondary">Sin licencias en alerta.</div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header bg-white fw-semibold">Viajes sin cobrar</div>
+        <div class="list-group list-group-flush">
+          @for (item of alertas.viajes_sin_cobrar.slice(0, 6); track $index) {
+            @let row = asRecord(item);
+            @let cliente = asRecord(row['cliente']);
+            <div class="list-group-item">
+              <div class="fw-semibold">{{ cliente['nombre'] }}</div>
+              <div class="small text-secondary">
+                {{ asDate(row['fecha_salida']) | date: 'yyyy-MM-dd' }} -
+                {{ row['semanas_pendiente'] }} semanas
+              </div>
+            </div>
+          } @empty {
+            <div class="list-group-item text-secondary">Sin viajes vencidos por cobro.</div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+} @else if (loading()) {
+  <div class="text-secondary">Cargando alertas...</div>
+}

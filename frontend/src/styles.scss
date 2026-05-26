@@ -1,0 +1,572 @@
+@import "bootstrap/dist/css/bootstrap.min.css";
+
+:root {
+  --app-bg: #f5f7fa;
+  --app-surface: #ffffff;
+  --app-border: #d9e0e8;
+  --app-text: #182230;
+  --app-muted: #667085;
+  --app-sidebar: #17202d;
+  --app-sidebar-active: #253247;
+  --app-accent: #0f766e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+}
+
+.btn,
+.form-control,
+.form-select,
+.card,
+.modal-content {
+  border-radius: 8px;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable {
+  --bs-modal-width: 1040px;
+  margin-top: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable.modal-viajes {
+  --bs-modal-width: min(1180px, calc(100vw - 2rem));
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .modal-content {
+  font-size: 0.9rem;
+  max-height: calc(100vh - 2.5rem);
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .modal-content > form {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 2.5rem);
+  min-height: 0;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .modal-body {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .modal-header,
+.modal-dialog.modal-xl.modal-dialog-scrollable .modal-footer {
+  flex: 0 0 auto;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .modal-header {
+  padding: 0.7rem 1rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .modal-title {
+  font-size: 1rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .modal-body {
+  padding: 0.75rem 1rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .modal-footer {
+  padding: 0.6rem 1rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .form-label {
+  margin-bottom: 0.2rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .form-control,
+.modal-dialog.modal-xl.modal-dialog-scrollable .form-select {
+  min-height: 34px;
+  padding: 0.34rem 0.55rem;
+  font-size: 0.86rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable textarea.form-control {
+  min-height: 46px;
+  padding-top: 0.38rem;
+  padding-bottom: 0.38rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .btn {
+  padding: 0.36rem 0.65rem;
+  font-size: 0.86rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .btn-sm {
+  padding: 0.25rem 0.45rem;
+  font-size: 0.78rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .small,
+.modal-dialog.modal-xl.modal-dialog-scrollable small {
+  font-size: 0.75rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable hr {
+  margin-top: 0.85rem !important;
+  margin-bottom: 0.85rem !important;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .row.g-3 {
+  --bs-gutter-x: 0.75rem;
+  --bs-gutter-y: 0.65rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .row.g-2 {
+  --bs-gutter-x: 0.6rem;
+  --bs-gutter-y: 0.55rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .mb-3 {
+  margin-bottom: 0.65rem !important;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .mt-3 {
+  margin-top: 0.65rem !important;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .h6 {
+  font-size: 0.9rem;
+}
+
+.viaje-form-stack {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.viaje-top-grid {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.1fr) minmax(140px, 0.95fr) minmax(160px, 1.1fr) 130px 130px;
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.viaje-middle-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.55fr) 120px minmax(260px, 1.35fr);
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.viaje-third-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) 110px 120px 130px;
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.viaje-field-fixed-120 {
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+}
+
+.viaje-field-state {
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+}
+
+.viaje-field-date-130 {
+  width: 130px;
+  min-width: 130px;
+  max-width: 130px;
+}
+
+.viaje-field-number {
+  width: 110px;
+}
+
+.viaje-field-date-cobro {
+  width: 150px;
+}
+
+.viaje-switch-box {
+  min-height: 34px;
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable.modal-viajes .viaje-textarea-compact {
+  height: 34px;
+  min-height: 34px;
+  resize: vertical;
+}
+
+.viaje-costos-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.5rem 0.75rem;
+}
+
+.viaje-cost-field {
+  display: block;
+}
+
+.viaje-cost-field .form-control {
+  min-height: 32px;
+  width: 100%;
+}
+
+.viaje-gastos-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 2rem;
+  align-items: start;
+}
+
+.viaje-gasto-form-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 110px minmax(220px, 1.2fr) 72px;
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.viaje-summary-stack {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.viaje-summary-card {
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  text-align: center;
+}
+
+.viaje-summary-card-success {
+  border-color: #9dccac;
+}
+
+.viaje-summary-card-primary {
+  border-color: #9bbdf9;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable.modal-viajes .viaje-summary-card .h5 {
+  color: #198754;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.viaje-icon-button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mantenimiento-form-stack {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.mantenimiento-main-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(220px, 1.1fr) 140px 130px;
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.mantenimiento-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) 150px 140px;
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.mantenimiento-next-grid {
+  display: grid;
+  grid-template-columns: 180px 160px;
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.mantenimiento-date-field {
+  width: 140px;
+}
+
+.mantenimiento-number-field {
+  width: 130px;
+}
+
+.mantenimiento-state-field {
+  width: 150px;
+}
+
+.mantenimiento-check-field {
+  width: 140px;
+}
+
+.mantenimiento-switch-box {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.mantenimiento-costos-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
+  gap: 0.65rem;
+  max-width: 560px;
+}
+
+.mantenimiento-repuestos-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.mantenimiento-repuesto-form-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 100px 130px 110px 74px;
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.mantenimiento-summary-stack {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.mantenimiento-summary-card {
+  border: 1px solid #9dccac;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  text-align: center;
+}
+
+.mantenimiento-summary-card-primary {
+  border-color: #9bbdf9;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .mantenimiento-summary-card .h5 {
+  color: #198754;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable.modal-viajes .catalog-option {
+  padding: 0.42rem 0.6rem;
+  font-size: 0.84rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable.modal-viajes .catalog-empty {
+  padding: 0.5rem 0.6rem;
+  font-size: 0.82rem;
+}
+
+@media (max-width: 1199.98px) {
+  .viaje-costos-grid {
+    grid-template-columns: repeat(3, minmax(220px, 1fr));
+  }
+
+  .viaje-cost-field {
+    display: block;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .viaje-top-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .viaje-middle-grid,
+  .viaje-third-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .viaje-costos-grid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+
+  .viaje-gastos-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .viaje-gasto-form-grid {
+    grid-template-columns: 1fr 110px;
+  }
+
+  .mantenimiento-main-grid,
+  .mantenimiento-detail-grid,
+  .mantenimiento-next-grid,
+  .mantenimiento-repuestos-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .mantenimiento-repuesto-form-grid {
+    grid-template-columns: 1fr 110px;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .viaje-top-grid,
+  .viaje-middle-grid,
+  .viaje-third-grid,
+  .viaje-gasto-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .viaje-field-fixed-120,
+  .viaje-field-state,
+  .viaje-field-date-130,
+  .viaje-field-number,
+  .viaje-field-date-cobro {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .viaje-costos-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .viaje-cost-field {
+    grid-template-columns: 1fr;
+  }
+
+  .mantenimiento-main-grid,
+  .mantenimiento-detail-grid,
+  .mantenimiento-next-grid,
+  .mantenimiento-repuesto-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mantenimiento-date-field,
+  .mantenimiento-number-field,
+  .mantenimiento-state-field,
+  .mantenimiento-check-field {
+    width: 100%;
+  }
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .catalog-options {
+  max-height: 150px;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .catalog-option {
+  padding: 0.42rem 0.6rem;
+  font-size: 0.84rem;
+}
+
+.modal-dialog.modal-xl.modal-dialog-scrollable .catalog-empty {
+  padding: 0.5rem 0.6rem;
+  font-size: 0.82rem;
+}
+
+@media (max-width: 767.98px) {
+  .modal-dialog.modal-xl.modal-dialog-scrollable {
+    --bs-modal-width: calc(100vw - 1rem);
+    margin: 0.5rem;
+  }
+
+  .modal-dialog.modal-xl.modal-dialog-scrollable .modal-content {
+    max-height: calc(100vh - 1rem);
+  }
+}
+
+.table {
+  --bs-table-bg: transparent;
+  font-size: 0.875rem;
+}
+
+.table thead th {
+  color: #475467;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.badge-soft {
+  background: #e9f5f4;
+  color: #0f766e;
+}
+
+.badge-soft-warning {
+  background: #fff4df;
+  color: #945a00;
+}
+
+.badge-soft-danger {
+  background: #feeceb;
+  color: #b42318;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+}
+
+.catalog-combobox {
+  position: relative;
+}
+
+.catalog-options {
+  position: absolute;
+  z-index: 1065;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+}
+
+.catalog-option {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0.55rem 0.75rem;
+  color: var(--app-text);
+  text-align: left;
+}
+
+.catalog-option:hover,
+.catalog-option.active {
+  background: #e9f5f4;
+  color: #0f766e;
+}
+
+.catalog-empty {
+  display: block;
+  padding: 0.65rem 0.75rem;
+  color: var(--app-muted);
+  font-size: 0.875rem;
+}
+
+.nested-order-cell {
+  width: 96px;
+}
+
+.nested-select-cell {
+  width: 180px;
+}
+
+.actions-column {
+  width: 120px;
+}

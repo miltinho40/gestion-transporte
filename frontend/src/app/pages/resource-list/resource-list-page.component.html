@@ -1,0 +1,83 @@
+@if (config(); as cfg) {
+  <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+    <div>
+      <h1 class="h3 mb-1">{{ cfg.title }}</h1>
+      <p class="text-secondary mb-0">{{ cfg.description }}</p>
+    </div>
+    <button type="button" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2" (click)="load()">
+      <svg lucideRefreshCw size="17"></svg>
+      Actualizar
+    </button>
+  </div>
+
+  @if (error()) {
+    <div class="alert alert-danger">{{ error() }}</div>
+  }
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white d-flex align-items-center justify-content-between gap-3">
+      <div class="input-group input-group-sm resource-search">
+        <span class="input-group-text bg-white">
+          <svg lucideSearch size="15"></svg>
+        </span>
+        <input
+          class="form-control"
+          type="search"
+          placeholder="Buscar en resultados"
+          [ngModel]="search()"
+          (ngModelChange)="search.set($event)"
+        />
+      </div>
+      <span class="badge text-bg-light">{{ filteredRows().length }} registros</span>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            @for (column of cfg.columns; track column.path) {
+              <th>{{ column.label }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of filteredRows(); track row['id'] ?? $index) {
+            <tr>
+              @for (column of cfg.columns; track column.path) {
+                <td>
+                  @if (column.type === 'date') {
+                    {{ dateValue(row, column.path) | date: 'yyyy-MM-dd' }}
+                  } @else if (column.type === 'money') {
+                    $ {{ textValue(row, column) }}
+                  } @else if (column.type === 'boolean') {
+                    @if (value(row, column.path)) {
+                      <span class="badge badge-soft">Sí</span>
+                    } @else {
+                      <span class="badge text-bg-light">No</span>
+                    }
+                  } @else if (column.type === 'badge') {
+                    <span class="badge" [class]="badgeClass(value(row, column.path))">
+                      {{ textValue(row, column) }}
+                    </span>
+                  } @else {
+                    {{ textValue(row, column) }}
+                  }
+                </td>
+              }
+            </tr>
+          } @empty {
+            <tr>
+              <td [attr.colspan]="cfg.columns.length" class="text-center text-secondary py-4">
+                @if (loading()) {
+                  Cargando datos...
+                } @else {
+                  Sin registros para mostrar.
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+}

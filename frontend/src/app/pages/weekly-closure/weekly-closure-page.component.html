@@ -1,0 +1,149 @@
+<div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">Cierre semanal</h1>
+    <p class="text-secondary mb-0">Revisión semanal de viajes, mantenimientos, sueldos y bonos.</p>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body">
+    <form class="row g-3 align-items-end" [formGroup]="form" (ngSubmit)="load()">
+      <div class="col-sm-3 col-md-2">
+        <label class="form-label">Año</label>
+        <input class="form-control" type="number" formControlName="anio" />
+      </div>
+      <div class="col-sm-3 col-md-2">
+        <label class="form-label">Semana</label>
+        <input class="form-control" type="number" min="1" max="53" formControlName="numero_semana" />
+      </div>
+      <div class="col d-flex gap-2">
+        <button class="btn btn-outline-secondary d-inline-flex align-items-center gap-2" type="submit">
+          <svg lucideRefreshCw size="17"></svg>
+          Consultar
+        </button>
+        <button
+          class="btn btn-primary d-inline-flex align-items-center gap-2"
+          type="button"
+          (click)="generarGastos()"
+          [disabled]="generating()"
+        >
+          <svg lucideCalculator size="17"></svg>
+          Generar gastos
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+@if (error()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+}
+
+@if (message()) {
+  <div class="alert alert-success">{{ message() }}</div>
+}
+
+@if (cierre(); as c) {
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <span class="small text-secondary">Viajes</span>
+          <div class="h2 mb-0">{{ c.resumen.cantidad_viajes }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <span class="small text-secondary">Flete real</span>
+          <div class="h2 mb-0">$ {{ money(c.resumen.totales['precio_real_flete']) }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <span class="small text-secondary">Utilidad viajes</span>
+          <div class="h2 mb-0">$ {{ money(c.resumen.totales['utilidad']) }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <span class="small text-secondary">Resultado operativo</span>
+          <div class="h2 mb-0">$ {{ money(c.resumen.totales['resultado_operativo']) }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-xl-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold">Conductores</div>
+        <div class="table-responsive">
+          <table class="table table-hover mb-0 align-middle">
+            <thead>
+              <tr>
+                <th>Conductor</th>
+                <th>Viajes</th>
+                <th>Sueldo</th>
+                <th>Bono</th>
+                <th>Vehículo gasto</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (item of c.conductores; track item.conductor.cedula) {
+                <tr>
+                  <td>{{ item.conductor.nombre }}</td>
+                  <td>{{ item.cantidad_viajes }}</td>
+                  <td>$ {{ item.sueldo_semanal }}</td>
+                  <td>$ {{ item.bonificacion_sugerida }}</td>
+                  <td>{{ item.vehiculo_asignado_gasto?.placa ?? '-' }}</td>
+                </tr>
+              } @empty {
+                <tr><td colspan="5" class="text-center text-secondary py-4">Sin conductores.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold">Vehículos</div>
+        <div class="table-responsive">
+          <table class="table table-hover mb-0 align-middle">
+            <thead>
+              <tr>
+                <th>Vehículo</th>
+                <th>Viajes</th>
+                <th>Mantenimientos</th>
+                <th>Gastos</th>
+                <th>Resultado</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (item of c.vehiculos; track item.vehiculo.placa) {
+                <tr>
+                  <td>{{ item.vehiculo.placa }} - {{ item.vehiculo.marca }}</td>
+                  <td>{{ item.cantidad_viajes }}</td>
+                  <td>{{ item.cantidad_mantenimientos }}</td>
+                  <td>{{ item.cantidad_gastos_semanales }}</td>
+                  <td>$ {{ money(item.totales['resultado_operativo']) }}</td>
+                </tr>
+              } @empty {
+                <tr><td colspan="5" class="text-center text-secondary py-4">Sin vehículos.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+} @else if (loading()) {
+  <div class="text-secondary">Cargando cierre...</div>
+}

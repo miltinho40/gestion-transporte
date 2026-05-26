@@ -1,0 +1,499 @@
+<div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+  <div>
+    <h1 class="h3 mb-1">Viajes</h1>
+    <p class="text-secondary mb-0">Registro de viajes, fletes, costos, gastos adicionales y utilidad.</p>
+  </div>
+  <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
+    <svg lucidePlus size="17"></svg>
+    Nuevo
+  </button>
+</div>
+
+@if (error() && !formOpen()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+}
+
+@if (message()) {
+  <div class="alert alert-success">{{ message() }}</div>
+}
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white d-flex align-items-center justify-content-between gap-3">
+    <div class="input-group input-group-sm resource-search">
+      <span class="input-group-text bg-white">
+        <svg lucideSearch size="15"></svg>
+      </span>
+      <input
+        class="form-control"
+        type="search"
+        placeholder="Buscar viajes"
+        [ngModel]="search()"
+        (ngModelChange)="search.set($event)"
+      />
+    </div>
+    <button type="button" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2" (click)="load()">
+      <svg lucideRefreshCw size="15"></svg>
+      Actualizar
+    </button>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Cliente</th>
+          <th>Vehículo</th>
+          <th>Conductor</th>
+          <th>Ruta</th>
+          <th>Flete</th>
+          <th>Flete real</th>
+          <th>Utilidad</th>
+          <th>Cobrado</th>
+          <th>Estado</th>
+          <th class="text-end actions-column">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of filteredRows(); track row.id) {
+          <tr>
+            <td>{{ row.fecha_salida | date: 'yyyy-MM-dd' }}</td>
+            <td>{{ row.cliente?.nombre ?? '-' }}</td>
+            <td>{{ row.vehiculo?.placa ?? '-' }}</td>
+            <td>{{ row.conductor?.nombre ?? '-' }}</td>
+            <td>{{ rutaLabel(row.tarifa_ruta) }}</td>
+            <td>$ {{ money(row.precio_flete) }}</td>
+            <td>$ {{ money(row.precio_real_flete) }}</td>
+            <td>$ {{ money(+row.precio_real_flete - +(row.costo_real_gastos ?? 0)) }}</td>
+            <td>
+              @if (row.cobrado) {
+                <span class="badge badge-soft">Sí</span>
+              } @else {
+                <span class="badge text-bg-light">No</span>
+              }
+            </td>
+            <td><span class="badge badge-soft">{{ estadoLabel(row.estado) }}</span></td>
+            <td class="text-end">
+              <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary" (click)="openEdit(row)" title="Editar">
+                  <svg lucidePencil size="15"></svg>
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-outline-danger"
+                  (click)="delete(row)"
+                  [disabled]="deletingId() === row.id"
+                  title="Cancelar viaje"
+                >
+                  <svg lucideTrash2 size="15"></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="11" class="text-center text-secondary py-4">
+              @if (loading()) {
+                Cargando viajes...
+              } @else {
+                Sin viajes para mostrar.
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</div>
+
+@if (formOpen()) {
+  <div class="modal d-block" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-viajes">
+      <div class="modal-content border-0 shadow">
+        <form [formGroup]="form" (ngSubmit)="save()">
+          <div class="modal-header">
+            <div>
+              <h2 class="modal-title h5 mb-0">
+                @if (editingRow()) {
+                  Editar Viaje
+                } @else {
+                  Nuevo Viaje
+                }
+              </h2>
+              <span class="text-secondary small">Completa los datos del viaje, costos y gastos.</span>
+            </div>
+            <button type="button" class="btn-close" aria-label="Cerrar" (click)="closeForm()"></button>
+          </div>
+
+          <div class="modal-body">
+            @if (error()) {
+              <div class="alert alert-danger mb-3">{{ error() }}</div>
+            }
+
+            <div class="viaje-form-stack">
+              <div class="viaje-top-grid">
+                <div>
+                  <label class="form-label" for="cliente_id">Cliente <span class="text-danger">*</span></label>
+                  <div class="catalog-combobox">
+                    <input
+                      id="cliente_id"
+                      class="form-control"
+                      type="search"
+                      autocomplete="off"
+                      placeholder="Buscar cliente..."
+                      [ngModel]="catalogInputValue('cliente_id')"
+                      [ngModelOptions]="{ standalone: true }"
+                      (focus)="openCatalog('cliente_id')"
+                      (blur)="closeCatalogSoon('cliente_id')"
+                      (ngModelChange)="setCatalogInput('cliente_id', $event)"
+                    />
+                    @if (catalogOpen('cliente_id')) {
+                      <div class="catalog-options shadow-sm">
+                        @for (option of limitedCatalogOptions('cliente_id'); track option.value) {
+                          <button type="button" class="catalog-option" (mousedown)="selectCatalogOption('cliente_id', option, $event)">
+                            {{ option.label }}
+                          </button>
+                        } @empty {
+                          <span class="catalog-empty">Sin coincidencias</span>
+                        }
+                      </div>
+                    }
+                  </div>
+                </div>
+
+                <div>
+                  <label class="form-label" for="vehiculo_id">Vehículo <span class="text-danger">*</span></label>
+                  <div class="catalog-combobox">
+                    <input
+                      id="vehiculo_id"
+                      class="form-control"
+                      type="search"
+                      autocomplete="off"
+                      placeholder="Buscar vehículo..."
+                      [ngModel]="catalogInputValue('vehiculo_id')"
+                      [ngModelOptions]="{ standalone: true }"
+                      (focus)="openCatalog('vehiculo_id')"
+                      (blur)="closeCatalogSoon('vehiculo_id')"
+                      (ngModelChange)="setCatalogInput('vehiculo_id', $event)"
+                    />
+                    @if (catalogOpen('vehiculo_id')) {
+                      <div class="catalog-options shadow-sm">
+                        @for (option of limitedCatalogOptions('vehiculo_id'); track option.value) {
+                          <button type="button" class="catalog-option" (mousedown)="selectCatalogOption('vehiculo_id', option, $event)">
+                            {{ option.label }}
+                          </button>
+                        } @empty {
+                          <span class="catalog-empty">Sin coincidencias</span>
+                        }
+                      </div>
+                    }
+                  </div>
+                </div>
+
+                <div>
+                  <label class="form-label" for="conductor_id">Conductor <span class="text-danger">*</span></label>
+                  <div class="catalog-combobox">
+                    <input
+                      id="conductor_id"
+                      class="form-control"
+                      type="search"
+                      autocomplete="off"
+                      placeholder="Buscar conductor..."
+                      [ngModel]="catalogInputValue('conductor_id')"
+                      [ngModelOptions]="{ standalone: true }"
+                      (focus)="openCatalog('conductor_id')"
+                      (blur)="closeCatalogSoon('conductor_id')"
+                      (ngModelChange)="setCatalogInput('conductor_id', $event)"
+                    />
+                    @if (catalogOpen('conductor_id')) {
+                      <div class="catalog-options shadow-sm">
+                        @for (option of limitedCatalogOptions('conductor_id'); track option.value) {
+                          <button type="button" class="catalog-option" (mousedown)="selectCatalogOption('conductor_id', option, $event)">
+                            {{ option.label }}
+                          </button>
+                        } @empty {
+                          <span class="catalog-empty">Sin coincidencias</span>
+                        }
+                      </div>
+                    }
+                  </div>
+                </div>
+
+                <div class="viaje-field-date-130">
+                  <label class="form-label" for="fecha_salida">Fecha salida <span class="text-danger">*</span></label>
+                  <input id="fecha_salida" class="form-control" type="date" formControlName="fecha_salida" (change)="onFechaSalidaChange()" />
+                </div>
+
+                <div class="viaje-field-date-130">
+                  <label class="form-label" for="fecha_llegada">Fecha llegada</label>
+                  <input id="fecha_llegada" class="form-control" type="date" formControlName="fecha_llegada" />
+                </div>
+              </div>
+
+              <div class="viaje-middle-grid">
+                <div>
+                  <label class="form-label" for="tarifa_ruta_id">Tarifa Ruta <span class="text-danger">*</span></label>
+                  <div class="catalog-combobox">
+                    <input
+                      id="tarifa_ruta_id"
+                      class="form-control"
+                      type="search"
+                      autocomplete="off"
+                      placeholder="Buscar tarifa ruta..."
+                      [ngModel]="catalogInputValue('tarifa_ruta_id')"
+                      [ngModelOptions]="{ standalone: true }"
+                      (focus)="openCatalog('tarifa_ruta_id')"
+                      (blur)="closeCatalogSoon('tarifa_ruta_id')"
+                      (ngModelChange)="setCatalogInput('tarifa_ruta_id', $event)"
+                    />
+                    @if (catalogOpen('tarifa_ruta_id')) {
+                      <div class="catalog-options shadow-sm">
+                        @for (option of limitedCatalogOptions('tarifa_ruta_id'); track option.value) {
+                          <button type="button" class="catalog-option" (mousedown)="selectCatalogOption('tarifa_ruta_id', option, $event)">
+                            {{ option.label }}
+                          </button>
+                        } @empty {
+                          <span class="catalog-empty">Sin coincidencias</span>
+                        }
+                      </div>
+                    }
+                  </div>
+                </div>
+
+                <div class="viaje-field-state">
+                  <label class="form-label" for="estado">Estado <span class="text-danger">*</span></label>
+                  <select id="estado" class="form-select" formControlName="estado">
+                    <option value="programado">Programado</option>
+                    <option value="en_curso">En curso</option>
+                    <option value="completado">Completado</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="form-label" for="descripcion_carga">Descripción carga</label>
+                  <textarea
+                    id="descripcion_carga"
+                    class="form-control viaje-textarea-compact"
+                    rows="1"
+                    placeholder="Descripción de la carga..."
+                    formControlName="descripcion_carga"
+                  ></textarea>
+                </div>
+              </div>
+
+              <div class="viaje-third-grid">
+                <div>
+                  <label class="form-label" for="numeros_guia_remision">Guías de remisión</label>
+                  <textarea
+                    id="numeros_guia_remision"
+                    class="form-control viaje-textarea-compact"
+                    rows="1"
+                    placeholder="Una guía por línea o separadas por coma"
+                    formControlName="numeros_guia_remision"
+                  ></textarea>
+                </div>
+
+                <div class="viaje-field-number">
+                  <label class="form-label" for="peso_carga_kg">Peso kg</label>
+                  <input id="peso_carga_kg" class="form-control" type="number" min="0" step="0.01" formControlName="peso_carga_kg" />
+                </div>
+
+                <div class="viaje-field-fixed-120">
+                  <label class="form-label d-block" for="cobrado">Cobrado</label>
+                  <div class="form-check form-switch viaje-switch-box">
+                    <input id="cobrado" class="form-check-input" type="checkbox" formControlName="cobrado" />
+                    <label class="form-check-label" for="cobrado">
+                      @if (form.controls.cobrado.value) {
+                        Sí
+                      } @else {
+                        No
+                      }
+                    </label>
+                  </div>
+                </div>
+
+                <div class="viaje-field-date-130">
+                  <label class="form-label" for="fecha_cobro">Fecha cobro</label>
+                  <input id="fecha_cobro" class="form-control" type="date" formControlName="fecha_cobro" />
+                </div>
+              </div>
+            </div>
+
+            <hr class="my-4" />
+
+            <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+              <div>
+                <h3 class="h6 mb-1">Flete y costos</h3>
+                <p class="text-secondary small mb-0">Los valores se calculan al seleccionar cliente, vehículo y tarifa.</p>
+              </div>
+              @if (calculating()) {
+                <span class="badge text-bg-light d-inline-flex align-items-center gap-1">
+                  <svg lucideCalculator size="14"></svg>
+                  Calculando
+                </span>
+              }
+            </div>
+
+            <div class="viaje-costos-grid">
+              <div class="viaje-cost-field">
+                <label class="form-label" for="precio_flete">Precio flete</label>
+                <input id="precio_flete" class="form-control" type="number" min="0" step="0.01" readonly formControlName="precio_flete" />
+              </div>
+              <div class="viaje-cost-field">
+                <label class="form-label" for="precio_real_flete">Precio real flete</label>
+                <input id="precio_real_flete" class="form-control" type="number" min="0" step="0.01" formControlName="precio_real_flete" (input)="onPrecioRealChanged()" />
+              </div>
+              <div class="viaje-cost-field">
+                <label class="form-label" for="costo_diesel">Costo diésel</label>
+                <input id="costo_diesel" class="form-control" type="number" readonly formControlName="costo_diesel" />
+              </div>
+              <div class="viaje-cost-field">
+                <label class="form-label" for="costo_peajes">Costo peajes</label>
+                <input id="costo_peajes" class="form-control" type="number" readonly formControlName="costo_peajes" />
+              </div>
+              <div class="viaje-cost-field">
+                <label class="form-label" for="costo_estimado_gastos">Costo estimado gastos</label>
+                <input id="costo_estimado_gastos" class="form-control" type="number" readonly formControlName="costo_estimado_gastos" />
+              </div>
+              <div class="viaje-cost-field">
+                <label class="form-label" for="costo_real_gastos">Viáticos</label>
+                <input id="costo_real_gastos" class="form-control" type="number" min="0" step="0.01" formControlName="costo_real_gastos" (input)="onCostoRealChanged()" />
+              </div>
+            </div>
+
+            <hr class="my-4" />
+
+            <div class="viaje-gastos-layout">
+              <div>
+                <div class="mb-3">
+                  <h3 class="h6 mb-1">Gastos adicionales</h3>
+                  <p class="text-secondary small mb-0">Agregue gastos adicionales del viaje; no son estimados.</p>
+                </div>
+
+                <div class="viaje-gasto-form-grid mb-3" [formGroup]="gastoForm">
+                  <div>
+                    <label class="form-label" for="tipo_gasto_id">Tipo gasto <span class="text-danger">*</span></label>
+                    <div class="catalog-combobox">
+                      <input
+                        id="tipo_gasto_id"
+                        class="form-control"
+                        type="search"
+                        autocomplete="off"
+                        placeholder="Buscar tipo gasto..."
+                        [ngModel]="catalogInputValue('tipo_gasto_id')"
+                        [ngModelOptions]="{ standalone: true }"
+                        (focus)="openCatalog('tipo_gasto_id')"
+                        (blur)="closeCatalogSoon('tipo_gasto_id')"
+                        (ngModelChange)="setCatalogInput('tipo_gasto_id', $event)"
+                      />
+                      @if (catalogOpen('tipo_gasto_id')) {
+                        <div class="catalog-options shadow-sm">
+                          @for (option of limitedCatalogOptions('tipo_gasto_id'); track option.value) {
+                            <button type="button" class="catalog-option" (mousedown)="selectCatalogOption('tipo_gasto_id', option, $event)">
+                              {{ option.label }}
+                            </button>
+                          } @empty {
+                            <span class="catalog-empty">Sin coincidencias</span>
+                          }
+                        </div>
+                      }
+                    </div>
+                  </div>
+
+                  <div>
+                    <label class="form-label" for="monto">Valor <span class="text-danger">*</span></label>
+                    <input id="monto" class="form-control" type="number" min="0" step="0.01" formControlName="monto" />
+                  </div>
+
+                  <div>
+                    <label class="form-label" for="descripcion_gasto">Descripción</label>
+                    <input
+                      id="descripcion_gasto"
+                      class="form-control"
+                      type="text"
+                      placeholder="Descripción del gasto..."
+                      formControlName="descripcion"
+                    />
+                  </div>
+
+                  <div>
+                    <label class="form-label d-block">Acciones</label>
+                    <button type="button" class="btn btn-outline-danger viaje-icon-button" (click)="resetGastoForm()" title="Limpiar gasto">
+                      <svg lucideTrash2 size="14"></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <button type="button" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-2 mb-3" (click)="addGasto()">
+                  <svg lucidePlus size="14"></svg>
+                  Agregar gasto
+                </button>
+
+                @if (gastos().length) {
+                  <div class="table-responsive border rounded">
+                    <table class="table table-sm align-middle mb-0">
+                      <thead>
+                        <tr>
+                          <th>Tipo</th>
+                          <th>Valor</th>
+                          <th>Descripción</th>
+                          <th class="text-end">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (gasto of gastos(); track gasto.id ?? $index; let index = $index) {
+                          <tr>
+                            <td>{{ gasto.tipo_gasto_nombre }}</td>
+                            <td>$ {{ money(gasto.monto) }}</td>
+                            <td>{{ gasto.descripcion || '-' }}</td>
+                            <td class="text-end">
+                              <button type="button" class="btn btn-outline-danger btn-sm" (click)="removeGasto(index)" title="Eliminar">
+                                <svg lucideTrash2 size="14"></svg>
+                              </button>
+                            </td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              </div>
+
+              <div class="viaje-summary-stack">
+                <div class="viaje-summary-card viaje-summary-card-success">
+                  <div class="text-secondary small">Gastos adicionales</div>
+                  <div class="h5 mb-0">$ {{ money(totalGastosRealesAdicionales()) }}</div>
+                </div>
+                <div class="viaje-summary-card viaje-summary-card-primary">
+                  <div class="text-secondary small">Total gastos reales</div>
+                  <div class="small text-secondary">(Viáticos + gastos adicionales)</div>
+                  <div class="h5 mb-0">$ {{ money(totalGastosReales()) }}</div>
+                </div>
+                <div class="viaje-summary-card viaje-summary-card-success">
+                  <div class="text-secondary small">Utilidad</div>
+                  <div class="h5 mb-0">$ {{ money(utilidadViaje()) }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeForm()">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary d-inline-flex align-items-center gap-2" [disabled]="saving()">
+              <svg lucideSave size="15"></svg>
+              @if (saving()) {
+                Guardando...
+              } @else {
+                Guardar viaje
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop show"></div>
+}

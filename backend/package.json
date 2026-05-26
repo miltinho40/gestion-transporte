@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
@@ -17,10 +17,13 @@
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
+    "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
+    "nodemailer": "^8.0.7",
+    "pdfkit": "^0.18.0",
     "zod": "^3.24.4"
   },
   "devDependencies": {
@@ -29,6 +32,8 @@
     "@types/jsonwebtoken": "^9.0.9",
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.15.21",
+    "@types/nodemailer": "^8.0.0",
+    "@types/pdfkit": "^0.17.6",
     "prisma": "^6.8.2",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
