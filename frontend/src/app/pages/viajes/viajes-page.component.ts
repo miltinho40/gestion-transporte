@@ -768,7 +768,9 @@ export class ViajesPageComponent implements OnDestroy {
   }
 
   delete(row: ViajeRow) {
-    if (!confirm(`Cancelar el viaje de ${row.cliente?.nombre ?? 'cliente'}?`)) return;
+    const isCancelado = row.estado === 'cancelado';
+    const action = isCancelado ? 'eliminar definitivamente' : 'cancelar';
+    if (!confirm(`Deseas ${action} el viaje de ${row.cliente?.nombre ?? 'cliente'}?`)) return;
 
     this.deletingId.set(row.id);
     this.error.set(null);
@@ -778,12 +780,12 @@ export class ViajesPageComponent implements OnDestroy {
       this.api.delete<ViajeRow>(`/viajes/${row.id}`).subscribe({
         next: () => {
           this.deletingId.set(null);
-          this.message.set('Viaje cancelado.');
+          this.message.set(isCancelado ? 'Viaje eliminado.' : 'Viaje cancelado.');
           this.load();
         },
         error: (err) => {
           this.deletingId.set(null);
-          this.error.set(err?.error?.message ?? 'No se pudo cancelar el viaje.');
+          this.error.set(err?.error?.message ?? `No se pudo ${action} el viaje.`);
         }
       })
     );

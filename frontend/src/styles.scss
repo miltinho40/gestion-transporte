@@ -748,6 +748,15 @@ td.mantenimientos-description-col {
   font-weight: 700;
 }
 
+.table > tbody > tr.viaje-row-cancelado > td:not(.actions-cell) {
+  color: #b42318;
+}
+
+.table > tbody > tr.viaje-row-cancelado .badge:not(.viaje-week-badge) {
+  background: #fee4e2;
+  color: #b42318;
+}
+
 @media (max-width: 767.98px) {
   .viajes-filter-bar {
     grid-template-columns: 1fr;

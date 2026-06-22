@@ -122,7 +122,11 @@
       <tbody>
         @for (item of displayRows(); track item.row.id) {
           @let row = item.row;
-          <tr [class]="item.weekClass" [class.viaje-row-cobrado]="row.cobrado">
+          <tr
+            [class]="item.weekClass"
+            [class.viaje-row-cobrado]="row.cobrado"
+            [class.viaje-row-cancelado]="row.estado === 'cancelado'"
+          >
             <td>
               <span class="badge viaje-week-badge" [title]="item.weekTitle">{{ item.weekLabel }}</span>
             </td>
@@ -162,7 +166,7 @@
                   class="btn btn-outline-danger"
                   (click)="delete(row)"
                   [disabled]="deletingId() === row.id"
-                  title="Cancelar viaje"
+                  [title]="row.estado === 'cancelado' ? 'Eliminar definitivamente' : 'Cancelar viaje'"
                 >
                   <svg lucideTrash2 size="15"></svg>
                 </button>

@@ -702,7 +702,21 @@ export const cancelViaje = async (propietarioIdInput: unknown, idInput: unknown)
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getViajeById(propietarioId, id);
+  const current = await getViajeById(propietarioId, id);
+
+  if (current.estado === EstadoViaje.CANCELADO) {
+    await prisma.$transaction(async (tx) => {
+      await tx.gastoViaje.deleteMany({
+        where: { viaje_id: id }
+      });
+
+      await tx.viaje.delete({
+        where: { id }
+      });
+    });
+
+    return current;
+  }
 
   return prisma.viaje.update({
     where: { id },
