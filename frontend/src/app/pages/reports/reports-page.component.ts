@@ -2,13 +2,14 @@ import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { LucideDownload, LucideFileSpreadsheet } from '@lucide/angular';
 import { ApiService } from '../../core/api.service';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 
 type WeeklyReportType = 'viajes-conductor' | 'viajes-vehiculo' | 'ingresos-egresos';
 type ExportFormat = 'xlsx' | 'pdf';
 
 @Component({
   selector: 'app-reports-page',
-  imports: [ReactiveFormsModule, LucideDownload, LucideFileSpreadsheet],
+  imports: [ReactiveFormsModule, LucideDownload, LucideFileSpreadsheet, AutoDismissAlertDirective],
   templateUrl: './reports-page.component.html'
 })
 export class ReportsPageComponent {

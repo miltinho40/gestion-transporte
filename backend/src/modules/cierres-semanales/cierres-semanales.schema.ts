@@ -18,9 +18,13 @@ const optionalTrimmedString = (max: number) =>
     .nullable()
     .transform((value) => value || null);
 
-export const cierreSemanalSemanaSchema = z.object({
+const semanaSchema = z.object({
   anio: z.coerce.number().int().min(2000).max(2100),
   numero_semana: z.coerce.number().int().min(1).max(53)
+});
+
+export const cierreSemanalSemanaSchema = semanaSchema.extend({
+  vehiculo_id: idSchema
 });
 
 export const cierreSemanalGenerarGastosSchema = cierreSemanalSemanaSchema
@@ -32,13 +36,13 @@ export const cierreSemanalGenerarGastosSchema = cierreSemanalSemanaSchema
     message: 'Debe generar sueldos, bonificaciones o ambos'
   });
 
-export const gastoSemanalFiltersSchema = cierreSemanalSemanaSchema.partial().extend({
+export const gastoSemanalFiltersSchema = semanaSchema.partial().extend({
   vehiculo_id: idSchema.optional(),
   conductor_id: idSchema.optional(),
   tipo: z.enum(tipoGastoSemanalValues).optional()
 });
 
-export const gastoSemanalCreateSchema = cierreSemanalSemanaSchema.extend({
+export const gastoSemanalCreateSchema = semanaSchema.extend({
   vehiculo_id: idSchema,
   conductor_id: idSchema.optional().nullable(),
   tipo: z.enum(tipoGastoSemanalValues).optional(),

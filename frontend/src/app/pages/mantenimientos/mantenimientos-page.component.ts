@@ -1,7 +1,7 @@
-import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
+  LucideCopy,
   LucidePencil,
   LucidePlus,
   LucideRefreshCw,
@@ -12,6 +12,8 @@ import {
 } from '@lucide/angular';
 import { Subscription, forkJoin } from 'rxjs';
 import { ApiService } from '../../core/api.service';
+import { formatDateOnly } from '../../core/date-only';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 
 type EstadoMantenimiento = 'programado' | 'realizado' | 'cancelado' | 'vencido';
 type CatalogField = 'vehiculo_id' | 'tipo_mantenimiento_id';
@@ -104,16 +106,17 @@ const addDaysInput = (dateInput: string, days: number) => {
 @Component({
   selector: 'app-mantenimientos-page',
   imports: [
-    DatePipe,
     FormsModule,
     ReactiveFormsModule,
+    LucideCopy,
     LucidePencil,
     LucidePlus,
     LucideRefreshCw,
     LucideSave,
     LucideSearch,
     LucideTrash2,
-    LucideX
+    LucideX,
+    AutoDismissAlertDirective
   ],
   templateUrl: './mantenimientos-page.component.html'
 })
@@ -134,6 +137,7 @@ export class MantenimientosPageComponent implements OnDestroy {
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly search = signal('');
+  readonly filterPlacaTerm = signal('');
   readonly catalogInput = signal<Record<CatalogField, string>>({
     vehiculo_id: '',
     tipo_mantenimiento_id: ''
@@ -232,11 +236,43 @@ export class MantenimientosPageComponent implements OnDestroy {
       proximo_mantenimiento_km: nullableNumberValue(row.proximo_mantenimiento_km),
       proximo_mantenimiento_fecha: dateInputValue(row.proximo_mantenimiento_fecha),
       estado: row.estado,
-      actualizar_kilometraje_vehiculo: false
+      actualizar_kilometraje_vehiculo: true
     });
     this.repuestos.set(
       (row.repuestos ?? []).map((repuesto) => ({
         id: repuesto.id,
+        nombre_repuesto: repuesto.nombre_repuesto,
+        cantidad: numberValue(repuesto.cantidad),
+        costo_unitario: numberValue(repuesto.costo_unitario),
+        costo_total: numberValue(repuesto.costo_total)
+      }))
+    );
+    this.resetRepuestoForm();
+    this.syncCatalogInputs();
+    this.formOpen.set(true);
+    this.message.set(null);
+    this.error.set(null);
+    this.recalculateTotals();
+  }
+
+  openDuplicate(row: MantenimientoRow) {
+    this.editingRow.set(null);
+    this.form.reset({
+      vehiculo_id: String(row.vehiculo_id),
+      tipo_mantenimiento_id: String(row.tipo_mantenimiento_id),
+      fecha_mantenimiento: dateInputValue(row.fecha_mantenimiento),
+      kilometraje_actual_vehiculo: numberValue(row.kilometraje_actual_vehiculo),
+      descripcion: row.descripcion ?? '',
+      costo_mano_obra: numberValue(row.costo_mano_obra),
+      costo_repuestos: numberValue(row.costo_repuestos),
+      costo_total: numberValue(row.costo_total),
+      proximo_mantenimiento_km: nullableNumberValue(row.proximo_mantenimiento_km),
+      proximo_mantenimiento_fecha: dateInputValue(row.proximo_mantenimiento_fecha),
+      estado: row.estado,
+      actualizar_kilometraje_vehiculo: true
+    });
+    this.repuestos.set(
+      (row.repuestos ?? []).map((repuesto) => ({
         nombre_repuesto: repuesto.nombre_repuesto,
         cantidad: numberValue(repuesto.cantidad),
         costo_unitario: numberValue(repuesto.costo_unitario),
@@ -316,9 +352,14 @@ export class MantenimientosPageComponent implements OnDestroy {
 
   filteredRows() {
     const term = this.search().trim().toLowerCase();
-    if (!term) return this.rows();
+    const placaTerm = this.filterPlacaTerm().trim().toLowerCase();
 
-    return this.rows().filter((row) => JSON.stringify(row).toLowerCase().includes(term));
+    return this.rows().filter((row) => {
+      const matchesPlaca = !placaTerm || this.vehiculoSearchText(row).includes(placaTerm);
+      const matchesSearch = !term || JSON.stringify(row).toLowerCase().includes(term);
+
+      return matchesPlaca && matchesSearch;
+    });
   }
 
   openCatalog(field: CatalogField) {
@@ -444,6 +485,10 @@ export class MantenimientosPageComponent implements OnDestroy {
     return numberValue(value).toFixed(2);
   }
 
+  dateOnly(value: unknown) {
+    return formatDateOnly(value);
+  }
+
   estadoLabel(value: unknown) {
     const labels: Record<string, string> = {
       programado: 'Programado',
@@ -465,6 +510,13 @@ export class MantenimientosPageComponent implements OnDestroy {
   vehiculoLabel(vehiculo?: VehiculoOption | null) {
     if (!vehiculo) return '-';
     return [vehiculo.placa, vehiculo.marca].filter(Boolean).join(' - ');
+  }
+
+  private vehiculoSearchText(row: MantenimientoRow) {
+    return [row.vehiculo?.placa, row.vehiculo?.marca, row.vehiculo?.modelo, row.vehiculo_id]
+      .filter((value) => value !== null && value !== undefined && value !== '')
+      .join(' ')
+      .toLowerCase();
   }
 
   tipoMantenimientoLabel(tipo?: TipoMantenimientoOption | null) {

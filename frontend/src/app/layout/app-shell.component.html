@@ -4,7 +4,7 @@
       <div class="brand-icon"><svg lucideTruck size="22"></svg></div>
       <div>
         <strong>Transporte</strong>
-        <span>{{ auth.contexto()?.propietario_nombre }}</span>
+        <span>{{ auth.contexto()?.propietario_nombre ?? 'Superadmin' }}</span>
       </div>
     </div>
 
@@ -122,6 +122,42 @@
               <svg lucideUsers size="17"></svg>
               Propietarios
             </a>
+            <a routerLink="/app/usuarios" routerLinkActive="active">
+              <svg lucideUsers size="17"></svg>
+              Usuarios
+            </a>
+            <a routerLink="/app/usuarios-propietarios" routerLinkActive="active">
+              <svg lucideUsers size="17"></svg>
+              Asignaciones
+            </a>
+            <a routerLink="/app/planes" routerLinkActive="active">
+              <svg lucideFileSpreadsheet size="17"></svg>
+              Planes
+            </a>
+            <a routerLink="/app/configuracion-diesel" routerLinkActive="active">
+              <svg lucideFileSpreadsheet size="17"></svg>
+              Diesel
+            </a>
+          </div>
+        }
+      }
+
+      @if (isAdmin()) {
+        <button
+          type="button"
+          class="nav-section-toggle"
+          (click)="toggleSection('configuracion')"
+          [attr.aria-expanded]="isSectionOpen('configuracion')"
+        >
+          <span>CONFIGURACION</span>
+          <svg lucideChevronDown size="14" [class.collapsed]="!isSectionOpen('configuracion')"></svg>
+        </button>
+        @if (isSectionOpen('configuracion')) {
+          <div class="nav-section-items">
+            <a routerLink="/app/configuraciones" routerLinkActive="active">
+              <svg lucideFileSpreadsheet size="17"></svg>
+              Configuraciones
+            </a>
           </div>
         }
       }
@@ -155,11 +191,11 @@
     <header class="topbar">
       <div>
         <span class="context-label">Propietario</span>
-        <strong>{{ auth.contexto()?.propietario_nombre }}</strong>
+        <strong>{{ auth.contexto()?.propietario_nombre ?? 'Superadmin' }}</strong>
       </div>
       <div class="user-meta">
         <span>{{ auth.usuario()?.nombre }}</span>
-        <span class="badge badge-soft">{{ auth.contexto()?.rol }}</span>
+        <span class="badge badge-soft">{{ auth.contexto()?.rol ?? 'superadmin' }}</span>
       </div>
     </header>
 

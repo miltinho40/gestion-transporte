@@ -3,6 +3,7 @@ import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angu
 import {
   LucideArrowDown,
   LucideArrowUp,
+  LucideCopy,
   LucidePencil,
   LucidePlus,
   LucideRefreshCw,
@@ -14,6 +15,7 @@ import {
 import { Subscription, forkJoin } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 
 type SentidoPeaje = 'ida' | 'retorno' | 'ambos';
 
@@ -81,13 +83,15 @@ const normalizeSentido = (value?: string | null): SentidoPeaje => {
     ReactiveFormsModule,
     LucideArrowDown,
     LucideArrowUp,
+    LucideCopy,
     LucidePencil,
     LucidePlus,
     LucideRefreshCw,
     LucideSave,
     LucideSearch,
     LucideTrash2,
-    LucideX
+    LucideX,
+    AutoDismissAlertDirective
   ],
   templateUrl: './rutas-page.component.html'
 })
@@ -208,6 +212,33 @@ export class RutasPageComponent implements OnDestroy {
       duracion_estimada_horas: toHoursTime(row.duracion_estimada_horas),
       activa: Boolean(row.activa),
       global: row.propietario_id === null
+    });
+    this.peajesRuta.set(
+      (row.rutas_peajes ?? []).map((item, index) => ({
+        peaje_id: String(item.peaje_id),
+        peaje_propietario_id: item.peaje?.propietario_id ?? null,
+        peaje_nombre: item.peaje?.nombre ?? `Peaje ${item.peaje_id}`,
+        orden: item.orden ?? index + 1,
+        sentido: normalizeSentido(item.sentido)
+      }))
+    );
+    this.peajeSearch.set('');
+    this.peajeCatalogOpen.set(false);
+    this.selectedPeajeId.set('');
+    this.formOpen.set(true);
+    this.error.set(null);
+    this.message.set(null);
+  }
+
+  openDuplicate(row: RutaRow) {
+    this.editingRow.set(null);
+    this.form.reset({
+      origen: row.origen,
+      destino: row.destino,
+      distancia_km: Number(row.distancia_km ?? 0),
+      duracion_estimada_horas: toHoursTime(row.duracion_estimada_horas),
+      activa: Boolean(row.activa),
+      global: this.isSuperAdmin && row.propietario_id === null
     });
     this.peajesRuta.set(
       (row.rutas_peajes ?? []).map((item, index) => ({

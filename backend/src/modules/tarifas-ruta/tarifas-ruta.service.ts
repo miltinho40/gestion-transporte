@@ -83,7 +83,7 @@ const ensureTarifaRutaAvailable = async (
   propietarioId: bigint,
   rutaId: bigint,
   tipoCargaId: bigint,
-  capacidad: number | null,
+  capacidad: string | null,
   toneladas: Prisma.Decimal | number | null,
   vigenteDesde: Date,
   excludeId?: bigint

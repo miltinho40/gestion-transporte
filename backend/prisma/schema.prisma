@@ -66,17 +66,31 @@ enum TipoInvitacionUsuario {
   @@map("tipo_invitacion_usuario")
 }
 
+enum EstadoSuscripcionPropietario {
+  ACTIVA     @map("activa")
+  PRUEBA     @map("prueba")
+  SUSPENDIDA @map("suspendida")
+  CANCELADA  @map("cancelada")
+
+  @@map("estado_suscripcion_propietario")
+}
+
 model Propietario {
-  id              BigInt   @id @default(autoincrement())
-  nombre          String   @db.VarChar(150)
-  ruc_cedula      String   @unique @db.VarChar(20)
-  contacto_nombre String?  @db.VarChar(120)
-  telefono        String?  @db.VarChar(30)
-  email           String?  @db.VarChar(150)
-  direccion       String?  @db.VarChar(255)
-  activo          Boolean  @default(true)
-  created_at      DateTime @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime @updatedAt @db.Timestamptz(6)
+  id                        BigInt                       @id @default(autoincrement())
+  nombre                    String                       @db.VarChar(150)
+  ruc_cedula                String                       @unique @db.VarChar(20)
+  contacto_nombre           String?                      @db.VarChar(120)
+  telefono                  String?                      @db.VarChar(30)
+  email                     String?                      @db.VarChar(150)
+  direccion                 String?                      @db.VarChar(255)
+  activo                    Boolean                      @default(true)
+  estado_suscripcion        EstadoSuscripcionPropietario @default(ACTIVA)
+  limite_vehiculos          Int                          @default(0)
+  precio_por_vehiculo       Decimal                      @default(0) @db.Decimal(12, 2)
+  fecha_corte_facturacion   Int                          @default(1)
+  observaciones_facturacion String?                      @db.VarChar(255)
+  created_at                DateTime                     @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                     @updatedAt @db.Timestamptz(6)
 
   usuarios_propietarios     UsuarioPropietario[]
   clientes                  Cliente[]
@@ -94,6 +108,7 @@ model Propietario {
   tipos_mantenimiento       TipoMantenimiento[]
   mantenimientos            Mantenimiento[]
   gastos_semanales_vehiculo GastoSemanalVehiculo[]
+  cierres_semanales         CierreSemanal[]
   invitaciones_usuario      InvitacionUsuario[]
 
   @@map("propietarios")
@@ -112,17 +127,17 @@ model Rol {
 }
 
 model Usuario {
-  id               BigInt    @id @default(autoincrement())
-  nombre           String    @db.VarChar(120)
-  email            String    @unique @db.VarChar(150)
-  password_hash    String?   @db.VarChar(255)
-  fecha_nacimiento DateTime? @db.Date
-  es_super_admin   Boolean   @default(false)
-  email_verificado Boolean   @default(false)
-  requiere_password Boolean  @default(false)
-  activo           Boolean   @default(true)
-  created_at       DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime  @updatedAt @db.Timestamptz(6)
+  id                BigInt    @id @default(autoincrement())
+  nombre            String    @db.VarChar(120)
+  email             String    @unique @db.VarChar(150)
+  password_hash     String?   @db.VarChar(255)
+  fecha_nacimiento  DateTime? @db.Date
+  es_super_admin    Boolean   @default(false)
+  email_verificado  Boolean   @default(false)
+  requiere_password Boolean   @default(false)
+  activo            Boolean   @default(true)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime  @updatedAt @db.Timestamptz(6)
 
   usuarios_propietarios UsuarioPropietario[]
   invitaciones          InvitacionUsuario[]
@@ -238,27 +253,31 @@ model CategoriaPeaje {
 }
 
 model Vehiculo {
-  id                   BigInt         @id @default(autoincrement())
-  propietario_id       BigInt
-  categoria_peaje_id   BigInt
-  placa                String         @db.VarChar(20)
-  marca                String         @db.VarChar(80)
-  modelo               String?        @db.VarChar(80)
-  color                String?        @db.VarChar(50)
-  anio                 Int?
-  capacidad            Int
-  toneladas            Decimal        @db.Decimal(10, 2)
-  kilometraje_actual   Int            @default(0)
-  rendimiento_km_galon Decimal        @db.Decimal(10, 2)
-  estado               EstadoVehiculo @default(DISPONIBLE)
-  created_at           DateTime       @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime       @updatedAt @db.Timestamptz(6)
+  id                     BigInt         @id @default(autoincrement())
+  propietario_id         BigInt
+  categoria_peaje_id     BigInt
+  placa                  String         @db.VarChar(20)
+  marca                  String         @db.VarChar(80)
+  modelo                 String?        @db.VarChar(80)
+  color                  String?        @db.VarChar(50)
+  anio                   Int?
+  capacidad              Int
+  toneladas              Decimal        @db.Decimal(10, 2)
+  kilometraje_actual     Int            @default(0)
+  rendimiento_km_galon   Decimal        @db.Decimal(10, 2)
+  estado                 EstadoVehiculo @default(DISPONIBLE)
+  facturable             Boolean        @default(true)
+  fecha_alta_facturacion DateTime?      @db.Date
+  fecha_baja_facturacion DateTime?      @db.Date
+  created_at             DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime       @updatedAt @db.Timestamptz(6)
 
   propietario               Propietario            @relation(fields: [propietario_id], references: [id])
   categoria_peaje           CategoriaPeaje         @relation(fields: [categoria_peaje_id], references: [id])
   viajes                    Viaje[]
   mantenimientos            Mantenimiento[]
   gastos_semanales_vehiculo GastoSemanalVehiculo[]
+  cierres_semanales         CierreSemanal[]
 
   @@unique([propietario_id, placa])
   @@index([propietario_id, estado])
@@ -294,7 +313,7 @@ model TipoCarga {
   created_at     DateTime @default(now()) @db.Timestamptz(6)
   updated_at     DateTime @updatedAt @db.Timestamptz(6)
 
-  propietario  Propietario?  @relation(fields: [propietario_id], references: [id])
+  propietario  Propietario? @relation(fields: [propietario_id], references: [id])
   tarifas_ruta TarifaRuta[]
 
   @@index([propietario_id])
@@ -306,7 +325,7 @@ model TarifaRuta {
   propietario_id BigInt
   ruta_id        BigInt
   tipo_carga_id  BigInt
-  capacidad      Int?
+  capacidad      String?   @db.VarChar(50)
   toneladas      Decimal?  @db.Decimal(10, 2)
   precio         Decimal   @db.Decimal(12, 2)
   vigente_desde  DateTime  @default(dbgenerated("CURRENT_DATE")) @db.Date
@@ -401,8 +420,10 @@ model Viaje {
   costo_diesel                 Decimal     @default(0) @db.Decimal(12, 2)
   costo_peajes                 Decimal     @default(0) @db.Decimal(12, 2)
   costo_estimado_gastos        Decimal     @default(0) @db.Decimal(12, 2)
+  viaticos                     Decimal     @default(0) @db.Decimal(12, 2)
   costo_real_gastos            Decimal?    @db.Decimal(12, 2)
   cobrado                      Boolean     @default(false)
+  retorno                      Boolean     @default(false)
   fecha_cobro                  DateTime?   @db.Date
   estado                       EstadoViaje @default(PROGRAMADO)
   observaciones                String?
@@ -450,6 +471,39 @@ model GastoSemanalVehiculo {
   @@index([vehiculo_id, anio, numero_semana])
   @@index([conductor_id, anio, numero_semana])
   @@map("gastos_semanales_vehiculo")
+}
+
+model CierreSemanal {
+  id                        BigInt   @id @default(autoincrement())
+  propietario_id            BigInt
+  vehiculo_id               BigInt
+  anio                      Int
+  numero_semana             Int
+  fecha_inicio              DateTime @db.Date
+  fecha_fin                 DateTime @db.Date
+  cantidad_viajes           Int      @default(0)
+  cantidad_mantenimientos   Int      @default(0)
+  cantidad_gastos_semanales Int      @default(0)
+  total_precio_flete        Decimal  @default(0) @db.Decimal(12, 2)
+  total_precio_real_flete   Decimal  @default(0) @db.Decimal(12, 2)
+  total_utilidad            Decimal  @default(0) @db.Decimal(12, 2)
+  total_mantenimientos      Decimal  @default(0) @db.Decimal(12, 2)
+  total_gastos_semanales    Decimal  @default(0) @db.Decimal(12, 2)
+  total_sueldos             Decimal  @default(0) @db.Decimal(12, 2)
+  total_bonificaciones      Decimal  @default(0) @db.Decimal(12, 2)
+  resultado_operativo       Decimal  @default(0) @db.Decimal(12, 2)
+  snapshot                  Json
+  cerrado_en                DateTime @default(now()) @db.Timestamptz(6)
+  created_at                DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario Propietario @relation(fields: [propietario_id], references: [id])
+  vehiculo    Vehiculo    @relation(fields: [vehiculo_id], references: [id])
+
+  @@unique([propietario_id, vehiculo_id, anio, numero_semana])
+  @@index([propietario_id, anio, numero_semana])
+  @@index([vehiculo_id, anio, numero_semana])
+  @@map("cierres_semanales")
 }
 
 model TipoGastoViaje {

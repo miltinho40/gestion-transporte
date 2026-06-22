@@ -55,6 +55,10 @@ export const routes: Routes = [
             { label: 'Contacto', path: 'contacto_nombre' },
             { label: 'Teléfono', path: 'telefono' },
             { label: 'Email', path: 'email' },
+            { label: 'Suscripcion', path: 'estado_suscripcion', type: 'badge' },
+            { label: 'Vehiculos', path: 'uso_vehiculos' },
+            { label: 'Precio vehiculo', path: 'precio_por_vehiculo', type: 'money' },
+            { label: 'Total mensual', path: 'total_mensual_estimado', type: 'money' },
             { label: 'Activo', path: 'activo', type: 'boolean' }
           ],
           fields: [
@@ -64,7 +68,55 @@ export const routes: Routes = [
             { name: 'contacto_nombre', label: 'Contacto', type: 'text', colClass: 'col-md-6' },
             { name: 'email', label: 'Email', type: 'email', colClass: 'col-md-6' },
             { name: 'activo', label: 'Activo', type: 'checkbox', defaultValue: true, colClass: 'col-md-3' },
+            {
+              name: 'estado_suscripcion',
+              label: 'Suscripcion',
+              type: 'select',
+              defaultValue: 'activa',
+              colClass: 'col-md-3',
+              options: [
+                { label: 'Activa', value: 'activa' },
+                { label: 'Prueba', value: 'prueba' },
+                { label: 'Suspendida', value: 'suspendida' },
+                { label: 'Cancelada', value: 'cancelada' }
+              ]
+            },
+            {
+              name: 'limite_vehiculos',
+              label: 'Limite vehiculos',
+              type: 'number',
+              defaultValue: 0,
+              min: 0,
+              step: 1,
+              colClass: 'col-md-3'
+            },
+            {
+              name: 'precio_por_vehiculo',
+              label: 'Precio por vehiculo',
+              type: 'number',
+              defaultValue: 0,
+              min: 0,
+              step: '0.01',
+              colClass: 'col-md-3'
+            },
+            {
+              name: 'fecha_corte_facturacion',
+              label: 'Dia de corte',
+              type: 'number',
+              defaultValue: 1,
+              min: 1,
+              max: 31,
+              step: 1,
+              colClass: 'col-md-3'
+            },
             { name: 'direccion', label: 'Dirección', type: 'textarea', rows: 2, colClass: 'col-12' },
+            {
+              name: 'observaciones_facturacion',
+              label: 'Observaciones facturacion',
+              type: 'textarea',
+              rows: 2,
+              colClass: 'col-12'
+            },
             {
               name: 'admin_nombre',
               label: 'Nombre administrador',
@@ -92,6 +144,246 @@ export const routes: Routes = [
               createOnly: true,
               payloadPath: 'admin.fecha_nacimiento',
               colClass: 'col-md-4'
+            }
+          ]
+        }
+      },
+      {
+        path: 'usuarios',
+        component: CrudPageComponent,
+        canActivate: [superAdminGuard],
+        data: {
+          title: 'Usuarios',
+          description: 'Accesos del sistema administrados por el superadmin.',
+          endpoint: '/usuarios',
+          displayField: 'nombre',
+          columns: [
+            { label: 'Nombre', path: 'nombre' },
+            { label: 'Email', path: 'email' },
+            { label: 'Superadmin', path: 'es_super_admin', type: 'boolean' },
+            { label: 'Activo', path: 'activo', type: 'boolean' }
+          ],
+          fields: [
+            { name: 'nombre', label: 'Nombre', type: 'text', required: true, colClass: 'col-md-6' },
+            { name: 'email', label: 'Email', type: 'email', required: true, colClass: 'col-md-6' },
+            {
+              name: 'password',
+              label: 'Clave inicial',
+              type: 'text',
+              required: true,
+              createOnly: true,
+              colClass: 'col-md-4'
+            },
+            { name: 'fecha_nacimiento', label: 'Fecha nacimiento', type: 'date', colClass: 'col-md-4' },
+            { name: 'es_super_admin', label: 'Superadmin', type: 'checkbox', defaultValue: false, colClass: 'col-md-2' },
+            { name: 'activo', label: 'Activo', type: 'checkbox', defaultValue: true, colClass: 'col-md-2' }
+          ]
+        }
+      },
+      {
+        path: 'usuarios-propietarios',
+        component: CrudPageComponent,
+        canActivate: [superAdminGuard],
+        data: {
+          title: 'Asignaciones',
+          description: 'Usuarios asignados a propietarios y roles de acceso.',
+          endpoint: '/usuarios-propietarios',
+          displayField: 'usuario.nombre',
+          columns: [
+            { label: 'Usuario', path: 'usuario.nombre' },
+            { label: 'Email', path: 'usuario.email' },
+            { label: 'Propietario', path: 'propietario.nombre' },
+            { label: 'Rol', path: 'rol.nombre', type: 'badge' },
+            { label: 'Activo', path: 'activo', type: 'boolean' }
+          ],
+          fields: [
+            {
+              name: 'usuario_id',
+              label: 'Usuario',
+              type: 'select',
+              required: true,
+              createOnly: true,
+              colClass: 'col-md-6',
+              catalog: {
+                endpoint: '/usuarios',
+                valuePath: 'id',
+                labelPath: 'nombre',
+                labelPaths: ['nombre', 'email'],
+                params: { activo: true }
+              }
+            },
+            {
+              name: 'propietario_id',
+              label: 'Propietario',
+              type: 'select',
+              required: true,
+              createOnly: true,
+              colClass: 'col-md-6',
+              catalog: {
+                endpoint: '/propietarios',
+                valuePath: 'id',
+                labelPath: 'nombre',
+                labelPaths: ['nombre', 'ruc_cedula'],
+                params: { activo: true }
+              }
+            },
+            {
+              name: 'rol_id',
+              label: 'Rol',
+              type: 'select',
+              required: true,
+              colClass: 'col-md-6',
+              catalog: {
+                endpoint: '/roles',
+                valuePath: 'id',
+                labelPath: 'nombre'
+              }
+            },
+            { name: 'activo', label: 'Activo', type: 'checkbox', defaultValue: true, colClass: 'col-md-3' }
+          ]
+        }
+      },
+      {
+        path: 'planes',
+        component: CrudPageComponent,
+        canActivate: [superAdminGuard],
+        data: {
+          title: 'Planes y suscripciones',
+          description: 'Control de limite de vehiculos, precio por vehiculo y estado de cobro.',
+          endpoint: '/propietarios',
+          displayField: 'nombre',
+          createEnabled: false,
+          deleteEnabled: false,
+          columns: [
+            { label: 'Propietario', path: 'nombre' },
+            { label: 'Suscripcion', path: 'estado_suscripcion', type: 'badge' },
+            { label: 'Vehiculos', path: 'uso_vehiculos' },
+            { label: 'Facturables', path: 'vehiculos_facturables' },
+            { label: 'Precio vehiculo', path: 'precio_por_vehiculo', type: 'money' },
+            { label: 'Total mensual', path: 'total_mensual_estimado', type: 'money' },
+            { label: 'Dia corte', path: 'fecha_corte_facturacion' },
+            { label: 'Activo', path: 'activo', type: 'boolean' }
+          ],
+          fields: [
+            {
+              name: 'estado_suscripcion',
+              label: 'Suscripcion',
+              type: 'select',
+              required: true,
+              colClass: 'col-md-4',
+              options: [
+                { label: 'Activa', value: 'activa' },
+                { label: 'Prueba', value: 'prueba' },
+                { label: 'Suspendida', value: 'suspendida' },
+                { label: 'Cancelada', value: 'cancelada' }
+              ]
+            },
+            {
+              name: 'limite_vehiculos',
+              label: 'Limite vehiculos',
+              type: 'number',
+              min: 0,
+              step: 1,
+              colClass: 'col-md-4'
+            },
+            {
+              name: 'precio_por_vehiculo',
+              label: 'Precio por vehiculo',
+              type: 'number',
+              min: 0,
+              step: '0.01',
+              colClass: 'col-md-4'
+            },
+            {
+              name: 'fecha_corte_facturacion',
+              label: 'Dia de corte',
+              type: 'number',
+              min: 1,
+              max: 31,
+              step: 1,
+              colClass: 'col-md-4'
+            },
+            { name: 'activo', label: 'Activo', type: 'checkbox', defaultValue: true, colClass: 'col-md-4' },
+            {
+              name: 'observaciones_facturacion',
+              label: 'Observaciones facturacion',
+              type: 'textarea',
+              rows: 2,
+              colClass: 'col-12'
+            }
+          ]
+        }
+      },
+      {
+        path: 'configuracion-diesel',
+        component: CrudPageComponent,
+        canActivate: [superAdminGuard],
+        data: {
+          title: 'Configuracion diesel',
+          description: 'Precio global del galon de diesel definido solo por el superadmin.',
+          endpoint: '/configuraciones/superadmin',
+          displayField: 'nombre',
+          createEnabled: false,
+          deleteEnabled: false,
+          columns: [
+            { label: 'Configuracion', path: 'nombre' },
+            { label: 'Clave', path: 'clave' },
+            { label: 'Valor', path: 'valor' },
+            { label: 'Descripcion', path: 'descripcion' }
+          ],
+          fields: [
+            {
+              name: 'valor',
+              label: 'Precio galon diesel',
+              type: 'number',
+              required: true,
+              min: 0,
+              step: '0.01',
+              colClass: 'col-md-4'
+            },
+            {
+              name: 'descripcion',
+              label: 'Descripcion',
+              type: 'textarea',
+              rows: 2,
+              colClass: 'col-12'
+            }
+          ]
+        }
+      },
+      {
+        path: 'configuraciones',
+        component: CrudPageComponent,
+        data: {
+          title: 'Configuraciones',
+          description: 'Parametros propios del propietario para bonos y alertas.',
+          endpoint: '/configuraciones',
+          displayField: 'nombre',
+          createEnabled: false,
+          deleteEnabled: false,
+          columns: [
+            { label: 'Configuracion', path: 'nombre' },
+            { label: 'Clave', path: 'clave' },
+            { label: 'Valor', path: 'valor' },
+            { label: 'Origen', path: 'origen', type: 'badge' },
+            { label: 'Descripcion', path: 'descripcion' }
+          ],
+          fields: [
+            {
+              name: 'valor',
+              label: 'Valor',
+              type: 'number',
+              required: true,
+              min: 0,
+              step: '0.01',
+              colClass: 'col-md-4'
+            },
+            {
+              name: 'descripcion',
+              label: 'Descripcion',
+              type: 'textarea',
+              rows: 2,
+              colClass: 'col-12'
             }
           ]
         }
@@ -209,7 +501,8 @@ export const routes: Routes = [
             { label: 'Capacidad', path: 'capacidad' },
             { label: 'Toneladas', path: 'toneladas' },
             { label: 'Km actual', path: 'kilometraje_actual' },
-            { label: 'Estado', path: 'estado', type: 'badge' }
+            { label: 'Estado', path: 'estado', type: 'badge' },
+            { label: 'Facturable', path: 'facturable', type: 'boolean' }
           ],
           fields: [
             {
@@ -280,7 +573,10 @@ export const routes: Routes = [
                 { label: 'En mantenimiento', value: 'en_mantenimiento' },
                 { label: 'Inactivo', value: 'inactivo' }
               ]
-            }
+            },
+            { name: 'facturable', label: 'Facturable', type: 'checkbox', defaultValue: true, colClass: 'col-md-3' },
+            { name: 'fecha_alta_facturacion', label: 'Alta facturacion', type: 'date', colClass: 'col-md-3' },
+            { name: 'fecha_baja_facturacion', label: 'Baja facturacion', type: 'date', colClass: 'col-md-3' }
           ]
         }
       },
@@ -458,8 +754,8 @@ export const routes: Routes = [
               colClass: 'col-md-3'
             },
             {
-              name: 'costo_real_gastos',
-              label: 'Costo real gastos',
+              name: 'viaticos',
+              label: 'Viáticos',
               type: 'number',
               min: 0,
               step: '0.01',
@@ -493,6 +789,7 @@ export const routes: Routes = [
           description: 'Tipos de mantenimiento y periodicidad por kilometraje o días.',
           endpoint: '/tipos-mantenimiento',
           displayField: 'nombre',
+          readonlyGlobalRows: true,
           columns: [
             { label: 'Nombre', path: 'nombre' },
             { label: 'Periódico', path: 'es_periodico', type: 'boolean' },
@@ -506,7 +803,15 @@ export const routes: Routes = [
             { name: 'activo', label: 'Activo', type: 'checkbox', defaultValue: true, colClass: 'col-md-3' },
             { name: 'intervalo_km', label: 'Intervalo km', type: 'number', min: 1, step: 1, colClass: 'col-md-3' },
             { name: 'intervalo_dias', label: 'Intervalo días', type: 'number', min: 1, step: 1, colClass: 'col-md-3' },
-            { name: 'global', label: 'Registro global', type: 'checkbox', defaultValue: false, colClass: 'col-md-3' },
+            {
+              name: 'global',
+              label: 'Registro global',
+              type: 'checkbox',
+              defaultValue: false,
+              createOnly: true,
+              superAdminOnly: true,
+              colClass: 'col-md-3'
+            },
             { name: 'descripcion', label: 'Descripción', type: 'textarea', rows: 2, colClass: 'col-12' }
           ]
         }
@@ -576,15 +881,26 @@ export const routes: Routes = [
           description: 'Tipos de carga globales y propios para tarifas de ruta.',
           endpoint: '/tipos-carga',
           displayField: 'nombre',
+          readonlyGlobalRows: true,
           columns: [
             { label: 'Nombre', path: 'nombre' },
+            { label: 'Origen', path: 'origen', type: 'badge' },
+            { label: 'Propietario', path: 'propietario_nombre' },
             { label: 'Descripción', path: 'descripcion' },
             { label: 'Activo', path: 'activo', type: 'boolean' }
           ],
           fields: [
             { name: 'nombre', label: 'Nombre', type: 'text', required: true, colClass: 'col-md-6' },
             { name: 'activo', label: 'Activo', type: 'checkbox', defaultValue: true, colClass: 'col-md-3' },
-            { name: 'global', label: 'Registro global', type: 'checkbox', defaultValue: false, colClass: 'col-md-3' },
+            {
+              name: 'global',
+              label: 'Registro global',
+              type: 'checkbox',
+              defaultValue: false,
+              createOnly: true,
+              superAdminOnly: true,
+              colClass: 'col-md-3'
+            },
             { name: 'descripcion', label: 'Descripción', type: 'textarea', rows: 2, colClass: 'col-12' }
           ]
         }
@@ -681,6 +997,7 @@ export const routes: Routes = [
           description: 'Precios por ruta, tipo de carga, capacidad y vigencia.',
           endpoint: '/tarifas-ruta',
           displayField: 'ruta.destino',
+          duplicateEnabled: true,
           columns: [
             { label: 'Origen', path: 'ruta.origen' },
             { label: 'Destino', path: 'ruta.destino' },
@@ -719,7 +1036,7 @@ export const routes: Routes = [
                 params: { activo: true }
               }
             },
-            { name: 'capacidad', label: 'Capacidad cartones', type: 'number', min: 1, step: 1, colClass: 'col-md-3' },
+            { name: 'capacidad', label: 'Capacidad cartones', type: 'text', colClass: 'col-md-3' },
             { name: 'toneladas', label: 'Toneladas', type: 'number', min: 0, step: '0.01', colClass: 'col-md-3' },
             { name: 'precio', label: 'Precio', type: 'number', required: true, min: 0, step: '0.01', colClass: 'col-md-3' },
             { name: 'activa', label: 'Activa', type: 'checkbox', defaultValue: true, colClass: 'col-md-3' },

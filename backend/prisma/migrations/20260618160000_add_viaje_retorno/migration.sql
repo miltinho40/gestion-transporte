@@ -1,0 +1,2 @@
+ALTER TABLE "viajes"
+  ADD COLUMN "retorno" BOOLEAN NOT NULL DEFAULT false;

@@ -4,10 +4,11 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { LucideKeyRound, LucideTruck } from '@lucide/angular';
 import { API_BASE_URL } from '../../core/api.config';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 
 @Component({
   selector: 'app-accept-invitation-page',
-  imports: [ReactiveFormsModule, RouterLink, LucideKeyRound, LucideTruck],
+  imports: [ReactiveFormsModule, RouterLink, LucideKeyRound, LucideTruck, AutoDismissAlertDirective],
   templateUrl: './accept-invitation-page.component.html',
   styleUrl: '../login/login-page.component.scss'
 })

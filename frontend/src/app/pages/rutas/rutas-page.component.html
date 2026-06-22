@@ -14,7 +14,7 @@
 }
 
 @if (message()) {
-  <div class="alert alert-success">{{ message() }}</div>
+  <div class="alert alert-success" [appAutoDismissAlert]="message()">{{ message() }}</div>
 }
 
 <div class="card border-0 shadow-sm">
@@ -67,6 +67,9 @@
             </td>
             <td class="text-end">
               <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary" (click)="openDuplicate(row)" title="Duplicar">
+                  <svg lucideCopy size="15"></svg>
+                </button>
                 <button
                   type="button"
                   class="btn btn-outline-secondary"

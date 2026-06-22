@@ -1,4 +1,4 @@
-import { EstadoVehiculo, Prisma } from '@prisma/client';
+import { EstadoSuscripcionPropietario, EstadoVehiculo, Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import { parseBigIntId } from '../../utils/ids.js';
@@ -94,6 +94,64 @@ const ensureCategoriaPeajeVisible = async (
   return categoriaPeajeId;
 };
 
+const toDateOnly = (value?: string | null) => {
+  if (!value) return null;
+  return new Date(`${value}T00:00:00.000Z`);
+};
+
+const todayDateOnly = () => {
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+};
+
+const countsForBilling = (estado: EstadoVehiculo, facturable: boolean) => {
+  return facturable && estado !== EstadoVehiculo.INACTIVO;
+};
+
+const ensureCanCountVehicle = async (propietarioId: bigint, excludeVehiculoId?: bigint) => {
+  const propietario = await prisma.propietario.findUnique({
+    where: { id: propietarioId },
+    select: {
+      activo: true,
+      estado_suscripcion: true,
+      limite_vehiculos: true
+    }
+  });
+
+  if (!propietario?.activo) {
+    throw new AppError('Propietario no disponible para gestionar vehiculos', 403);
+  }
+
+  if (
+    propietario.estado_suscripcion === EstadoSuscripcionPropietario.SUSPENDIDA ||
+    propietario.estado_suscripcion === EstadoSuscripcionPropietario.CANCELADA
+  ) {
+    throw new AppError('La suscripcion del propietario no permite agregar vehiculos facturables', 403);
+  }
+
+  if (propietario.limite_vehiculos <= 0) {
+    return;
+  }
+
+  const count = await prisma.vehiculo.count({
+    where: {
+      propietario_id: propietarioId,
+      facturable: true,
+      estado: {
+        not: EstadoVehiculo.INACTIVO
+      },
+      ...(excludeVehiculoId ? { id: { not: excludeVehiculoId } } : {})
+    }
+  });
+
+  if (count >= propietario.limite_vehiculos) {
+    throw new AppError(
+      `El propietario alcanzo el limite contratado de ${propietario.limite_vehiculos} vehiculos facturables`,
+      409
+    );
+  }
+};
+
 export const listVehiculos = async (
   propietarioIdInput: unknown,
   filters: ListVehiculosFilters
@@ -132,8 +190,13 @@ export const createVehiculo = async (
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const categoriaPeajeId = await ensureCategoriaPeajeVisible(input.categoria_peaje_id);
+  const estado = toPrismaEstadoVehiculo(input.estado) ?? EstadoVehiculo.DISPONIBLE;
+  const facturable = input.facturable ?? true;
 
   await ensurePlacaAvailable(propietarioId, input.placa);
+  if (countsForBilling(estado, facturable)) {
+    await ensureCanCountVehicle(propietarioId);
+  }
 
   return prisma.vehiculo.create({
     data: {
@@ -148,7 +211,18 @@ export const createVehiculo = async (
       toneladas: input.toneladas,
       kilometraje_actual: input.kilometraje_actual ?? 0,
       rendimiento_km_galon: input.rendimiento_km_galon,
-      estado: toPrismaEstadoVehiculo(input.estado) ?? EstadoVehiculo.DISPONIBLE
+      estado,
+      facturable,
+      fecha_alta_facturacion:
+        Object.hasOwn(input, 'fecha_alta_facturacion')
+          ? toDateOnly(input.fecha_alta_facturacion)
+          : facturable
+            ? todayDateOnly()
+            : null,
+      fecha_baja_facturacion:
+        Object.hasOwn(input, 'fecha_baja_facturacion')
+          ? toDateOnly(input.fecha_baja_facturacion)
+          : null
     },
     include: includeCategoria
   });
@@ -162,7 +236,7 @@ export const updateVehiculo = async (
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getVehiculoById(propietarioId, id);
+  const current = await getVehiculoById(propietarioId, id);
 
   if (input.placa) {
     await ensurePlacaAvailable(propietarioId, input.placa, id);
@@ -171,6 +245,17 @@ export const updateVehiculo = async (
   const categoriaPeajeId = input.categoria_peaje_id
     ? await ensureCategoriaPeajeVisible(input.categoria_peaje_id)
     : undefined;
+  const nextEstado = toPrismaEstadoVehiculo(input.estado) ?? current.estado;
+  const nextFacturable = Object.hasOwn(input, 'facturable')
+    ? Boolean(input.facturable)
+    : current.facturable;
+
+  if (
+    countsForBilling(nextEstado, nextFacturable) &&
+    !countsForBilling(current.estado, current.facturable)
+  ) {
+    await ensureCanCountVehicle(propietarioId, id);
+  }
 
   return prisma.vehiculo.update({
     where: { id },
@@ -185,7 +270,18 @@ export const updateVehiculo = async (
       toneladas: input.toneladas,
       kilometraje_actual: input.kilometraje_actual,
       rendimiento_km_galon: input.rendimiento_km_galon,
-      estado: toPrismaEstadoVehiculo(input.estado)
+      estado: toPrismaEstadoVehiculo(input.estado),
+      facturable: Object.hasOwn(input, 'facturable') ? Boolean(input.facturable) : undefined,
+      fecha_alta_facturacion: Object.hasOwn(input, 'fecha_alta_facturacion')
+        ? toDateOnly(input.fecha_alta_facturacion)
+        : nextFacturable && !current.fecha_alta_facturacion
+          ? todayDateOnly()
+          : undefined,
+      fecha_baja_facturacion: Object.hasOwn(input, 'fecha_baja_facturacion')
+        ? toDateOnly(input.fecha_baja_facturacion)
+        : !nextFacturable && current.facturable
+          ? todayDateOnly()
+          : undefined
     },
     include: includeCategoria
   });
@@ -199,7 +295,15 @@ export const updateEstadoVehiculo = async (
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getVehiculoById(propietarioId, id);
+  const current = await getVehiculoById(propietarioId, id);
+  const nextEstado = toPrismaEstadoVehiculo(input.estado) ?? current.estado;
+
+  if (
+    countsForBilling(nextEstado, current.facturable) &&
+    !countsForBilling(current.estado, current.facturable)
+  ) {
+    await ensureCanCountVehicle(propietarioId, id);
+  }
 
   return prisma.vehiculo.update({
     where: { id },

@@ -1,6 +1,7 @@
 import { EstadoConductor, EstadoMantenimiento, EstadoViaje, EstadoVehiculo } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { listAnomaliasCierresSemanales } from '../cierres-semanales/cierres-semanales.service.js';
 
 const CONFIG_DEFAULTS = {
   alerta_mantenimiento_km_anticipacion: 500,
@@ -282,15 +283,20 @@ export const listAlertasViajesSinCobrar = async (propietarioIdInput: unknown) =>
 };
 
 export const listAlertas = async (propietarioIdInput: unknown) => {
-  const [mantenimientos, licencias, viajesSinCobrar] = await Promise.all([
+  const [mantenimientos, licencias, viajesSinCobrar, cierresSemanales] = await Promise.all([
     listAlertasMantenimientos(propietarioIdInput),
     listAlertasLicencias(propietarioIdInput),
-    listAlertasViajesSinCobrar(propietarioIdInput)
+    listAlertasViajesSinCobrar(propietarioIdInput),
+    listAnomaliasCierresSemanales(propietarioIdInput)
   ]);
 
   return {
     resumen: {
-      total: mantenimientos.total + licencias.total + viajesSinCobrar.total,
+      total:
+        mantenimientos.total +
+        licencias.total +
+        viajesSinCobrar.total +
+        cierresSemanales.total,
       mantenimientos: {
         total: mantenimientos.total,
         vencidos: mantenimientos.vencidos,
@@ -303,6 +309,10 @@ export const listAlertas = async (propietarioIdInput: unknown) => {
       },
       viajes_sin_cobrar: {
         total: viajesSinCobrar.total
+      },
+      cierres_semanales: {
+        total: cierresSemanales.total,
+        cierres_revisados: cierresSemanales.cierres_revisados
       }
     },
     configuraciones: {
@@ -312,6 +322,7 @@ export const listAlertas = async (propietarioIdInput: unknown) => {
     },
     mantenimientos: mantenimientos.items,
     licencias: licencias.items,
-    viajes_sin_cobrar: viajesSinCobrar.items
+    viajes_sin_cobrar: viajesSinCobrar.items,
+    cierres_semanales: cierresSemanales.items
   };
 };

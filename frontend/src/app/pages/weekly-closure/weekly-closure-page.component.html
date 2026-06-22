@@ -1,51 +1,123 @@
-<div class="d-flex justify-content-between align-items-start gap-3 mb-4">
-  <div>
+<div class="weekly-closure-header mb-3">
+  <div class="weekly-closure-title">
     <h1 class="h3 mb-1">Cierre semanal</h1>
     <p class="text-secondary mb-0">Revisión semanal de viajes, mantenimientos, sueldos y bonos.</p>
   </div>
+
+  <form class="weekly-closure-form" [formGroup]="form" (ngSubmit)="load()">
+    <div class="weekly-closure-field weekly-closure-field-year">
+      <label class="form-label">Año</label>
+      <input class="form-control form-control-sm" type="number" formControlName="anio" />
+    </div>
+    <div class="weekly-closure-field weekly-closure-field-week">
+      <label class="form-label">Semana</label>
+      <input class="form-control form-control-sm" type="number" min="1" max="53" formControlName="numero_semana" />
+    </div>
+    <div class="weekly-closure-field weekly-closure-field-vehicle">
+      <label class="form-label">Placa</label>
+      <select class="form-select form-select-sm" formControlName="vehiculo_id">
+        @for (vehiculo of vehiculos(); track vehiculo.id) {
+          <option [value]="vehiculo.id">{{ vehiculoLabel(vehiculo) }}</option>
+        }
+      </select>
+    </div>
+    <div class="weekly-closure-actions">
+      <button
+        class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
+        type="submit"
+        [disabled]="loading() || loadingVehiculos()"
+      >
+        <svg lucideRefreshCw size="15"></svg>
+        Consultar
+      </button>
+      <button
+        class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-2"
+        type="button"
+        (click)="copyAndSendReport()"
+        [disabled]="copyingReport() || loading() || loadingVehiculos() || !canCopyWeeklyImage(cierre())"
+      >
+        <svg lucideCopy size="15"></svg>
+        {{ copyingReport() ? 'Copiando...' : 'Copiar y enviar' }}
+      </button>
+      <button
+        class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
+        type="button"
+        (click)="generarGastos()"
+        [disabled]="generating() || loading() || loadingVehiculos() || !canGenerateGastos(cierre())"
+      >
+        <svg lucideCalculator size="15"></svg>
+        {{ generateButtonLabel(cierre()) }}
+      </button>
+    </div>
+  </form>
 </div>
 
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body">
-    <form class="row g-3 align-items-end" [formGroup]="form" (ngSubmit)="load()">
-      <div class="col-sm-3 col-md-2">
-        <label class="form-label">Año</label>
-        <input class="form-control" type="number" formControlName="anio" />
-      </div>
-      <div class="col-sm-3 col-md-2">
-        <label class="form-label">Semana</label>
-        <input class="form-control" type="number" min="1" max="53" formControlName="numero_semana" />
-      </div>
-      <div class="col d-flex gap-2">
-        <button class="btn btn-outline-secondary d-inline-flex align-items-center gap-2" type="submit">
-          <svg lucideRefreshCw size="17"></svg>
-          Consultar
-        </button>
-        <button
-          class="btn btn-primary d-inline-flex align-items-center gap-2"
-          type="button"
-          (click)="generarGastos()"
-          [disabled]="generating()"
-        >
-          <svg lucideCalculator size="17"></svg>
-          Generar gastos
-        </button>
-      </div>
-    </form>
+@if (cierre(); as c) {
+  <div class="weekly-closure-quick-summary mb-3">
+    <div class="weekly-closure-metric weekly-closure-metric-driver">
+      <span>Transportista</span>
+      <strong>{{ transportistaLabel(c) }}</strong>
+    </div>
+    <div class="weekly-closure-metric">
+      <span>Sueldo semanal</span>
+      <strong>$ {{ money(totalSueldoSemanal(c)) }}</strong>
+    </div>
+    <div class="weekly-closure-metric">
+      <span>Bono</span>
+      <strong>$ {{ money(totalBonos(c)) }}</strong>
+    </div>
+    <div class="weekly-closure-metric">
+      <span>Viajes retorno</span>
+      <strong>{{ cantidadRetornos(c) }} ($ {{ money(totalGastoRetornoRetornos(c)) }})</strong>
+    </div>
+    <div class="weekly-closure-metric">
+      <span>Viajes domingo</span>
+      <strong>{{ cantidadDomingos(c) }} ($ {{ money(totalGastoRetornoDomingos(c)) }})</strong>
+    </div>
   </div>
-</div>
+}
 
 @if (error()) {
   <div class="alert alert-danger">{{ error() }}</div>
 }
 
 @if (message()) {
-  <div class="alert alert-success">{{ message() }}</div>
+  <div
+    class="alert alert-success weekly-message-alert"
+    [appAutoDismissAlert]="message()"
+    (click)="clearMessage()"
+    (keydown.enter)="clearMessage()"
+  >
+    {{ message() }}
+  </div>
 }
 
 @if (cierre(); as c) {
+  @if (cierreRequiereRevision(c)) {
+    <div class="alert alert-warning py-2">
+      Este cierre tiene diferencias con el cálculo actual. Puedes regenerar los gastos para actualizar el cierre.
+    </div>
+  }
+
+  @if (gastosYaGenerados(c)) {
+    <div class="alert alert-info py-2" [appAutoDismissAlert]="generatedNoticeKey(c)">
+      Los gastos de esta semana ya fueron generados.
+    </div>
+  }
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <div class="small text-secondary">Vehículo del cierre</div>
+      <div class="h5 mb-0">{{ vehiculoLabel(c.vehiculo) }}</div>
+    </div>
+    <div class="text-secondary small">
+      <strong class="text-body">Semana {{ c.semana.numero_semana }}</strong>:
+      {{ dateOnly(c.semana.fecha_inicio) }} - {{ dateOnly(c.semana.fecha_fin) }}
+    </div>
+  </div>
+
   <div class="row g-3 mb-4">
-    <div class="col-md-3">
+    <div class="col-sm-6 col-lg-4 col-xl">
       <div class="card border-0 shadow-sm">
         <div class="card-body">
           <span class="small text-secondary">Viajes</span>
@@ -53,95 +125,93 @@
         </div>
       </div>
     </div>
-    <div class="col-md-3">
-      <div class="card border-0 shadow-sm">
+    <div class="col-sm-6 col-lg-4 col-xl">
+      <div class="card border-0 shadow-sm weekly-summary-card weekly-summary-card-green">
         <div class="card-body">
-          <span class="small text-secondary">Flete real</span>
+          <span class="small text-secondary">Total viajes</span>
+          <div class="h2 mb-0">$ {{ money(c.resumen.totales['precio_flete']) }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-4 col-xl">
+      <div class="card border-0 shadow-sm weekly-summary-card weekly-summary-card-green">
+        <div class="card-body">
+          <span class="small text-secondary">Valor a facturar</span>
           <div class="h2 mb-0">$ {{ money(c.resumen.totales['precio_real_flete']) }}</div>
         </div>
       </div>
     </div>
-    <div class="col-md-3">
-      <div class="card border-0 shadow-sm">
+    <div class="col-sm-6 col-lg-4 col-xl">
+      <div class="card border-0 shadow-sm weekly-summary-card weekly-summary-card-info">
         <div class="card-body">
           <span class="small text-secondary">Utilidad viajes</span>
           <div class="h2 mb-0">$ {{ money(c.resumen.totales['utilidad']) }}</div>
         </div>
       </div>
     </div>
-    <div class="col-md-3">
-      <div class="card border-0 shadow-sm">
+    <div class="col-sm-6 col-lg-4 col-xl">
+      <div class="card border-0 shadow-sm weekly-summary-card weekly-summary-card-danger">
         <div class="card-body">
-          <span class="small text-secondary">Resultado operativo</span>
-          <div class="h2 mb-0">$ {{ money(c.resumen.totales['resultado_operativo']) }}</div>
+          <span class="small text-secondary">Mantenimientos</span>
+          <div class="h2 mb-0">$ {{ money(c.resumen.totales['mantenimientos']) }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-4 col-xl">
+      <div class="card border-0 shadow-sm weekly-summary-card weekly-summary-card-danger">
+        <div class="card-body">
+          <span class="small text-secondary">Sueldo</span>
+          <div class="h2 mb-0">$ {{ money(totalSueldoBonos(c)) }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-4 col-xl">
+      <div class="card border-0 shadow-sm weekly-summary-card {{ gananciaSemanalClass(c) }}">
+        <div class="card-body">
+          <span class="small text-secondary">Ganancia semanal</span>
+          <div class="h2 mb-0">$ {{ money(gananciaSemanal(c)) }}</div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="row g-3">
-    <div class="col-xl-6">
-      <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white fw-semibold">Conductores</div>
-        <div class="table-responsive">
-          <table class="table table-hover mb-0 align-middle">
-            <thead>
-              <tr>
-                <th>Conductor</th>
-                <th>Viajes</th>
-                <th>Sueldo</th>
-                <th>Bono</th>
-                <th>Vehículo gasto</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (item of c.conductores; track item.conductor.cedula) {
-                <tr>
-                  <td>{{ item.conductor.nombre }}</td>
-                  <td>{{ item.cantidad_viajes }}</td>
-                  <td>$ {{ item.sueldo_semanal }}</td>
-                  <td>$ {{ item.bonificacion_sugerida }}</td>
-                  <td>{{ item.vehiculo_asignado_gasto?.placa ?? '-' }}</td>
-                </tr>
-              } @empty {
-                <tr><td colspan="5" class="text-center text-secondary py-4">Sin conductores.</td></tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-xl-6">
-      <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white fw-semibold">Vehículos</div>
-        <div class="table-responsive">
-          <table class="table table-hover mb-0 align-middle">
-            <thead>
-              <tr>
-                <th>Vehículo</th>
-                <th>Viajes</th>
-                <th>Mantenimientos</th>
-                <th>Gastos</th>
-                <th>Resultado</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (item of c.vehiculos; track item.vehiculo.placa) {
-                <tr>
-                  <td>{{ item.vehiculo.placa }} - {{ item.vehiculo.marca }}</td>
-                  <td>{{ item.cantidad_viajes }}</td>
-                  <td>{{ item.cantidad_mantenimientos }}</td>
-                  <td>{{ item.cantidad_gastos_semanales }}</td>
-                  <td>$ {{ money(item.totales['resultado_operativo']) }}</td>
-                </tr>
-              } @empty {
-                <tr><td colspan="5" class="text-center text-secondary py-4">Sin vehículos.</td></tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white fw-semibold">Viajes y mantenimientos realizados</div>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Tipo</th>
+            <th>Detalle</th>
+            <th>Referencia</th>
+            <th>Precio viaje</th>
+            <th>Precio a facturar</th>
+            <th>Utilidad / costo</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of actividadSemanal(c); track item.trackId) {
+            <tr>
+              <td>{{ item.fecha }}</td>
+              <td><span class="badge text-bg-light">{{ item.tipo }}</span></td>
+              <td>{{ item.titulo }}</td>
+              <td class="text-secondary small">{{ item.detalle }}</td>
+              <td>{{ moneyOrDash(item.flete) }}</td>
+              <td>{{ moneyOrDash(item.fleteReal) }}</td>
+              <td>{{ moneyOrDash(item.resultado) }}</td>
+              <td><span class="badge {{ item.estadoClass }}">{{ item.estado }}</span></td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="8" class="text-center text-secondary py-4">
+                Sin viajes ni mantenimientos realizados en esta semana.
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
     </div>
   </div>
 } @else if (loading()) {

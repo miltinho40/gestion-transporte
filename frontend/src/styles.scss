@@ -166,7 +166,7 @@ body {
 
 .viaje-third-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) 110px 120px 130px;
+  grid-template-columns: minmax(260px, 1fr) 110px 120px 120px 130px;
   gap: 0.65rem;
   align-items: end;
 }
@@ -497,6 +497,265 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   vertical-align: middle;
+}
+
+.weekly-closure-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.weekly-closure-title {
+  flex: 1 1 280px;
+  min-width: 240px;
+}
+
+.weekly-closure-form {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+  box-shadow: 0 0.125rem 0.35rem rgba(16, 24, 40, 0.06);
+}
+
+.weekly-closure-field .form-label {
+  margin-bottom: 0.25rem;
+  font-size: 0.78rem;
+}
+
+.weekly-closure-field-year {
+  width: 86px;
+}
+
+.weekly-closure-field-week {
+  width: 78px;
+}
+
+.weekly-closure-field-vehicle {
+  width: 250px;
+}
+
+.weekly-closure-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.weekly-closure-actions .btn {
+  white-space: nowrap;
+}
+
+.weekly-closure-quick-summary {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.35fr) repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.weekly-closure-metric {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 54px;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+}
+
+.weekly-closure-metric span {
+  color: var(--app-muted);
+  font-size: 0.82rem;
+}
+
+.weekly-closure-metric strong {
+  color: var(--app-text);
+  font-size: 1.15rem;
+  text-align: right;
+}
+
+.weekly-closure-metric-driver strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weekly-summary-card {
+  border: 1px solid transparent !important;
+}
+
+.weekly-summary-card-green {
+  background: #e7f6ec;
+  border-color: #b7dfc4 !important;
+}
+
+.weekly-summary-card-info {
+  background: #e6f6ff;
+  border-color: #a8d9f0 !important;
+}
+
+.weekly-summary-card-danger {
+  background: #fdecec;
+  border-color: #f4b8b8 !important;
+}
+
+.weekly-summary-card .text-secondary {
+  color: #475467 !important;
+}
+
+.weekly-summary-card .h2 {
+  color: #182230;
+}
+
+.weekly-message-alert {
+  cursor: pointer;
+}
+
+@media (max-width: 1199.98px) {
+  .weekly-closure-header {
+    align-items: stretch;
+  }
+
+  .weekly-closure-form {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .weekly-closure-header {
+    flex-direction: column;
+  }
+
+  .weekly-closure-form {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .weekly-closure-quick-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 575.98px) {
+  .weekly-closure-field-year,
+  .weekly-closure-field-week,
+  .weekly-closure-field-vehicle,
+  .weekly-closure-actions {
+    width: 100%;
+  }
+
+  .weekly-closure-actions {
+    flex-direction: column;
+  }
+
+  .weekly-closure-quick-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+.viajes-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(150px, 0.6fr) 110px;
+  gap: 0.75rem;
+}
+
+.mantenimientos-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(180px, 280px);
+  gap: 0.75rem;
+}
+
+.mantenimientos-date-col {
+  width: 96px;
+  min-width: 88px;
+}
+
+.mantenimientos-vehicle-col {
+  width: 132px;
+  min-width: 120px;
+}
+
+.mantenimientos-type-col {
+  width: 148px;
+  min-width: 128px;
+}
+
+.mantenimientos-description-col {
+  width: 280px;
+  max-width: 280px;
+  min-width: 240px;
+}
+
+td.mantenimientos-description-col {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mantenimientos-money-col {
+  width: 108px;
+  min-width: 100px;
+  white-space: nowrap;
+}
+
+.mantenimientos-total-col,
+.mantenimientos-current-km-col,
+.mantenimientos-km-col {
+  width: 124px;
+  min-width: 116px;
+  white-space: nowrap;
+}
+
+.mantenimientos-total-col {
+  font-weight: 600;
+}
+
+.table > tbody > tr.viaje-week-green > * {
+  background-color: #d8efdd;
+}
+
+.table > tbody > tr.viaje-week-white > * {
+  background-color: #ffffff;
+}
+
+.table-hover > tbody > tr.viaje-week-green:hover > * {
+  background-color: #c7e4cf;
+}
+
+.table-hover > tbody > tr.viaje-week-white:hover > * {
+  background-color: #f8fafc;
+}
+
+.viaje-week-badge {
+  min-width: 64px;
+  background: #bfe2c8;
+  color: #0f5132;
+}
+
+.viaje-week-white .viaje-week-badge {
+  background: #eef2f6;
+  color: #475467;
+}
+
+.table > tbody > tr.viaje-row-cobrado > td:not(.actions-cell) {
+  font-weight: 700;
+}
+
+@media (max-width: 767.98px) {
+  .viajes-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .mantenimientos-filter-bar {
+    grid-template-columns: 1fr;
+  }
 }
 
 .badge-soft {

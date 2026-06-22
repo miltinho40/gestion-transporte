@@ -1,8 +1,8 @@
-import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import {
+  LucideCopy,
   LucidePencil,
   LucidePlus,
   LucideRefreshCw,
@@ -13,7 +13,10 @@ import {
 } from '@lucide/angular';
 import { forkJoin, Subscription } from 'rxjs';
 import { ApiService } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
+import { formatDateOnly } from '../../core/date-only';
 import type { ApiListColumn, CrudFieldConfig, CrudRouteData, SelectOption } from '../../core/models';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 
 type Row = Record<string, unknown>;
 type FormValue = string | number | boolean | null;
@@ -62,21 +65,23 @@ const setPayloadValue = (payload: Row, field: CrudFieldConfig, value: unknown) =
 @Component({
   selector: 'app-crud-page',
   imports: [
-    DatePipe,
     FormsModule,
     ReactiveFormsModule,
+    LucideCopy,
     LucidePencil,
     LucidePlus,
     LucideRefreshCw,
     LucideSave,
     LucideSearch,
     LucideTrash2,
-    LucideX
+    LucideX,
+    AutoDismissAlertDirective
   ],
   templateUrl: './crud-page.component.html'
 })
 export class CrudPageComponent implements OnDestroy {
   private readonly api = inject(ApiService);
+  private readonly auth = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
   private readonly sub = new Subscription();
   private formSyncSub = new Subscription();
@@ -162,6 +167,18 @@ export class CrudPageComponent implements OnDestroy {
     this.error.set(null);
   }
 
+  openDuplicate(row: Row) {
+    const config = this.config();
+    if (!config) return;
+
+    this.editingRow.set(null);
+    this.buildForm(config, row);
+    this.syncCatalogInputs(config.fields);
+    this.formOpen.set(true);
+    this.message.set(null);
+    this.error.set(null);
+  }
+
   closeForm() {
     this.formOpen.set(false);
     this.editingRow.set(null);
@@ -239,7 +256,7 @@ export class CrudPageComponent implements OnDestroy {
   visibleFields(fields: CrudFieldConfig[]) {
     const editing = Boolean(this.editingRow());
 
-    return fields.filter((field) => !(editing && field.createOnly));
+    return fields.filter((field) => this.canUseField(field) && !(editing && field.createOnly));
   }
 
   value(row: Row, path: string) {
@@ -259,7 +276,7 @@ export class CrudPageComponent implements OnDestroy {
   }
 
   dateValue(row: Row, path: string) {
-    return this.value(row, path) as string | number | Date | null | undefined;
+    return formatDateOnly(this.value(row, path));
   }
 
   hoursTimeValue(row: Row, path: string) {
@@ -358,13 +375,18 @@ export class CrudPageComponent implements OnDestroy {
     return String(row['id']);
   }
 
+  canMutateRow(config: CrudRouteData, row: Row) {
+    if (!config.readonlyGlobalRows || this.auth.usuario()?.es_super_admin) return true;
+    return row['global'] !== true && row['propietario_id'] !== null;
+  }
+
   private buildForm(config: CrudRouteData, row?: Row) {
     this.formSyncSub.unsubscribe();
     this.formSyncSub = new Subscription();
 
     const controls: Record<string, FormControl<FormValue>> = {};
 
-    for (const field of config.fields) {
+    for (const field of this.usableFields(config.fields)) {
       const validators = [];
       if (field.required && field.type !== 'checkbox' && !(row && field.createOnly)) {
         validators.push(Validators.required);
@@ -379,7 +401,7 @@ export class CrudPageComponent implements OnDestroy {
     }
 
     this.form = new FormGroup<Record<string, FormControl<FormValue>>>(controls);
-    this.setupFieldSync(config.fields, row);
+    this.setupFieldSync(this.usableFields(config.fields), row);
   }
 
   private initialValue(field: CrudFieldConfig, row?: Row): FormValue {
@@ -406,7 +428,7 @@ export class CrudPageComponent implements OnDestroy {
     const payload: Row = {};
     const isEdit = Boolean(this.editingRow());
 
-    for (const field of fields) {
+    for (const field of this.usableFields(fields)) {
       if (isEdit && field.createOnly) continue;
 
       const raw = this.form.controls[field.name]?.value;
@@ -455,6 +477,14 @@ export class CrudPageComponent implements OnDestroy {
     }
 
     return payload;
+  }
+
+  private canUseField(field: CrudFieldConfig) {
+    return !field.superAdminOnly || Boolean(this.auth.usuario()?.es_super_admin);
+  }
+
+  private usableFields(fields: CrudFieldConfig[]) {
+    return fields.filter((field) => this.canUseField(field));
   }
 
   private successMessage(row: Row | null, response: unknown) {

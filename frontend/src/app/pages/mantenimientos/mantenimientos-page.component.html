@@ -14,7 +14,7 @@
 }
 
 @if (message()) {
-  <div class="alert alert-success">{{ message() }}</div>
+  <div class="alert alert-success" [appAutoDismissAlert]="message()">{{ message() }}</div>
 }
 
 <div class="card border-0 shadow-sm">
@@ -37,18 +37,41 @@
     </button>
   </div>
 
+  <div class="card-header bg-white border-top mantenimientos-filter-bar">
+    <div class="input-group input-group-sm">
+      <span class="input-group-text bg-white">
+        <svg lucideSearch size="14"></svg>
+      </span>
+      <input
+        class="form-control"
+        type="search"
+        list="mantenimientos-vehiculos-filter-options"
+        placeholder="Filtrar placa"
+        aria-label="Filtrar por placa"
+        [ngModel]="filterPlacaTerm()"
+        (ngModelChange)="filterPlacaTerm.set($event)"
+      />
+    </div>
+    <datalist id="mantenimientos-vehiculos-filter-options">
+      @for (vehiculo of vehiculos(); track vehiculo.id) {
+        <option [value]="vehiculo.placa"></option>
+      }
+    </datalist>
+  </div>
+
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
       <thead>
         <tr>
-          <th>Fecha</th>
-          <th>Vehículo</th>
-          <th>Tipo</th>
-          <th>Descripción</th>
-          <th>Mano obra</th>
-          <th>Repuestos</th>
-          <th>Total</th>
-          <th>Próx. km</th>
+          <th class="mantenimientos-date-col">Fecha</th>
+          <th class="mantenimientos-vehicle-col">Vehículo</th>
+          <th class="mantenimientos-type-col">Tipo</th>
+          <th class="mantenimientos-description-col">Descripción</th>
+          <th class="mantenimientos-money-col">Mano obra</th>
+          <th class="mantenimientos-money-col">Repuestos</th>
+          <th class="mantenimientos-total-col">Total</th>
+          <th class="mantenimientos-current-km-col">Km actual</th>
+          <th class="mantenimientos-km-col">Próx. km</th>
           <th>Estado</th>
           <th class="text-end actions-column">Acciones</th>
         </tr>
@@ -56,17 +79,21 @@
       <tbody>
         @for (row of filteredRows(); track row.id) {
           <tr>
-            <td>{{ row.fecha_mantenimiento | date: 'yyyy-MM-dd' }}</td>
-            <td>{{ vehiculoLabel(row.vehiculo) }}</td>
-            <td>{{ tipoMantenimientoLabel(row.tipo_mantenimiento) }}</td>
-            <td>{{ row.descripcion || '-' }}</td>
-            <td>$ {{ money(row.costo_mano_obra) }}</td>
-            <td>$ {{ money(row.costo_repuestos) }}</td>
-            <td>$ {{ money(row.costo_total) }}</td>
-            <td>{{ row.proximo_mantenimiento_km ?? '-' }}</td>
+            <td class="mantenimientos-date-col">{{ dateOnly(row.fecha_mantenimiento) }}</td>
+            <td class="mantenimientos-vehicle-col">{{ vehiculoLabel(row.vehiculo) }}</td>
+            <td class="mantenimientos-type-col">{{ tipoMantenimientoLabel(row.tipo_mantenimiento) }}</td>
+            <td class="mantenimientos-description-col" [title]="row.descripcion || '-'">{{ row.descripcion || '-' }}</td>
+            <td class="mantenimientos-money-col">$ {{ money(row.costo_mano_obra) }}</td>
+            <td class="mantenimientos-money-col">$ {{ money(row.costo_repuestos) }}</td>
+            <td class="mantenimientos-total-col">$ {{ money(row.costo_total) }}</td>
+            <td class="mantenimientos-current-km-col">{{ row.kilometraje_actual_vehiculo }}</td>
+            <td class="mantenimientos-km-col">{{ row.proximo_mantenimiento_km ?? '-' }}</td>
             <td><span class="badge" [class]="badgeClass(row.estado)">{{ estadoLabel(row.estado) }}</span></td>
             <td class="text-end">
               <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary" (click)="openDuplicate(row)" title="Duplicar">
+                  <svg lucideCopy size="15"></svg>
+                </button>
                 <button type="button" class="btn btn-outline-secondary" (click)="openEdit(row)" title="Editar">
                   <svg lucidePencil size="15"></svg>
                 </button>
@@ -84,7 +111,7 @@
           </tr>
         } @empty {
           <tr>
-            <td colspan="10" class="text-center text-secondary py-4">
+            <td colspan="11" class="text-center text-secondary py-4">
               @if (loading()) {
                 Cargando mantenimientos...
               } @else {

@@ -18,10 +18,20 @@ const optionalTrimmedString = (max: number) =>
     .nullable()
     .transform((value) => value || null);
 
+const splitGuiasRemision = (value: string | string[] | undefined) => {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+
+  return values
+    .flatMap((item) => item.split(/[\n,;-]+/))
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
 const guiaRemisionSchema = z
-  .array(z.string().trim().min(1).max(80))
+  .union([z.array(z.string()), z.string()])
   .optional()
-  .transform((value) => value ?? []);
+  .transform(splitGuiasRemision)
+  .pipe(z.array(z.string().min(1).max(80)));
 
 const viajeBaseSchema = z.object({
   cliente_id: idSchema,
@@ -39,8 +49,10 @@ const viajeBaseSchema = z.object({
   costo_diesel: z.coerce.number().min(0).optional(),
   costo_peajes: z.coerce.number().min(0).optional(),
   costo_estimado_gastos: z.coerce.number().min(0).optional(),
+  viaticos: z.coerce.number().min(0).optional(),
   costo_real_gastos: z.coerce.number().min(0).optional().nullable(),
   cobrado: z.boolean().optional(),
+  retorno: z.boolean().optional(),
   fecha_cobro: dateOnlySchema.optional().nullable(),
   estado: z.enum(viajeEstadoValues).optional(),
   observaciones: optionalTrimmedString(1000)

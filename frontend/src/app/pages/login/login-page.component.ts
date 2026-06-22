@@ -4,10 +4,11 @@ import { Router } from '@angular/router';
 import { LucideLogIn, LucideTruck } from '@lucide/angular';
 import { AuthService } from '../../core/auth.service';
 import type { PropietarioAcceso } from '../../core/models';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 
 @Component({
   selector: 'app-login-page',
-  imports: [ReactiveFormsModule, LucideLogIn, LucideTruck],
+  imports: [ReactiveFormsModule, LucideLogIn, LucideTruck, AutoDismissAlertDirective],
   templateUrl: './login-page.component.html',
   styleUrl: './login-page.component.scss'
 })

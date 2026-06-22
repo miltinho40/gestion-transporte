@@ -1,8 +1,8 @@
-import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
   LucideCalculator,
+  LucideCopy,
   LucidePencil,
   LucidePlus,
   LucideRefreshCw,
@@ -12,6 +12,8 @@ import {
 } from '@lucide/angular';
 import { Subscription, forkJoin, map, of, switchMap } from 'rxjs';
 import { ApiService } from '../../core/api.service';
+import { formatDateOnly } from '../../core/date-only';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 
 type EstadoViaje = 'programado' | 'en_curso' | 'completado' | 'cancelado';
 type ViajeCatalogField = 'cliente_id' | 'vehiculo_id' | 'conductor_id' | 'tarifa_ruta_id' | 'tipo_gasto_id';
@@ -46,7 +48,7 @@ interface ConductorOption extends BasicOption {
 interface TarifaRutaOption {
   id: string;
   precio: string | number;
-  capacidad?: number | null;
+  capacidad?: string | null;
   toneladas?: string | number | null;
   ruta: {
     id: string;
@@ -84,8 +86,10 @@ interface ViajeRow {
   costo_diesel: string | number;
   costo_peajes: string | number;
   costo_estimado_gastos: string | number;
+  viaticos?: string | number | null;
   costo_real_gastos?: string | number | null;
   cobrado: boolean;
+  retorno: boolean;
   fecha_cobro?: string | null;
   estado: EstadoViaje;
   observaciones?: string | null;
@@ -113,6 +117,13 @@ interface GastoViajeItem {
   es_estimado: boolean;
 }
 
+interface ViajeDisplayRow {
+  row: ViajeRow;
+  weekLabel: string;
+  weekTitle: string;
+  weekClass: string;
+}
+
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -128,26 +139,89 @@ const dateInputValue = (value?: string | null) => {
   return String(value).slice(0, 10);
 };
 
+const dateOnlyParts = (value?: string | null) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? '').trim());
+  if (!match) return null;
+
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3])
+  };
+};
+
+const addDaysInputDate = (value: string, days: number) => {
+  const parts = dateOnlyParts(value);
+  if (!parts) return value;
+
+  const date = new Date(parts.year, parts.month - 1, parts.day);
+  date.setDate(date.getDate() + days);
+  return toDateInputValue(date);
+};
+
+const isoWeekInfo = (value?: string | null) => {
+  const parts = dateOnlyParts(value);
+  if (!parts) {
+    return { key: 'sin-fecha', label: 'Sin fecha', title: 'Sin fecha', week: null, year: null };
+  }
+
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+
+  const weekYear = date.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(weekYear, 0, 1));
+  const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+
+  return {
+    key: `${weekYear}-${week}`,
+    label: `Sem ${week}`,
+    title: `Semana ${week} - ${weekYear}`,
+    week,
+    year: weekYear
+  };
+};
+
+const dateSortValue = (value?: string | null) => {
+  const parts = dateOnlyParts(value);
+  if (!parts) return Number.MAX_SAFE_INTEGER;
+
+  return Date.UTC(parts.year, parts.month - 1, parts.day);
+};
+
 const numberValue = (value: unknown) => {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const searchText = (...values: unknown[]) =>
+  values
+    .filter((value) => value !== null && value !== undefined && value !== '')
+    .join(' ')
+    .toLowerCase();
+
 const roundMoney = (value: number) => Number(value.toFixed(2));
+
+const splitGuiasRemision = (value: unknown) =>
+  String(value ?? '')
+    .split(/[\n,;-]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 
 @Component({
   selector: 'app-viajes-page',
   imports: [
-    DatePipe,
     FormsModule,
     ReactiveFormsModule,
     LucideCalculator,
+    LucideCopy,
     LucidePencil,
     LucidePlus,
     LucideRefreshCw,
     LucideSave,
     LucideSearch,
-    LucideTrash2
+    LucideTrash2,
+    AutoDismissAlertDirective
   ],
   templateUrl: './viajes-page.component.html'
 })
@@ -172,6 +246,10 @@ export class ViajesPageComponent implements OnDestroy {
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly search = signal('');
+  readonly filterClienteTerm = signal('');
+  readonly filterVehiculoTerm = signal('');
+  readonly filterCobrado = signal('');
+  readonly filterSemanaTerm = signal('');
   readonly calculating = signal(false);
   readonly catalogInput = signal<Record<ViajeCatalogField, string>>({
     cliente_id: '',
@@ -184,6 +262,7 @@ export class ViajesPageComponent implements OnDestroy {
 
   private precioRealManual = false;
   private costoRealManual = false;
+  private fechaLlegadaManual = false;
 
   readonly form = this.fb.nonNullable.group({
     cliente_id: ['', Validators.required],
@@ -191,7 +270,7 @@ export class ViajesPageComponent implements OnDestroy {
     conductor_id: ['', Validators.required],
     tarifa_ruta_id: ['', Validators.required],
     fecha_salida: [todayInputDate(), Validators.required],
-    fecha_llegada: [todayInputDate()],
+    fecha_llegada: [addDaysInputDate(todayInputDate(), 1)],
     descripcion_carga: [''],
     numeros_guia_remision: [''],
     peso_carga_kg: [0, [Validators.min(0)]],
@@ -205,8 +284,9 @@ export class ViajesPageComponent implements OnDestroy {
     costo_diesel: [0],
     costo_peajes: [0],
     costo_estimado_gastos: [0],
-    costo_real_gastos: [0, [Validators.min(0)]],
+    viaticos: [0, [Validators.min(0)]],
     cobrado: [false],
+    retorno: [false],
     fecha_cobro: [''],
     estado: ['programado' as EstadoViaje, Validators.required],
     observaciones: ['']
@@ -260,13 +340,46 @@ export class ViajesPageComponent implements OnDestroy {
 
   filteredRows() {
     const term = this.search().trim().toLowerCase();
-    if (!term) return this.rows();
+    const clienteTerm = this.filterClienteTerm().trim().toLowerCase();
+    const vehiculoTerm = this.filterVehiculoTerm().trim().toLowerCase();
+    const semanaTerm = this.filterSemanaTerm().trim().toLowerCase();
+    const cobrado = this.filterCobrado();
 
-    return this.rows().filter((row) => JSON.stringify(row).toLowerCase().includes(term));
+    return this.rows()
+      .filter((row) => !clienteTerm || this.clienteSearchText(row).includes(clienteTerm))
+      .filter((row) => !vehiculoTerm || this.vehiculoSearchText(row).includes(vehiculoTerm))
+      .filter((row) => !semanaTerm || this.matchesSemanaFilter(row, semanaTerm))
+      .filter((row) => cobrado === '' || String(row.cobrado) === cobrado)
+      .filter((row) => !term || JSON.stringify(row).toLowerCase().includes(term))
+      .sort((left, right) => {
+        const dateDiff = dateSortValue(this.fechaSemanaViaje(right)) - dateSortValue(this.fechaSemanaViaje(left));
+        return dateDiff || Number(right.id) - Number(left.id);
+      });
+  }
+
+  displayRows(): ViajeDisplayRow[] {
+    let lastWeekKey = '';
+    let weekIndex = -1;
+
+    return this.filteredRows().map((row) => {
+      const week = isoWeekInfo(this.fechaSemanaViaje(row));
+      if (week.key !== lastWeekKey) {
+        weekIndex += 1;
+        lastWeekKey = week.key;
+      }
+
+      return {
+        row,
+        weekLabel: week.label,
+        weekTitle: week.title,
+        weekClass: weekIndex % 2 === 0 ? 'viaje-week-green' : 'viaje-week-white'
+      };
+    });
   }
 
   openCreate() {
     const today = todayInputDate();
+    const tomorrow = addDaysInputDate(today, 1);
     this.editingRow.set(null);
     this.form.reset({
       cliente_id: '',
@@ -274,7 +387,7 @@ export class ViajesPageComponent implements OnDestroy {
       conductor_id: '',
       tarifa_ruta_id: '',
       fecha_salida: today,
-      fecha_llegada: today,
+      fecha_llegada: tomorrow,
       descripcion_carga: '',
       numeros_guia_remision: '',
       peso_carga_kg: 0,
@@ -288,8 +401,9 @@ export class ViajesPageComponent implements OnDestroy {
       costo_diesel: 0,
       costo_peajes: 0,
       costo_estimado_gastos: 0,
-      costo_real_gastos: 0,
+      viaticos: 0,
       cobrado: false,
+      retorno: false,
       fecha_cobro: '',
       estado: 'programado',
       observaciones: ''
@@ -300,6 +414,7 @@ export class ViajesPageComponent implements OnDestroy {
     this.syncCatalogInputs();
     this.precioRealManual = false;
     this.costoRealManual = false;
+    this.fechaLlegadaManual = false;
     this.formOpen.set(true);
     this.error.set(null);
     this.message.set(null);
@@ -313,7 +428,7 @@ export class ViajesPageComponent implements OnDestroy {
       conductor_id: String(row.conductor_id),
       tarifa_ruta_id: String(row.tarifa_ruta_id),
       fecha_salida: dateInputValue(row.fecha_salida),
-      fecha_llegada: dateInputValue(row.fecha_llegada) || dateInputValue(row.fecha_salida),
+      fecha_llegada: dateInputValue(row.fecha_llegada),
       descripcion_carga: row.descripcion_carga ?? '',
       numeros_guia_remision: (row.numeros_guia_remision ?? []).join('\n'),
       peso_carga_kg: numberValue(row.peso_carga_kg),
@@ -327,8 +442,9 @@ export class ViajesPageComponent implements OnDestroy {
       costo_diesel: numberValue(row.costo_diesel),
       costo_peajes: numberValue(row.costo_peajes),
       costo_estimado_gastos: numberValue(row.costo_estimado_gastos),
-      costo_real_gastos: numberValue(row.costo_real_gastos),
+      viaticos: numberValue(row.viaticos ?? row.costo_real_gastos),
       cobrado: Boolean(row.cobrado),
+      retorno: Boolean(row.retorno),
       fecha_cobro: dateInputValue(row.fecha_cobro),
       estado: row.estado,
       observaciones: row.observaciones ?? ''
@@ -339,10 +455,53 @@ export class ViajesPageComponent implements OnDestroy {
     this.syncCatalogInputs();
     this.precioRealManual = true;
     this.costoRealManual = true;
+    this.fechaLlegadaManual = false;
     this.formOpen.set(true);
     this.error.set(null);
     this.message.set(null);
     this.loadGastos(row.id);
+  }
+
+  openDuplicate(row: ViajeRow) {
+    this.editingRow.set(null);
+    this.form.reset({
+      cliente_id: String(row.cliente_id),
+      vehiculo_id: String(row.vehiculo_id),
+      conductor_id: String(row.conductor_id),
+      tarifa_ruta_id: String(row.tarifa_ruta_id),
+      fecha_salida: dateInputValue(row.fecha_salida),
+      fecha_llegada: dateInputValue(row.fecha_llegada) || addDaysInputDate(dateInputValue(row.fecha_salida), 1),
+      descripcion_carga: row.descripcion_carga ?? '',
+      numeros_guia_remision: (row.numeros_guia_remision ?? []).join('\n'),
+      peso_carga_kg: numberValue(row.peso_carga_kg),
+      precio_flete: numberValue(row.precio_flete),
+      porcentaje_comision: numberValue(row.porcentaje_comision_aplicado),
+      valor_comision: numberValue(row.valor_comision),
+      precio_real_flete: numberValue(row.precio_real_flete),
+      distancia_km: numberValue(row.tarifa_ruta?.ruta.distancia_km),
+      precio_galon_diesel: 0,
+      galones_diesel: numberValue(row.galones_diesel),
+      costo_diesel: numberValue(row.costo_diesel),
+      costo_peajes: numberValue(row.costo_peajes),
+      costo_estimado_gastos: numberValue(row.costo_estimado_gastos),
+      viaticos: numberValue(row.viaticos ?? row.costo_real_gastos),
+      cobrado: Boolean(row.cobrado),
+      retorno: Boolean(row.retorno),
+      fecha_cobro: dateInputValue(row.fecha_cobro),
+      estado: row.estado,
+      observaciones: row.observaciones ?? ''
+    });
+    this.gastos.set([]);
+    this.deletedGastoIds.set([]);
+    this.resetGastoForm();
+    this.syncCatalogInputs();
+    this.precioRealManual = true;
+    this.costoRealManual = true;
+    this.fechaLlegadaManual = false;
+    this.formOpen.set(true);
+    this.error.set(null);
+    this.message.set(null);
+    this.loadGastos(row.id, { duplicate: true });
   }
 
   closeForm() {
@@ -398,10 +557,16 @@ export class ViajesPageComponent implements OnDestroy {
   onFechaSalidaChange() {
     const salida = this.form.controls.fecha_salida.value;
     const llegada = this.form.controls.fecha_llegada.value;
-    if (!llegada || llegada < salida) {
-      this.form.controls.fecha_llegada.setValue(salida);
+
+    if (!this.editingRow() && (!this.fechaLlegadaManual || !llegada)) {
+      this.form.controls.fecha_llegada.setValue(addDaysInputDate(salida, 1));
     }
+
     this.fetchCalculation({ resetPrecioReal: true });
+  }
+
+  onFechaLlegadaChange() {
+    this.fechaLlegadaManual = true;
   }
 
   onTarifaChange() {
@@ -439,7 +604,11 @@ export class ViajesPageComponent implements OnDestroy {
           cliente_id: value.cliente_id,
           vehiculo_id: value.vehiculo_id,
           tarifa_ruta_id: value.tarifa_ruta_id,
-          fecha_salida: value.fecha_salida
+          fecha_salida: value.fecha_salida,
+          precio_flete:
+            !options.forcePrecioFlete && numberValue(value.precio_flete) > 0
+              ? numberValue(value.precio_flete)
+              : undefined
         })
         .subscribe({
           next: (calculo) => {
@@ -531,7 +700,7 @@ export class ViajesPageComponent implements OnDestroy {
     this.form.controls.costo_estimado_gastos.setValue(costoEstimado, { emitEvent: false });
 
     if (!this.costoRealManual) {
-      this.form.controls.costo_real_gastos.setValue(costoEstimado, { emitEvent: false });
+      this.form.controls.viaticos.setValue(costoEstimado, { emitEvent: false });
     }
   }
 
@@ -552,7 +721,7 @@ export class ViajesPageComponent implements OnDestroy {
   }
 
   totalGastosReales() {
-    return roundMoney(numberValue(this.form.controls.costo_real_gastos.value) + this.totalGastosRealesAdicionales());
+    return roundMoney(numberValue(this.form.controls.viaticos.value) + this.totalGastosRealesAdicionales());
   }
 
   utilidadViaje() {
@@ -620,13 +789,13 @@ export class ViajesPageComponent implements OnDestroy {
     );
   }
 
-  private loadGastos(viajeId: string) {
+  private loadGastos(viajeId: string, options: { duplicate?: boolean } = {}) {
     this.sub.add(
       this.api.get<any[]>(`/viajes/${viajeId}/gastos`).subscribe({
         next: (gastos) => {
           this.gastos.set(
             gastos.map((item) => ({
-              id: String(item.id),
+              id: options.duplicate ? undefined : String(item.id),
               tipo_gasto_id: String(item.tipo_gasto_id),
               tipo_gasto_nombre: item.tipo_gasto?.nombre ?? `Gasto ${item.tipo_gasto_id}`,
               descripcion: item.descripcion ?? null,
@@ -654,10 +823,7 @@ export class ViajesPageComponent implements OnDestroy {
       fecha_salida: value.fecha_salida,
       fecha_llegada: value.fecha_llegada || null,
       descripcion_carga: value.descripcion_carga || null,
-      numeros_guia_remision: String(value.numeros_guia_remision ?? '')
-        .split(/[\n,;]+/)
-        .map((item) => item.trim())
-        .filter(Boolean),
+      numeros_guia_remision: splitGuiasRemision(value.numeros_guia_remision),
       peso_carga_kg: numberValue(value.peso_carga_kg),
       precio_flete: numberValue(value.precio_flete),
       precio_real_flete: numberValue(value.precio_real_flete),
@@ -665,8 +831,10 @@ export class ViajesPageComponent implements OnDestroy {
       costo_diesel: numberValue(value.costo_diesel),
       costo_peajes: numberValue(value.costo_peajes),
       costo_estimado_gastos: numberValue(value.costo_estimado_gastos),
-      costo_real_gastos: numberValue(value.costo_real_gastos),
+      viaticos: numberValue(value.viaticos),
+      costo_real_gastos: this.totalGastosReales(),
       cobrado: value.cobrado,
+      retorno: value.retorno,
       fecha_cobro: value.fecha_cobro || null,
       estado: value.estado,
       observaciones: value.observaciones || null
@@ -698,6 +866,10 @@ export class ViajesPageComponent implements OnDestroy {
     return numberValue(value).toFixed(2);
   }
 
+  dateOnly(value: unknown) {
+    return formatDateOnly(value);
+  }
+
   estadoLabel(estado: EstadoViaje) {
     const labels: Record<EstadoViaje, string> = {
       programado: 'Programado',
@@ -712,6 +884,49 @@ export class ViajesPageComponent implements OnDestroy {
   rutaLabel(tarifa?: TarifaRutaOption) {
     if (!tarifa) return '-';
     return `${tarifa.ruta.origen} - ${tarifa.ruta.destino}`;
+  }
+
+  clienteFilterLabel(cliente: ClienteOption) {
+    return `${cliente.nombre} - ${cliente.ruc_cedula}`;
+  }
+
+  vehiculoFilterLabel(vehiculo: VehiculoOption) {
+    return [vehiculo.placa, vehiculo.marca].filter(Boolean).join(' - ');
+  }
+
+  private clienteSearchText(row: ViajeRow) {
+    return searchText(
+      row.cliente ? this.clienteFilterLabel(row.cliente) : null,
+      row.cliente?.nombre,
+      row.cliente?.ruc_cedula,
+      row.cliente_id
+    );
+  }
+
+  private vehiculoSearchText(row: ViajeRow) {
+    return searchText(
+      row.vehiculo ? this.vehiculoFilterLabel(row.vehiculo) : null,
+      row.vehiculo?.placa,
+      row.vehiculo?.marca,
+      row.vehiculo?.modelo,
+      row.vehiculo_id
+    );
+  }
+
+  private fechaSemanaViaje(row: ViajeRow) {
+    return row.fecha_llegada || row.fecha_salida;
+  }
+
+  private matchesSemanaFilter(row: ViajeRow, rawTerm: string) {
+    const week = isoWeekInfo(this.fechaSemanaViaje(row));
+    const term = rawTerm.replace(/^sem(?:ana)?\s*/i, '').trim();
+
+    if (!term || week.week === null || week.year === null) return false;
+    if (/^\d+$/.test(term)) return week.week === Number(term);
+
+    return [week.key, `${week.week}-${week.year}`, week.label, week.title]
+      .map((value) => value.toLowerCase())
+      .some((value) => value.includes(term));
   }
 
   tarifaLabel(tarifa: TarifaRutaOption) {

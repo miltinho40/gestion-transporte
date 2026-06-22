@@ -311,7 +311,7 @@ const upsertScopedTarifaRuta = async (
   data: {
     ruta_id: bigint;
     tipo_carga_id: bigint;
-    capacidad: number;
+    capacidad: string;
     toneladas: number;
     precio: number;
     vigente_desde: Date;
@@ -442,6 +442,7 @@ const upsertScopedViaje = async (
     costo_diesel: number;
     costo_peajes: number;
     costo_estimado_gastos: number;
+    viaticos: number;
     costo_real_gastos: number;
     cobrado: boolean;
     fecha_cobro: Date | null;
@@ -518,6 +519,8 @@ const seedDemoPropietarios = async () => {
   const passwordHash = await bcrypt.hash(demoPassword, 10);
   const vigenteDesde = toDateOnly('2026-01-01');
   const vigenteHasta = toDateOnly('2029-01-01');
+  const tarifaRutaVigenteDesde = toDateOnly('2025-01-01');
+  const tarifaRutaVigenteHasta = toDateOnly('2028-12-31');
   const demos = [
     {
       codigo: 1,
@@ -832,20 +835,20 @@ const seedDemoPropietarios = async () => {
       upsertScopedTarifaRuta(propietario.id, {
         ruta_id: rutaPrincipal.id,
         tipo_carga_id: tipoCartones.id,
-        capacidad: 6000,
+        capacidad: '6000',
         toneladas: 10,
         precio: 300 + demo.codigo * 15,
-        vigente_desde: vigenteDesde,
-        vigente_hasta: vigenteHasta
+        vigente_desde: tarifaRutaVigenteDesde,
+        vigente_hasta: tarifaRutaVigenteHasta
       }),
       upsertScopedTarifaRuta(propietario.id, {
         ruta_id: rutaSecundaria.id,
         tipo_carga_id: tipoPallets.id,
-        capacidad: 7000,
+        capacidad: '7000',
         toneladas: 11,
         precio: 350 + demo.codigo * 15,
-        vigente_desde: vigenteDesde,
-        vigente_hasta: vigenteHasta
+        vigente_desde: tarifaRutaVigenteDesde,
+        vigente_hasta: tarifaRutaVigenteHasta
       })
     ]);
 
@@ -872,6 +875,7 @@ const seedDemoPropietarios = async () => {
         costo_diesel: 16,
         costo_peajes: 6,
         costo_estimado_gastos: 42,
+        viaticos: 50,
         costo_real_gastos: 50,
         cobrado: demo.codigo % 2 === 0,
         fecha_cobro: demo.codigo % 2 === 0 ? toDateOnly('2026-05-08') : null,
@@ -894,6 +898,7 @@ const seedDemoPropietarios = async () => {
         costo_diesel: 20,
         costo_peajes: 8,
         costo_estimado_gastos: 55,
+        viaticos: 65,
         costo_real_gastos: 65,
         cobrado: false,
         fecha_cobro: null,

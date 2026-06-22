@@ -87,10 +87,16 @@ const getNumericConfig = async (propietarioId: bigint, clave: string, fallback: 
   const configs = await prisma.configuracionOperativa.findMany({
     where: {
       clave,
-      OR: [{ propietario_id: null }, { propietario_id: propietarioId }]
+      OR:
+        clave === 'precio_galon_diesel'
+          ? [{ propietario_id: null }]
+          : [{ propietario_id: null }, { propietario_id: propietarioId }]
     }
   });
-  const own = configs.find((item) => item.propietario_id === propietarioId);
+  const own =
+    clave === 'precio_galon_diesel'
+      ? null
+      : configs.find((item) => item.propietario_id === propietarioId);
   const global = configs.find((item) => item.propietario_id === null);
   const parsed = Number((own ?? global)?.valor);
 
@@ -151,6 +157,23 @@ const calculateCostoEstimadoWithGastos = async (
     .plus(toMoney(costoPeajes))
     .plus(toMoney(estimados._sum.monto ?? 0))
     .toDecimalPlaces(2);
+};
+
+const calculateCostoRealWithGastos = async (
+  viajeId: bigint,
+  viaticos: number | string | Prisma.Decimal
+) => {
+  const reales = await prisma.gastoViaje.aggregate({
+    where: {
+      viaje_id: viajeId,
+      es_estimado: false
+    },
+    _sum: {
+      monto: true
+    }
+  });
+
+  return toMoney(viaticos).plus(toMoney(reales._sum.monto ?? 0)).toDecimalPlaces(2);
 };
 
 const assertFechaLlegadaValida = (fechaSalida: Date, fechaLlegada: Date | null) => {
@@ -377,9 +400,10 @@ export const calculateViajeValores = async (
       : tarifaRuta.precio;
   const financials = calculateFinancials(precioFleteInput, cliente.porcentaje_comision);
   const distanciaKm = toDecimal(tarifaRuta.ruta.distancia_km);
+  const distanciaDieselKm = distanciaKm.mul(2);
   const rendimientoKmGalon = toDecimal(vehiculo.rendimiento_km_galon);
   const galonesDiesel = rendimientoKmGalon.gt(0)
-    ? distanciaKm.div(rendimientoKmGalon).toDecimalPlaces(2)
+    ? distanciaDieselKm.div(rendimientoKmGalon).toDecimalPlaces(2)
     : toMoney(0);
   const costoDiesel = galonesDiesel.mul(precioGalonDiesel).toDecimalPlaces(2);
 
@@ -477,6 +501,7 @@ export const createViaje = async (propietarioIdInput: unknown, input: ViajeCreat
     costoDiesel,
     costoPeajes
   );
+  const viaticos = toMoney(input.viaticos ?? input.costo_real_gastos ?? 0);
   const cobrado = input.cobrado ?? false;
 
   return prisma.viaje.create({
@@ -502,11 +527,13 @@ export const createViaje = async (propietarioIdInput: unknown, input: ViajeCreat
       costo_diesel: costoDiesel,
       costo_peajes: costoPeajes,
       costo_estimado_gastos: costoEstimadoGastos,
+      viaticos,
       costo_real_gastos:
         input.costo_real_gastos === null || input.costo_real_gastos === undefined
-          ? null
+          ? viaticos
           : toMoney(input.costo_real_gastos),
       cobrado,
+      retorno: input.retorno ?? false,
       fecha_cobro: resolveCobro(cobrado, input.fecha_cobro),
       estado: toPrismaEstadoViaje(input.estado) ?? EstadoViaje.PROGRAMADO,
       observaciones: input.observaciones
@@ -574,6 +601,19 @@ export const updateViaje = async (
       : input.costo_diesel !== undefined || input.costo_peajes !== undefined
         ? await calculateCostoEstimadoWithGastos(id, costoDiesel, costoPeajes)
         : current.costo_estimado_gastos;
+  const viaticos =
+    input.viaticos !== undefined
+      ? toMoney(input.viaticos)
+      : input.costo_real_gastos !== undefined && current.viaticos.eq(0)
+        ? toMoney(input.costo_real_gastos ?? 0)
+        : current.viaticos;
+  const costoRealGastos = Object.hasOwn(input, 'costo_real_gastos')
+    ? input.costo_real_gastos === null || input.costo_real_gastos === undefined
+      ? null
+      : toMoney(input.costo_real_gastos)
+    : input.viaticos !== undefined
+      ? await calculateCostoRealWithGastos(id, viaticos)
+      : undefined;
   const cobrado = Object.hasOwn(input, 'cobrado') ? input.cobrado! : current.cobrado;
 
   return prisma.viaje.update({
@@ -605,12 +645,10 @@ export const updateViaje = async (
       costo_peajes: input.costo_peajes !== undefined ? costoPeajes : undefined,
       costo_estimado_gastos:
         input.costo_estimado_gastos !== undefined ? costoEstimadoGastos : undefined,
-      costo_real_gastos: Object.hasOwn(input, 'costo_real_gastos')
-        ? input.costo_real_gastos === null || input.costo_real_gastos === undefined
-          ? null
-          : toMoney(input.costo_real_gastos)
-        : undefined,
+      viaticos: input.viaticos !== undefined ? viaticos : undefined,
+      costo_real_gastos: costoRealGastos,
       cobrado: Object.hasOwn(input, 'cobrado') ? cobrado : undefined,
+      retorno: Object.hasOwn(input, 'retorno') ? input.retorno : undefined,
       fecha_cobro:
         Object.hasOwn(input, 'cobrado') || Object.hasOwn(input, 'fecha_cobro')
           ? resolveCobro(cobrado, input.fecha_cobro, current.fecha_cobro)

@@ -14,7 +14,7 @@
 }
 
 @if (message()) {
-  <div class="alert alert-success">{{ message() }}</div>
+  <div class="alert alert-success" [appAutoDismissAlert]="message()">{{ message() }}</div>
 }
 
 <div class="card border-0 shadow-sm">
@@ -37,11 +37,75 @@
     </button>
   </div>
 
+  <div class="card-header bg-white border-top viajes-filter-bar">
+    <div class="input-group input-group-sm">
+      <span class="input-group-text bg-white">
+        <svg lucideSearch size="14"></svg>
+      </span>
+      <input
+        class="form-control"
+        type="search"
+        list="viajes-clientes-filter-options"
+        placeholder="Filtrar cliente o RUC"
+        aria-label="Filtrar por cliente"
+        [ngModel]="filterClienteTerm()"
+        (ngModelChange)="filterClienteTerm.set($event)"
+      />
+    </div>
+    <datalist id="viajes-clientes-filter-options">
+      @for (cliente of clientes(); track cliente.id) {
+        <option [value]="clienteFilterLabel(cliente)"></option>
+      }
+    </datalist>
+
+    <div class="input-group input-group-sm">
+      <span class="input-group-text bg-white">
+        <svg lucideSearch size="14"></svg>
+      </span>
+      <input
+        class="form-control"
+        type="search"
+        list="viajes-vehiculos-filter-options"
+        placeholder="Filtrar vehiculo o placa"
+        aria-label="Filtrar por vehiculo"
+        [ngModel]="filterVehiculoTerm()"
+        (ngModelChange)="filterVehiculoTerm.set($event)"
+      />
+    </div>
+    <datalist id="viajes-vehiculos-filter-options">
+      @for (vehiculo of vehiculos(); track vehiculo.id) {
+        <option [value]="vehiculoFilterLabel(vehiculo)"></option>
+      }
+    </datalist>
+
+    <select
+      class="form-select form-select-sm"
+      aria-label="Filtrar por cobro"
+      [ngModel]="filterCobrado()"
+      (ngModelChange)="filterCobrado.set($event)"
+    >
+      <option value="">Todos los cobros</option>
+      <option value="true">Cobrados</option>
+      <option value="false">No cobrados</option>
+    </select>
+
+    <input
+      class="form-control form-control-sm"
+      type="search"
+      inputmode="numeric"
+      placeholder="Semana"
+      aria-label="Filtrar por numero de semana"
+      [ngModel]="filterSemanaTerm()"
+      (ngModelChange)="filterSemanaTerm.set($event)"
+    />
+  </div>
+
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
       <thead>
         <tr>
-          <th>Fecha</th>
+          <th>Semana</th>
+          <th>Entrega</th>
           <th>Cliente</th>
           <th>Vehículo</th>
           <th>Conductor</th>
@@ -50,14 +114,19 @@
           <th>Flete real</th>
           <th>Utilidad</th>
           <th>Cobrado</th>
+          <th>Retorno</th>
           <th>Estado</th>
           <th class="text-end actions-column">Acciones</th>
         </tr>
       </thead>
       <tbody>
-        @for (row of filteredRows(); track row.id) {
-          <tr>
-            <td>{{ row.fecha_salida | date: 'yyyy-MM-dd' }}</td>
+        @for (item of displayRows(); track item.row.id) {
+          @let row = item.row;
+          <tr [class]="item.weekClass" [class.viaje-row-cobrado]="row.cobrado">
+            <td>
+              <span class="badge viaje-week-badge" [title]="item.weekTitle">{{ item.weekLabel }}</span>
+            </td>
+            <td>{{ dateOnly(row.fecha_llegada || row.fecha_salida) }}</td>
             <td>{{ row.cliente?.nombre ?? '-' }}</td>
             <td>{{ row.vehiculo?.placa ?? '-' }}</td>
             <td>{{ row.conductor?.nombre ?? '-' }}</td>
@@ -72,9 +141,19 @@
                 <span class="badge text-bg-light">No</span>
               }
             </td>
+            <td>
+              @if (row.retorno) {
+                <span class="badge badge-soft-warning">Si</span>
+              } @else {
+                <span class="badge text-bg-light">No</span>
+              }
+            </td>
             <td><span class="badge badge-soft">{{ estadoLabel(row.estado) }}</span></td>
-            <td class="text-end">
+            <td class="text-end actions-cell">
               <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary" (click)="openDuplicate(row)" title="Duplicar">
+                  <svg lucideCopy size="15"></svg>
+                </button>
                 <button type="button" class="btn btn-outline-secondary" (click)="openEdit(row)" title="Editar">
                   <svg lucidePencil size="15"></svg>
                 </button>
@@ -92,7 +171,7 @@
           </tr>
         } @empty {
           <tr>
-            <td colspan="11" class="text-center text-secondary py-4">
+            <td colspan="13" class="text-center text-secondary py-4">
               @if (loading()) {
                 Cargando viajes...
               } @else {
@@ -226,7 +305,7 @@
 
                 <div class="viaje-field-date-130">
                   <label class="form-label" for="fecha_llegada">Fecha llegada</label>
-                  <input id="fecha_llegada" class="form-control" type="date" formControlName="fecha_llegada" />
+                  <input id="fecha_llegada" class="form-control" type="date" formControlName="fecha_llegada" (change)="onFechaLlegadaChange()" />
                 </div>
               </div>
 
@@ -313,6 +392,20 @@
                   </div>
                 </div>
 
+                <div class="viaje-field-fixed-120">
+                  <label class="form-label d-block" for="retorno">Retorno</label>
+                  <div class="form-check form-switch viaje-switch-box">
+                    <input id="retorno" class="form-check-input" type="checkbox" formControlName="retorno" />
+                    <label class="form-check-label" for="retorno">
+                      @if (form.controls.retorno.value) {
+                        Si
+                      } @else {
+                        No
+                      }
+                    </label>
+                  </div>
+                </div>
+
                 <div class="viaje-field-date-130">
                   <label class="form-label" for="fecha_cobro">Fecha cobro</label>
                   <input id="fecha_cobro" class="form-control" type="date" formControlName="fecha_cobro" />
@@ -338,7 +431,15 @@
             <div class="viaje-costos-grid">
               <div class="viaje-cost-field">
                 <label class="form-label" for="precio_flete">Precio flete</label>
-                <input id="precio_flete" class="form-control" type="number" min="0" step="0.01" readonly formControlName="precio_flete" />
+                <input
+                  id="precio_flete"
+                  class="form-control"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  formControlName="precio_flete"
+                  (change)="onPrecioFleteChanged()"
+                />
               </div>
               <div class="viaje-cost-field">
                 <label class="form-label" for="precio_real_flete">Precio real flete</label>
@@ -357,8 +458,8 @@
                 <input id="costo_estimado_gastos" class="form-control" type="number" readonly formControlName="costo_estimado_gastos" />
               </div>
               <div class="viaje-cost-field">
-                <label class="form-label" for="costo_real_gastos">Viáticos</label>
-                <input id="costo_real_gastos" class="form-control" type="number" min="0" step="0.01" formControlName="costo_real_gastos" (input)="onCostoRealChanged()" />
+                <label class="form-label" for="viaticos">Viáticos</label>
+                <input id="viaticos" class="form-control" type="number" min="0" step="0.01" formControlName="viaticos" (input)="onCostoRealChanged()" />
               </div>
             </div>
 

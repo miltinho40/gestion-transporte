@@ -15,7 +15,7 @@
 
 @if (data(); as alertas) {
   <div class="row g-3 mb-4">
-    <div class="col-md-3">
+    <div class="col-sm-6 col-xl">
       <div class="card border-0 shadow-sm">
         <div class="card-body">
           <span class="text-secondary small">Alertas totales</span>
@@ -23,7 +23,7 @@
         </div>
       </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-sm-6 col-xl">
       <div class="card border-0 shadow-sm">
         <div class="card-body">
           <span class="text-secondary small">Mantenimientos</span>
@@ -34,7 +34,7 @@
         </div>
       </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-sm-6 col-xl">
       <div class="card border-0 shadow-sm">
         <div class="card-body">
           <span class="text-secondary small">Licencias</span>
@@ -45,7 +45,7 @@
         </div>
       </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-sm-6 col-xl">
       <div class="card border-0 shadow-sm">
         <div class="card-body">
           <span class="text-secondary small">Viajes sin cobrar</span>
@@ -53,7 +53,63 @@
         </div>
       </div>
     </div>
+    <div class="col-sm-6 col-xl">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <span class="text-secondary small">Cierres con anomalía</span>
+          <div class="display-6 fw-semibold">{{ alertas.resumen.cierres_semanales.total }}</div>
+          <span class="small text-secondary">
+            {{ alertas.resumen.cierres_semanales.cierres_revisados }} revisados
+          </span>
+        </div>
+      </div>
+    </div>
   </div>
+
+  @if (alertas.cierres_semanales.length) {
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-white fw-semibold">Semanas cerradas con anomalías</div>
+      <div class="list-group list-group-flush">
+        @for (item of alertas.cierres_semanales.slice(0, 8); track $index) {
+          @let row = asRecord(item);
+          @let semana = asRecord(row['semana']);
+          @let vehiculo = asRecord(row['vehiculo']);
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start gap-3">
+              <div>
+                <div class="fw-semibold">
+                  Semana {{ semana['numero_semana'] }} - {{ vehiculo['placa'] }}
+                </div>
+                <div class="small text-secondary">
+                  {{ dateOnly(semana['fecha_inicio']) }} - {{ dateOnly(semana['fecha_fin']) }}
+                  - {{ row['total_diferencias'] }} diferencia(s)
+                </div>
+              </div>
+              <a
+                class="btn btn-outline-danger btn-sm"
+                [routerLink]="['/app/cierre-semanal']"
+                [queryParams]="{
+                  anio: semana['anio'],
+                  numero_semana: semana['numero_semana'],
+                  vehiculo_id: vehiculo['id']
+                }"
+              >
+                Revisar cierre
+              </a>
+            </div>
+            <div class="mt-2 d-flex flex-wrap gap-2">
+              @for (diffItem of asArray(row['diferencias']).slice(0, 3); track $index) {
+                @let diff = asRecord(diffItem);
+                <span class="badge text-bg-light border">
+                  {{ diff['label'] }}: {{ diff['valor_cierre'] }} -> {{ diff['valor_actual'] }}
+                </span>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  }
 
   <div class="row g-3">
     <div class="col-lg-4">
@@ -84,7 +140,7 @@
             <div class="list-group-item">
               <div class="fw-semibold">{{ row['nombre'] }}</div>
               <div class="small text-secondary">
-                {{ asDate(row['fecha_caducidad_licencia']) | date: 'yyyy-MM-dd' }} -
+                {{ dateOnly(row['fecha_caducidad_licencia']) }} -
                 {{ row['dias_restantes'] }} días
               </div>
             </div>
@@ -105,7 +161,7 @@
             <div class="list-group-item">
               <div class="fw-semibold">{{ cliente['nombre'] }}</div>
               <div class="small text-secondary">
-                {{ asDate(row['fecha_salida']) | date: 'yyyy-MM-dd' }} -
+                {{ dateOnly(row['fecha_salida']) }} -
                 {{ row['semanas_pendiente'] }} semanas
               </div>
             </div>

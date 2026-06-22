@@ -1,7 +1,9 @@
-import { DatePipe } from '@angular/common';
 import { Component, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { LucideRefreshCw } from '@lucide/angular';
 import { ApiService } from '../../core/api.service';
+import { formatDateOnly } from '../../core/date-only';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 
 interface AlertasResponse {
   resumen: {
@@ -9,15 +11,17 @@ interface AlertasResponse {
     mantenimientos: { total: number; vencidos: number; por_vencer: number };
     licencias: { total: number; vencidas: number; por_caducar: number };
     viajes_sin_cobrar: { total: number };
+    cierres_semanales: { total: number; cierres_revisados: number };
   };
   mantenimientos: unknown[];
   licencias: unknown[];
   viajes_sin_cobrar: unknown[];
+  cierres_semanales: unknown[];
 }
 
 @Component({
   selector: 'app-dashboard-page',
-  imports: [DatePipe, LucideRefreshCw],
+  imports: [RouterLink, LucideRefreshCw, AutoDismissAlertDirective],
   templateUrl: './dashboard-page.component.html'
 })
 export class DashboardPageComponent {
@@ -51,7 +55,11 @@ export class DashboardPageComponent {
     return value as Record<string, unknown>;
   }
 
-  asDate(value: unknown) {
-    return value as string | number | Date | null | undefined;
+  asArray(value: unknown) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  dateOnly(value: unknown) {
+    return formatDateOnly(value);
   }
 }

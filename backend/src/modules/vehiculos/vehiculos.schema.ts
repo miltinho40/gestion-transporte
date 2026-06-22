@@ -9,6 +9,11 @@ export const vehiculoEstadoValues = [
 
 const idSchema = z.union([z.string().min(1), z.number().int().positive()]).transform(String);
 
+const dateOnlySchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Debe tener formato YYYY-MM-DD');
+
 const optionalTrimmedString = (max: number) =>
   z
     .string()
@@ -29,7 +34,10 @@ export const vehiculoCreateSchema = z.object({
   toneladas: z.coerce.number().positive(),
   kilometraje_actual: z.coerce.number().int().min(0).optional(),
   rendimiento_km_galon: z.coerce.number().positive(),
-  estado: z.enum(vehiculoEstadoValues).optional()
+  estado: z.enum(vehiculoEstadoValues).optional(),
+  facturable: z.boolean().optional(),
+  fecha_alta_facturacion: dateOnlySchema.optional().nullable(),
+  fecha_baja_facturacion: dateOnlySchema.optional().nullable()
 });
 
 export const vehiculoUpdateSchema = vehiculoCreateSchema.partial().refine(

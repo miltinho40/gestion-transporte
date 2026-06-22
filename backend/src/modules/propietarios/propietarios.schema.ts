@@ -20,6 +20,8 @@ const propietarioAdminSchema = z.object({
   fecha_nacimiento: dateOnlySchema.optional().nullable()
 });
 
+export const estadoSuscripcionValues = ['activa', 'prueba', 'suspendida', 'cancelada'] as const;
+
 export const propietarioCreateSchema = z.object({
   nombre: z.string().trim().min(1).max(150),
   ruc_cedula: z.string().trim().min(1).max(20),
@@ -28,6 +30,11 @@ export const propietarioCreateSchema = z.object({
   email: z.string().trim().email().max(150).optional().nullable().transform((value) => value || null),
   direccion: optionalTrimmedString(255),
   activo: z.boolean().optional(),
+  estado_suscripcion: z.enum(estadoSuscripcionValues).optional(),
+  limite_vehiculos: z.coerce.number().int().min(0).optional(),
+  precio_por_vehiculo: z.coerce.number().min(0).optional(),
+  fecha_corte_facturacion: z.coerce.number().int().min(1).max(31).optional(),
+  observaciones_facturacion: optionalTrimmedString(255),
   admin: propietarioAdminSchema.optional()
 });
 
@@ -45,3 +52,4 @@ export const propietarioEstadoSchema = z.object({
 export type PropietarioCreateInput = z.infer<typeof propietarioCreateSchema>;
 export type PropietarioUpdateInput = z.infer<typeof propietarioUpdateSchema>;
 export type PropietarioEstadoInput = z.infer<typeof propietarioEstadoSchema>;
+export type EstadoSuscripcionApi = (typeof estadoSuscripcionValues)[number];

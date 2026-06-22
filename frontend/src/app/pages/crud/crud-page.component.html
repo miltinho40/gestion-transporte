@@ -4,10 +4,12 @@
       <h1 class="h3 mb-1">{{ cfg.title }}</h1>
       <p class="text-secondary mb-0">{{ cfg.description }}</p>
     </div>
-    <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
-      <svg lucidePlus size="17"></svg>
-      Nuevo
-    </button>
+    @if (cfg.createEnabled !== false) {
+      <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
+        <svg lucidePlus size="17"></svg>
+        Nuevo
+      </button>
+    }
   </div>
 
   @if (error() && !formOpen()) {
@@ -15,7 +17,7 @@
   }
 
   @if (message()) {
-    <div class="alert alert-success">{{ message() }}</div>
+    <div class="alert alert-success" [appAutoDismissAlert]="message()">{{ message() }}</div>
   }
 
   <div class="card border-0 shadow-sm">
@@ -54,7 +56,7 @@
               @for (column of cfg.columns; track column.path) {
                 <td>
                   @if (column.type === 'date') {
-                    {{ dateValue(row, column.path) | date: 'yyyy-MM-dd' }}
+                    {{ dateValue(row, column.path) }}
                   } @else if (column.type === 'money') {
                     $ {{ textValue(row, column) }}
                   } @else if (column.type === 'hoursTime') {
@@ -76,18 +78,27 @@
               }
               <td class="text-end">
                 <div class="btn-group btn-group-sm">
-                  <button type="button" class="btn btn-outline-secondary" (click)="openEdit(row)" title="Editar">
-                    <svg lucidePencil size="15"></svg>
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-outline-danger"
-                    (click)="delete(row)"
-                    [disabled]="deletingId() === idOf(row)"
-                    title="Eliminar o desactivar"
-                  >
-                    <svg lucideTrash2 size="15"></svg>
-                  </button>
+                  @if (cfg.duplicateEnabled && canMutateRow(cfg, row)) {
+                    <button type="button" class="btn btn-outline-secondary" (click)="openDuplicate(row)" title="Duplicar">
+                      <svg lucideCopy size="15"></svg>
+                    </button>
+                  }
+                  @if (canMutateRow(cfg, row)) {
+                    <button type="button" class="btn btn-outline-secondary" (click)="openEdit(row)" title="Editar">
+                      <svg lucidePencil size="15"></svg>
+                    </button>
+                  }
+                  @if (cfg.deleteEnabled !== false && canMutateRow(cfg, row)) {
+                    <button
+                      type="button"
+                      class="btn btn-outline-danger"
+                      (click)="delete(row)"
+                      [disabled]="deletingId() === idOf(row)"
+                      title="Eliminar o desactivar"
+                    >
+                      <svg lucideTrash2 size="15"></svg>
+                    </button>
+                  }
                 </div>
               </td>
             </tr>

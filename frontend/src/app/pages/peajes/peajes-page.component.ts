@@ -11,6 +11,7 @@ import {
 } from '@lucide/angular';
 import { Subscription, forkJoin } from 'rxjs';
 import { ApiService } from '../../core/api.service';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 
 interface CategoriaPeajeOption {
   id: string;
@@ -65,7 +66,8 @@ const todayInputDate = () => toDateInputValue(new Date());
     LucideSave,
     LucideSearch,
     LucideTrash2,
-    LucideX
+    LucideX,
+    AutoDismissAlertDirective
   ],
   templateUrl: './peajes-page.component.html'
 })

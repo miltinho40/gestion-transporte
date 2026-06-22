@@ -64,6 +64,7 @@ export interface CrudFieldConfig {
   createOnly?: boolean;
   payloadPath?: string;
   syncFrom?: string;
+  superAdminOnly?: boolean;
   min?: number;
   max?: number;
   step?: number | string;
@@ -80,4 +81,8 @@ export interface CrudRouteData {
   displayField: string;
   columns: ApiListColumn[];
   fields: CrudFieldConfig[];
+  createEnabled?: boolean;
+  deleteEnabled?: boolean;
+  duplicateEnabled?: boolean;
+  readonlyGlobalRows?: boolean;
 }

@@ -21,6 +21,7 @@ const includeRelations = {
       costo_diesel: true,
       costo_peajes: true,
       costo_estimado_gastos: true,
+      viaticos: true,
       costo_real_gastos: true
     }
   }
@@ -139,6 +140,41 @@ const recalculateCostoEstimadoGastos = async (
   });
 };
 
+const recalculateCostoRealGastos = async (
+  tx: Prisma.TransactionClient,
+  viajeId: bigint
+) => {
+  const viaje = await tx.viaje.findUnique({
+    where: { id: viajeId },
+    select: {
+      viaticos: true
+    }
+  });
+
+  if (!viaje) {
+    throw new AppError('Viaje no encontrado', 404);
+  }
+
+  const reales = await tx.gastoViaje.aggregate({
+    where: {
+      viaje_id: viajeId,
+      es_estimado: false
+    },
+    _sum: {
+      monto: true
+    }
+  });
+
+  const total = toMoney(viaje.viaticos).plus(toMoney(reales._sum.monto ?? 0)).toDecimalPlaces(2);
+
+  await tx.viaje.update({
+    where: { id: viajeId },
+    data: {
+      costo_real_gastos: total
+    }
+  });
+};
+
 export const listGastosViaje = async (
   propietarioIdInput: unknown,
   viajeIdInput: unknown,
@@ -208,6 +244,7 @@ export const createGastoViaje = async (
     });
 
     await recalculateCostoEstimadoGastos(tx, viajeId);
+    await recalculateCostoRealGastos(tx, viajeId);
 
     return tx.gastoViaje.findUniqueOrThrow({
       where: { id: gasto.id },
@@ -249,6 +286,7 @@ export const updateGastoViaje = async (
     });
 
     await recalculateCostoEstimadoGastos(tx, viajeId);
+    await recalculateCostoRealGastos(tx, viajeId);
 
     return tx.gastoViaje.findUniqueOrThrow({
       where: { id: gasto.id },
@@ -275,6 +313,7 @@ export const deleteGastoViaje = async (
     });
 
     await recalculateCostoEstimadoGastos(tx, viajeId);
+    await recalculateCostoRealGastos(tx, viajeId);
 
     return deleted;
   });
