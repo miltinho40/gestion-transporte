@@ -20,6 +20,10 @@ export class ApiService {
     return this.http.put<T>(`${API_BASE_URL}${path}`, body, { params: this.buildParams(params) });
   }
 
+  patch<T>(path: string, body: unknown, params?: Record<string, QueryValue>) {
+    return this.http.patch<T>(`${API_BASE_URL}${path}`, body, { params: this.buildParams(params) });
+  }
+
   delete<T>(path: string, params?: Record<string, QueryValue>) {
     return this.http.delete<T>(`${API_BASE_URL}${path}`, { params: this.buildParams(params) });
   }

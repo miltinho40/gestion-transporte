@@ -1,7 +1,7 @@
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
-import { LucideCalculator, LucideCopy, LucideRefreshCw } from '@lucide/angular';
+import { ActivatedRoute, Router } from '@angular/router';
+import { LucideCalculator, LucideCheck, LucideCopy, LucidePencil, LucideRefreshCw } from '@lucide/angular';
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
@@ -75,6 +75,7 @@ interface ViajeCierre {
   precio_flete: string | number;
   retorno_gastos_viaje: string | number;
   precio_real_flete: string | number;
+  viaticos: string | number;
   utilidad: string | number;
   cobrado: boolean;
   retorno: boolean;
@@ -93,15 +94,21 @@ interface MantenimientoCierre {
 
 interface ActividadSemanalItem {
   trackId: string;
+  sourceId: string;
+  sourceType: 'viaje' | 'mantenimiento';
   fecha: string;
   tipo: 'Viaje' | 'Retorno' | 'Mantenimiento';
   titulo: string;
   detalle: string;
   flete: string | number | null;
   fleteReal: string | number | null;
+  viaticos: string | number | null;
   resultado: string | number | null;
+  copyText: string | null;
+  cobrado: boolean;
   estado: string;
   estadoClass: string;
+  rowClass: string;
   sortTime: number;
 }
 
@@ -113,21 +120,40 @@ const splitGuiasRemision = (values: string[]) =>
 
 const guiasReferencia = (guias: string[]) => guias.join(', ').slice(0, 10);
 
+const todayInputDate = () => {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+};
+
 @Component({
   selector: 'app-weekly-closure-page',
-  imports: [ReactiveFormsModule, LucideCalculator, LucideCopy, LucideRefreshCw, AutoDismissAlertDirective],
+  imports: [
+    ReactiveFormsModule,
+    LucideCalculator,
+    LucideCheck,
+    LucideCopy,
+    LucidePencil,
+    LucideRefreshCw,
+    AutoDismissAlertDirective
+  ],
   templateUrl: './weekly-closure-page.component.html'
 })
 export class WeeklyClosurePageComponent implements OnDestroy {
   private readonly api = inject(ApiService);
   private readonly fb = inject(FormBuilder);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private messageTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly loading = signal(false);
   readonly loadingVehiculos = signal(false);
   readonly generating = signal(false);
   readonly copyingReport = signal(false);
+  readonly markingCobroId = signal<string | null>(null);
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly cierre = signal<CierreSemanal | null>(null);
@@ -178,7 +204,7 @@ export class WeeklyClosurePageComponent implements OnDestroy {
         this.loadingVehiculos.set(false);
       },
       error: (err) => {
-        this.error.set(err?.error?.message ?? 'No se pudieron cargar los vehiculos.');
+        this.error.set(err?.error?.message ?? 'No se pudieron cargar los vehículos.');
         this.loadingVehiculos.set(false);
       }
     });
@@ -187,7 +213,7 @@ export class WeeklyClosurePageComponent implements OnDestroy {
   load() {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
-      this.error.set('Selecciona un vehiculo para consultar el cierre semanal.');
+      this.error.set('Selecciona un vehículo para consultar el cierre semanal.');
       return;
     }
 
@@ -215,7 +241,7 @@ export class WeeklyClosurePageComponent implements OnDestroy {
   generarGastos() {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
-      this.error.set('Selecciona un vehiculo para generar los gastos del cierre.');
+      this.error.set('Selecciona un vehículo para generar los gastos del cierre.');
       return;
     }
 
@@ -246,8 +272,8 @@ export class WeeklyClosurePageComponent implements OnDestroy {
           this.consultedKey.set(this.currentConsultKey());
           this.showMessage(
             isRegeneration
-              ? 'Gastos regenerados y cierre actualizado para el vehiculo y semana.'
-              : 'Gastos generados o actualizados para el vehiculo y semana.'
+              ? 'Gastos regenerados y cierre actualizado para el vehículo y semana.'
+              : 'Gastos generados o actualizados para el vehículo y semana.'
           );
           this.generating.set(false);
         },
@@ -444,35 +470,47 @@ export class WeeklyClosurePageComponent implements OnDestroy {
     const viajes = (cierre.viajes ?? []).map((viaje) => {
       const guiasRemision = splitGuiasRemision(viaje.numeros_guia_remision ?? []);
       const guias = guiasRemision.length
-        ? `Guias: ${guiasReferencia(guiasRemision)}`
+        ? `Guías: ${guiasReferencia(guiasRemision)}`
         : null;
 
       return {
         trackId: `viaje-${viaje.id}`,
+        sourceId: viaje.id,
+        sourceType: 'viaje' as const,
         fecha: this.dateOnly(this.fechaSemanaViaje(viaje)),
         tipo: viaje.retorno ? 'Retorno' as const : 'Viaje' as const,
         titulo: `${viaje.ruta.origen} - ${viaje.ruta.destino}`,
         detalle: [viaje.cliente.nombre, viaje.conductor.nombre, guias].filter(Boolean).join(' | '),
         flete: viaje.precio_flete,
         fleteReal: viaje.precio_real_flete,
+        viaticos: viaje.viaticos,
         resultado: viaje.utilidad,
+        copyText: this.viajeCopyText(viaje, guiasRemision),
+        cobrado: viaje.cobrado,
         estado: this.estadoViajeLabel(viaje.estado),
         estadoClass: 'badge-soft',
+        rowClass: viaje.cobrado ? 'weekly-activity-row-cobrado' : '',
         sortTime: this.dateSortValue(this.fechaSemanaViaje(viaje))
       };
     });
 
     const mantenimientos = (cierre.mantenimientos ?? []).map((mantenimiento) => ({
       trackId: `mantenimiento-${mantenimiento.id}`,
+      sourceId: mantenimiento.id,
+      sourceType: 'mantenimiento' as const,
       fecha: this.dateOnly(mantenimiento.fecha_mantenimiento),
       tipo: 'Mantenimiento' as const,
       titulo: mantenimiento.tipo_mantenimiento.nombre,
       detalle: mantenimiento.descripcion || this.vehiculoLabel(mantenimiento.vehiculo),
       flete: null,
       fleteReal: null,
+      viaticos: null,
       resultado: mantenimiento.costo_total,
+      copyText: null,
+      cobrado: false,
       estado: this.estadoMantenimientoLabel(mantenimiento.estado),
       estadoClass: 'badge-soft-warning',
+      rowClass: 'weekly-activity-row-mantenimiento',
       sortTime: this.dateSortValue(mantenimiento.fecha_mantenimiento)
     }));
 
@@ -482,6 +520,67 @@ export class WeeklyClosurePageComponent implements OnDestroy {
     };
 
     return [...viajes.sort(sortByDate), ...mantenimientos.sort(sortByDate)];
+  }
+
+  editarActividad(item: ActividadSemanalItem) {
+    const route = item.sourceType === 'viaje' ? '/app/viajes' : '/app/mantenimientos';
+    void this.router.navigate([route], {
+      queryParams: {
+        edit: item.sourceId,
+        returnUrl: this.cierreReturnUrl()
+      }
+    });
+  }
+
+  async copiarViajeActividad(item: ActividadSemanalItem) {
+    if (!item.copyText) return;
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(item.copyText);
+      } else {
+        this.copyTextFallback(item.copyText);
+      }
+
+      this.error.set(null);
+      this.showMessage('Texto del viaje copiado.');
+    } catch {
+      this.error.set('No se pudo copiar el texto del viaje.');
+      this.clearMessage();
+    }
+  }
+
+  marcarCobradoActividad(item: ActividadSemanalItem) {
+    if (item.sourceType !== 'viaje' || item.cobrado) return;
+
+    this.markingCobroId.set(item.sourceId);
+    this.error.set(null);
+    this.clearMessage();
+
+    this.api
+      .patch(`/viajes/${item.sourceId}/cobro`, {
+        cobrado: true,
+        fecha_cobro: todayInputDate()
+      })
+      .subscribe({
+        next: () => {
+          this.markingCobroId.set(null);
+          const current = this.cierre();
+          if (current) {
+            this.cierre.set({
+              ...current,
+              viajes: current.viajes.map((viaje) =>
+                viaje.id === item.sourceId ? { ...viaje, cobrado: true } : viaje
+              )
+            });
+          }
+          this.showMessage('Viaje marcado como cobrado.');
+        },
+        error: (err) => {
+          this.markingCobroId.set(null);
+          this.error.set(err?.error?.message ?? 'No se pudo marcar el viaje como cobrado.');
+        }
+      });
   }
 
   private estadoViajeLabel(estado: EstadoViaje) {
@@ -504,6 +603,32 @@ export class WeeklyClosurePageComponent implements OnDestroy {
     };
 
     return labels[estado] ?? estado;
+  }
+
+  private viajeCopyText(viaje: ViajeCierre, guiasRemision: string[]) {
+    return `1 viaje a ${viaje.ruta.destino} g#${guiasRemision.join(', ') || '-'}`;
+  }
+
+  private copyTextFallback(text: string) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+  }
+
+  private cierreReturnUrl() {
+    const { anio, numero_semana, vehiculo_id } = this.form.getRawValue();
+
+    return this.router.serializeUrl(
+      this.router.createUrlTree(['/app/cierre-semanal'], {
+        queryParams: { anio, numero_semana, vehiculo_id }
+      })
+    );
   }
 
   private dateSortValue(value: unknown) {

@@ -1,5 +1,6 @@
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   LucideCopy,
   LucidePencil,
@@ -14,6 +15,7 @@ import { Subscription, forkJoin } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
+import { DialogService } from '../../shared/dialog.service';
 
 type EstadoMantenimiento = 'programado' | 'realizado' | 'cancelado' | 'vencido';
 type CatalogField = 'vehiculo_id' | 'tipo_mantenimiento_id';
@@ -122,8 +124,12 @@ const addDaysInput = (dateInput: string, days: number) => {
 })
 export class MantenimientosPageComponent implements OnDestroy {
   private readonly api = inject(ApiService);
+  private readonly dialog = inject(DialogService);
   private readonly fb = inject(FormBuilder);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly sub = new Subscription();
+  private pendingEditId: string | null = null;
 
   readonly rows = signal<MantenimientoRow[]>([]);
   readonly vehiculos = signal<VehiculoOption[]>([]);
@@ -166,6 +172,12 @@ export class MantenimientosPageComponent implements OnDestroy {
   });
 
   constructor() {
+    this.sub.add(
+      this.route.queryParamMap.subscribe((params) => {
+        this.pendingEditId = params.get('edit') ?? params.get('editId');
+        this.openPendingEdit();
+      })
+    );
     this.load();
   }
 
@@ -188,6 +200,7 @@ export class MantenimientosPageComponent implements OnDestroy {
           this.vehiculos.set(vehiculos);
           this.tiposMantenimiento.set(tipos);
           this.syncCatalogInputs();
+          this.openPendingEdit();
           this.loading.set(false);
         },
         error: (err) => {
@@ -288,11 +301,17 @@ export class MantenimientosPageComponent implements OnDestroy {
   }
 
   closeForm() {
+    const returnUrl = this.editReturnUrl();
     this.formOpen.set(false);
     this.editingRow.set(null);
     this.activeCatalogField.set(null);
     this.error.set(null);
     this.saving.set(false);
+    if (returnUrl) {
+      void this.router.navigateByUrl(returnUrl);
+      return;
+    }
+    this.clearReturnQuery();
   }
 
   save() {
@@ -303,6 +322,7 @@ export class MantenimientosPageComponent implements OnDestroy {
 
     this.recalculateTotals();
     const row = this.editingRow();
+    const returnUrl = row ? this.editReturnUrl() : null;
     const payload = this.buildPayload();
     const request = row
       ? this.api.put<MantenimientoRow>(`/mantenimientos/${row.id}`, payload)
@@ -318,6 +338,10 @@ export class MantenimientosPageComponent implements OnDestroy {
           this.formOpen.set(false);
           this.editingRow.set(null);
           this.message.set(row ? 'Mantenimiento actualizado.' : 'Mantenimiento creado.');
+          if (returnUrl) {
+            void this.router.navigateByUrl(returnUrl);
+            return;
+          }
           this.load();
         },
         error: (err) => {
@@ -328,8 +352,18 @@ export class MantenimientosPageComponent implements OnDestroy {
     );
   }
 
-  delete(row: MantenimientoRow) {
-    if (!confirm(`Cancelar mantenimiento de ${this.vehiculoLabel(row.vehiculo)}?`)) return;
+  async delete(row: MantenimientoRow) {
+    const isCancelado = row.estado === 'cancelado';
+    const action = isCancelado ? 'eliminar definitivamente' : 'cancelar';
+    const confirmed = await this.dialog.confirm({
+      title: isCancelado ? 'Eliminar mantenimiento definitivamente' : 'Cancelar mantenimiento',
+      text: isCancelado
+        ? `Esta acción quitará de la tabla el mantenimiento de ${this.vehiculoLabel(row.vehiculo)}.`
+        : `El mantenimiento de ${this.vehiculoLabel(row.vehiculo)} quedará con estado cancelado.`,
+      confirmText: isCancelado ? 'Sí, eliminar' : 'Sí, cancelar'
+    });
+
+    if (!confirmed) return;
 
     this.deletingId.set(row.id);
     this.error.set(null);
@@ -339,12 +373,15 @@ export class MantenimientosPageComponent implements OnDestroy {
       this.api.delete<MantenimientoRow>(`/mantenimientos/${row.id}`).subscribe({
         next: () => {
           this.deletingId.set(null);
-          this.message.set('Mantenimiento cancelado.');
+          this.message.set(isCancelado ? 'Mantenimiento eliminado.' : 'Mantenimiento cancelado.');
           this.load();
         },
         error: (err) => {
           this.deletingId.set(null);
-          this.error.set(err?.error?.message ?? 'No se pudo cancelar el mantenimiento.');
+          this.error.set(
+            err?.error?.message ??
+              (isCancelado ? 'No se pudo eliminar el mantenimiento.' : 'No se pudo cancelar el mantenimiento.')
+          );
         }
       })
     );
@@ -600,6 +637,47 @@ export class MantenimientosPageComponent implements OnDestroy {
         { emitEvent: false }
       );
     }
+  }
+
+  private openPendingEdit() {
+    if (!this.pendingEditId || !this.rows().length) return;
+
+    const row = this.rows().find((item) => String(item.id) === this.pendingEditId);
+    if (!row) {
+      this.error.set('No se encontró el mantenimiento solicitado.');
+      this.pendingEditId = null;
+      this.clearEditQuery();
+      return;
+    }
+
+    this.pendingEditId = null;
+    this.openEdit(row);
+    this.clearEditQuery();
+  }
+
+  private clearEditQuery() {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { edit: null, editId: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
+  }
+
+  private editReturnUrl() {
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+    return returnUrl?.startsWith('/app/') ? returnUrl : null;
+  }
+
+  private clearReturnQuery() {
+    if (!this.route.snapshot.queryParamMap.has('returnUrl')) return;
+
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { returnUrl: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
   }
 
   private buildPayload() {

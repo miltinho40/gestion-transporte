@@ -152,12 +152,31 @@ export const deactivateCliente = async (propietarioIdInput: unknown, idInput: un
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getClienteById(propietarioId, id);
+  const current = await getClienteById(propietarioId, id);
 
-  return prisma.cliente.update({
-    where: { id },
-    data: {
-      activo: false
+  if (current.activo) {
+    return prisma.cliente.update({
+      where: { id },
+      data: {
+        activo: false
+      }
+    });
+  }
+
+  const viajes = await prisma.viaje.count({
+    where: {
+      propietario_id: propietarioId,
+      cliente_id: id
     }
   });
+
+  if (viajes > 0) {
+    throw new AppError('El cliente ya esta usado en algunos viajes', 409);
+  }
+
+  await prisma.cliente.delete({
+    where: { id }
+  });
+
+  return current;
 };

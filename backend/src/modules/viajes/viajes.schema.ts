@@ -92,8 +92,15 @@ export const viajeCobroSchema = z.object({
   fecha_cobro: dateOnlySchema.optional().nullable()
 });
 
+export const viajeGuiasSchema = z.object({
+  numeros_guia_remision: guiaRemisionSchema.refine((value) => value.length > 0, {
+    message: 'Debe ingresar al menos una guia'
+  })
+});
+
 export type ViajeCreateInput = z.infer<typeof viajeCreateSchema>;
 export type ViajeUpdateInput = z.infer<typeof viajeUpdateSchema>;
 export type ViajeEstadoInput = z.infer<typeof viajeEstadoSchema>;
 export type ViajeCobroInput = z.infer<typeof viajeCobroSchema>;
+export type ViajeGuiasInput = z.infer<typeof viajeGuiasSchema>;
 export type ViajeEstadoApi = (typeof viajeEstadoValues)[number];

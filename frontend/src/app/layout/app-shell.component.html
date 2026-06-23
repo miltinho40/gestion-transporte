@@ -175,11 +175,20 @@
         <div class="nav-section-items">
           <a routerLink="/app/reportes" routerLinkActive="active">
             <svg lucideFileSpreadsheet size="17"></svg>
-            Reportes
+            Reporte de viajes
+          </a>
+          <a routerLink="/app/utilidad" routerLinkActive="active">
+            <svg lucideFileSpreadsheet size="17"></svg>
+            Utilidad mensual
           </a>
         </div>
       }
     </nav>
+
+    <a class="account-link" routerLink="/app/cambiar-clave" routerLinkActive="active">
+      <svg lucideKeyRound size="17"></svg>
+      Cambiar clave
+    </a>
 
     <button class="logout-button" type="button" (click)="logout()">
       <svg lucideLogOut size="17"></svg>

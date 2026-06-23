@@ -16,6 +16,7 @@ import { Subscription, forkJoin } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
+import { DialogService } from '../../shared/dialog.service';
 
 type SentidoPeaje = 'ida' | 'retorno' | 'ambos';
 
@@ -98,6 +99,7 @@ const normalizeSentido = (value?: string | null): SentidoPeaje => {
 export class RutasPageComponent implements OnDestroy {
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
+  private readonly dialog = inject(DialogService);
   private readonly fb = inject(FormBuilder);
   private readonly sub = new Subscription();
 
@@ -379,8 +381,14 @@ export class RutasPageComponent implements OnDestroy {
     );
   }
 
-  delete(row: RutaRow) {
-    if (!confirm(`Eliminar o desactivar ${row.origen} - ${row.destino}?`)) return;
+  async delete(row: RutaRow) {
+    const confirmed = await this.dialog.confirm({
+      title: 'Eliminar o desactivar ruta',
+      text: `Se va a eliminar o desactivar ${row.origen} - ${row.destino}.`,
+      confirmText: 'Sí, continuar'
+    });
+
+    if (!confirmed) return;
 
     this.deletingId.set(row.id);
     this.error.set(null);

@@ -1,4 +1,5 @@
 @import "bootstrap/dist/css/bootstrap.min.css";
+@import "sweetalert2/dist/sweetalert2.min.css";
 
 :root {
   --app-bg: #f5f7fa;
@@ -34,6 +35,14 @@ body {
 .card,
 .modal-content {
   border-radius: 8px;
+}
+
+.app-alert-modal {
+  border-radius: 8px;
+}
+
+.swal2-actions {
+  gap: 0.5rem;
 }
 
 .modal-dialog.modal-xl.modal-dialog-scrollable {
@@ -618,6 +627,456 @@ body {
   cursor: pointer;
 }
 
+.weekly-activity-detail-col {
+  min-width: 220px;
+}
+
+.weekly-activity-date-col {
+  min-width: 112px;
+  white-space: nowrap;
+}
+
+.weekly-activity-viatico-col {
+  min-width: 96px;
+  white-space: nowrap;
+}
+
+.weekly-activity-actions-col {
+  width: 96px;
+  min-width: 96px;
+  white-space: nowrap;
+}
+
+.weekly-activity-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+}
+
+.table > tbody > tr.weekly-activity-row-mantenimiento > td {
+  background: #e7f6ec;
+}
+
+.table > tbody > tr.weekly-activity-row-cobrado > td {
+  background: #e6f6ff;
+  font-weight: 700;
+}
+
+.reports-travel-filters {
+  display: grid;
+  grid-template-columns: 90px minmax(260px, 1.15fr) minmax(210px, 1fr) minmax(250px, 1.1fr) auto;
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.reports-travel-filters-annual {
+  grid-template-columns: 90px minmax(170px, 0.9fr) minmax(170px, 0.85fr) minmax(220px, 1.1fr) 130px;
+}
+
+.reports-month-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.35rem 0.55rem;
+}
+
+.reports-month-option {
+  min-height: 28px;
+  margin: 0;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.reports-month-option .form-check-input {
+  margin-top: 0.2rem;
+}
+
+.reports-multi-select {
+  min-height: 116px;
+}
+
+.reports-filter-actions {
+  display: flex;
+  align-items: end;
+  height: 100%;
+  padding-top: 1.85rem;
+}
+
+.reports-combo {
+  position: relative;
+}
+
+.reports-combo-toggle {
+  overflow: hidden;
+  width: 100%;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reports-combo-menu {
+  position: absolute;
+  z-index: 1050;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  display: grid;
+  gap: 0.45rem;
+  min-width: 260px;
+  padding: 0.65rem;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(16, 24, 40, 0.14);
+}
+
+.reports-combo-options {
+  display: grid;
+  gap: 0.25rem;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.reports-combo-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 0.45rem;
+  align-items: center;
+  margin: 0;
+  padding: 0.35rem;
+  border-radius: 6px;
+  color: #344054;
+  font-size: 0.82rem;
+}
+
+.reports-combo-option:hover {
+  background: #f2f4f7;
+}
+
+.reports-combo-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reports-combo-empty {
+  color: var(--app-muted);
+  font-size: 0.8rem;
+}
+
+.reports-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+}
+
+.reports-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  padding: 0.16rem 0.42rem;
+  border: 1px solid #b7dfc4;
+  border-radius: 999px;
+  background: #e7f6ec;
+  color: #0f5132;
+  font-size: 0.74rem;
+  line-height: 1.25;
+}
+
+.reports-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.reports-travel-summary-grid {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.reports-summary-card {
+  min-height: 72px;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.reports-summary-card span {
+  display: block;
+  color: var(--app-muted);
+  font-size: 0.78rem;
+}
+
+.reports-summary-card strong {
+  display: block;
+  color: var(--app-text);
+  font-size: 1.35rem;
+  line-height: 1.4;
+}
+
+.reports-travel-summary-grid .reports-summary-card {
+  min-height: 64px;
+  padding: 0.55rem 0.65rem;
+}
+
+.reports-travel-summary-grid .reports-summary-card span {
+  font-size: 0.7rem;
+}
+
+.reports-travel-summary-grid .reports-summary-card strong {
+  font-size: 1rem;
+}
+
+.reports-summary-green {
+  background: #e7f6ec;
+  border-color: #b7dfc4;
+}
+
+.reports-summary-info {
+  background: #e6f6ff;
+  border-color: #a8d9f0;
+}
+
+.reports-summary-danger {
+  background: #fdecec;
+  border-color: #f4b8b8;
+}
+
+.reports-month-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.reports-month-summary-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #475467;
+  font-size: 0.84rem;
+}
+
+.reports-select-col {
+  width: 42px;
+  min-width: 42px;
+  text-align: center;
+}
+
+.reports-actions-col {
+  width: 72px;
+  min-width: 72px;
+  text-align: center;
+}
+
+.reports-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.reports-guide-inline {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 28px;
+  gap: 0.35rem;
+  align-items: center;
+  width: 190px;
+}
+
+.table > tbody > tr.reports-row-week-green > td {
+  background: #d8efdd;
+}
+
+.table-hover > tbody > tr.reports-row-week-green:hover > td {
+  background: #c7e4cf;
+}
+
+.table > tbody > tr.reports-row-cobrado > td {
+  color: #184a72;
+  font-weight: 400;
+}
+
+.utility-filter-bar {
+  display: grid;
+  grid-template-columns: 100px 180px minmax(240px, 1fr) auto;
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.utility-filter-actions {
+  display: flex;
+  align-items: end;
+  height: 100%;
+  padding-top: 1.85rem;
+}
+
+.utility-summary-grid {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.utility-summary-grid .reports-summary-card {
+  min-height: 66px;
+  padding: 0.6rem 0.65rem;
+}
+
+.utility-summary-grid .reports-summary-card span {
+  font-size: 0.72rem;
+}
+
+.utility-summary-grid .reports-summary-card strong {
+  font-size: 1.05rem;
+}
+
+.utility-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.utility-chart-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.utility-bar-row {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.utility-bar-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  color: #344054;
+  font-size: 0.85rem;
+}
+
+.utility-bar-label strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.utility-bar-track {
+  overflow: hidden;
+  height: 12px;
+  border-radius: 999px;
+  background: #eef2f6;
+}
+
+.utility-bar {
+  height: 100%;
+  border-radius: inherit;
+}
+
+.utility-bar-green {
+  background: #40a36b;
+}
+
+.utility-bar-info {
+  background: #46a9d8;
+}
+
+.utility-bar-danger {
+  background: #f97066;
+}
+
+.utility-bar-blue {
+  background: #3b82f6;
+}
+
+.utility-bar-note {
+  color: var(--app-muted);
+  font-size: 0.76rem;
+}
+
+.utility-pie-layout {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: center;
+}
+
+.utility-pie {
+  position: relative;
+  width: 128px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+
+.utility-pie::after {
+  position: absolute;
+  inset: 24px;
+  border-radius: 50%;
+  background: #fff;
+  content: '';
+}
+
+.utility-pie-center {
+  position: absolute;
+  z-index: 1;
+  inset: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.utility-pie-center span {
+  color: var(--app-muted);
+  font-size: 0.68rem;
+}
+
+.utility-pie-center strong {
+  color: var(--app-text);
+  font-size: 0.86rem;
+  line-height: 1.15;
+}
+
+.utility-pie-legend {
+  display: grid;
+  gap: 0.4rem;
+  max-height: 176px;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+
+.utility-pie-legend-item {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) 46px 76px;
+  gap: 0.4rem;
+  align-items: center;
+  color: #475467;
+  font-size: 0.74rem;
+}
+
+.utility-pie-legend-item strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--app-text);
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.utility-pie-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
 @media (max-width: 1199.98px) {
   .weekly-closure-header {
     align-items: stretch;
@@ -625,6 +1084,14 @@ body {
 
   .weekly-closure-form {
     flex-wrap: wrap;
+  }
+
+  .utility-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .utility-chart-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -640,6 +1107,35 @@ body {
 
   .weekly-closure-quick-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reports-travel-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reports-filter-actions {
+    padding-top: 0;
+  }
+
+  .reports-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .utility-filter-bar,
+  .utility-chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .utility-pie-layout {
+    grid-template-columns: 120px minmax(0, 1fr);
+  }
+
+  .utility-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .utility-filter-actions {
+    padding-top: 0;
   }
 }
 
@@ -657,6 +1153,16 @@ body {
 
   .weekly-closure-quick-summary {
     grid-template-columns: 1fr;
+  }
+
+  .reports-travel-filters,
+  .reports-summary-grid,
+  .utility-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reports-month-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -748,11 +1254,15 @@ td.mantenimientos-description-col {
   font-weight: 700;
 }
 
-.table > tbody > tr.viaje-row-cancelado > td:not(.actions-cell) {
+.table > tbody > tr.viaje-row-cancelado > td:not(.actions-cell),
+.table > tbody > tr.mantenimiento-row-cancelado > td:not(.actions-cell),
+.table > tbody > tr.crud-row-disabled > td:not(.actions-cell) {
   color: #b42318;
 }
 
-.table > tbody > tr.viaje-row-cancelado .badge:not(.viaje-week-badge) {
+.table > tbody > tr.viaje-row-cancelado .badge:not(.viaje-week-badge),
+.table > tbody > tr.mantenimiento-row-cancelado .badge:not(.viaje-week-badge),
+.table > tbody > tr.crud-row-disabled .badge:not(.viaje-week-badge) {
   background: #fee4e2;
   color: #b42318;
 }

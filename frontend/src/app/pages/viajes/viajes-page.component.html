@@ -66,8 +66,8 @@
         class="form-control"
         type="search"
         list="viajes-vehiculos-filter-options"
-        placeholder="Filtrar vehiculo o placa"
-        aria-label="Filtrar por vehiculo"
+        placeholder="Filtrar vehículo o placa"
+        aria-label="Filtrar por vehículo"
         [ngModel]="filterVehiculoTerm()"
         (ngModelChange)="filterVehiculoTerm.set($event)"
       />
@@ -147,7 +147,7 @@
             </td>
             <td>
               @if (row.retorno) {
-                <span class="badge badge-soft-warning">Si</span>
+                <span class="badge badge-soft-warning">Sí</span>
               } @else {
                 <span class="badge text-bg-light">No</span>
               }
@@ -158,6 +158,18 @@
                 <button type="button" class="btn btn-outline-secondary" (click)="openDuplicate(row)" title="Duplicar">
                   <svg lucideCopy size="15"></svg>
                 </button>
+                @if (!row.cobrado && row.estado !== 'cancelado') {
+                  <button
+                    type="button"
+                    class="btn btn-outline-success"
+                    (click)="marcarCobrado(row)"
+                    [disabled]="markingCobroId() === row.id"
+                    title="Marcar cobrado"
+                    aria-label="Marcar cobrado"
+                  >
+                    <svg lucideCheck size="15"></svg>
+                  </button>
+                }
                 <button type="button" class="btn btn-outline-secondary" (click)="openEdit(row)" title="Editar">
                   <svg lucidePencil size="15"></svg>
                 </button>
@@ -402,7 +414,7 @@
                     <input id="retorno" class="form-check-input" type="checkbox" formControlName="retorno" />
                     <label class="form-check-label" for="retorno">
                       @if (form.controls.retorno.value) {
-                        Si
+                        Sí
                       } @else {
                         No
                       }

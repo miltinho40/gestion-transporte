@@ -1,0 +1,314 @@
+<div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">Utilidad</h1>
+    <p class="text-secondary mb-0">Ingresos, gastos y ganancia neta por mes y semana.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <button
+      class="btn btn-outline-success btn-sm d-inline-flex align-items-center gap-2"
+      type="button"
+      (click)="exportReport('xlsx')"
+      [disabled]="downloading() || loading()"
+    >
+      <svg lucideDownload size="16"></svg>
+      Excel
+    </button>
+    <button
+      class="btn btn-outline-danger btn-sm d-inline-flex align-items-center gap-2"
+      type="button"
+      (click)="exportReport('pdf')"
+      [disabled]="downloading() || loading()"
+    >
+      <svg lucideDownload size="16"></svg>
+      PDF
+    </button>
+  </div>
+</div>
+
+@if (error()) {
+  <div class="alert alert-danger" autoDismissAlert>{{ error() }}</div>
+}
+
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-white d-flex align-items-center gap-2 fw-semibold">
+    <svg lucideFileSpreadsheet size="18"></svg>
+    Filtros
+  </div>
+  <div class="card-body">
+    <form [formGroup]="form" class="utility-filter-bar">
+      <div>
+        <label class="form-label">Año</label>
+        <input class="form-control form-control-sm" type="number" formControlName="anio" />
+      </div>
+      <div>
+        <label class="form-label">Mes</label>
+        <select class="form-select form-select-sm" formControlName="mes">
+          @for (month of monthOptions; track month.value) {
+            <option [value]="month.value">{{ month.label }}</option>
+          }
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Vehículo</label>
+        <select class="form-select form-select-sm" formControlName="vehiculo_id" [disabled]="loadingCatalogs()">
+          <option value="">Todos</option>
+          @for (vehiculo of vehiculos(); track vehiculo.id) {
+            <option [value]="vehiculo.id">{{ vehiculo.placa }} - {{ vehiculo.marca }}</option>
+          }
+        </select>
+      </div>
+      <div class="utility-filter-actions">
+        <button
+          class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
+          type="button"
+          (click)="loadReport()"
+          [disabled]="loading()"
+        >
+          <svg lucideRefreshCw size="15"></svg>
+          Consultar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+@if (report(); as report) {
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+    <div class="text-secondary">
+      {{ report.periodo.mes_label }} {{ report.periodo.anio }}
+    </div>
+    <div class="small text-secondary">
+      Semanas incluidas: {{ report.semanas.length }}
+    </div>
+  </div>
+
+  <div class="reports-summary-grid utility-summary-grid mb-3">
+    <div class="reports-summary-card">
+      <span>Viajes</span>
+      <strong>{{ report.resumen.cantidad_viajes }}</strong>
+    </div>
+    <div class="reports-summary-card reports-summary-green">
+      <span>Precio fletes</span>
+      <strong>$ {{ money(report.resumen.totales.precio_fletes) }}</strong>
+    </div>
+    <div class="reports-summary-card reports-summary-green">
+      <span>Total facturado</span>
+      <strong>$ {{ money(report.resumen.totales.total_facturado) }}</strong>
+    </div>
+    <div class="reports-summary-card reports-summary-info">
+      <span>Utilidad viajes</span>
+      <strong>$ {{ money(report.resumen.totales.utilidad_viajes) }}</strong>
+    </div>
+    <div class="reports-summary-card reports-summary-danger">
+      <span>Mantenimientos</span>
+      <strong>$ {{ money(report.resumen.totales.mantenimientos) }}</strong>
+    </div>
+    <div class="reports-summary-card reports-summary-danger">
+      <span>Sueldos</span>
+      <strong>$ {{ money(report.resumen.totales.sueldos) }}</strong>
+    </div>
+    <div class="reports-summary-card reports-summary-danger">
+      <span>Bonos</span>
+      <strong>$ {{ money(report.resumen.totales.bonos) }}</strong>
+    </div>
+    <div
+      class="reports-summary-card"
+      [class.reports-summary-info]="number(report.resumen.totales.ganancia_neta) >= 0"
+      [class.reports-summary-danger]="number(report.resumen.totales.ganancia_neta) < 0"
+    >
+      <span>Ganancia neta</span>
+      <strong>$ {{ money(report.resumen.totales.ganancia_neta) }}</strong>
+    </div>
+  </div>
+
+  <div class="utility-chart-grid mb-3">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white fw-semibold">Total facturado por vehículo</div>
+      <div class="card-body utility-chart-list">
+        @for (item of report.vehiculos; track item.vehiculo.id) {
+          <div class="utility-bar-row">
+            <div class="utility-bar-label">
+              <strong>{{ item.vehiculo.placa }}</strong>
+              <span>$ {{ money(item.totales.total_facturado) }}</span>
+            </div>
+            <div class="utility-bar-track">
+              <div
+                class="utility-bar utility-bar-green"
+                [style.width]="barWidth(item.totales.total_facturado, maxVehiculoValue('total_facturado'))"
+              ></div>
+            </div>
+            <div class="utility-bar-note">
+              {{ item.cantidad_viajes }} viajes - Precio fletes $ {{ money(item.totales.precio_fletes) }}
+            </div>
+          </div>
+        } @empty {
+          <div class="text-secondary small">Sin datos para graficar.</div>
+        }
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white fw-semibold">Ganancia neta por vehículo</div>
+      <div class="card-body utility-chart-list">
+        @for (item of report.vehiculos; track item.vehiculo.id) {
+          <div class="utility-bar-row">
+            <div class="utility-bar-label">
+              <strong>{{ item.vehiculo.placa }}</strong>
+              <span>$ {{ money(item.totales.ganancia_neta) }}</span>
+            </div>
+            <div class="utility-bar-track">
+              <div
+                class="utility-bar"
+                [class.utility-bar-info]="number(item.totales.ganancia_neta) >= 0"
+                [class.utility-bar-danger]="number(item.totales.ganancia_neta) < 0"
+                [style.width]="barWidth(item.totales.ganancia_neta, maxVehiculoValue('ganancia_neta'))"
+              ></div>
+            </div>
+          </div>
+        } @empty {
+          <div class="text-secondary small">Sin datos para graficar.</div>
+        }
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white fw-semibold">Mantenimientos por vehículo</div>
+      <div class="card-body utility-chart-list">
+        @for (item of report.vehiculos; track item.vehiculo.id) {
+          <div class="utility-bar-row">
+            <div class="utility-bar-label">
+              <strong>{{ item.vehiculo.placa }}</strong>
+              <span>$ {{ money(item.totales.mantenimientos) }}</span>
+            </div>
+            <div class="utility-bar-track">
+              <div
+                class="utility-bar utility-bar-danger"
+                [style.width]="barWidth(item.totales.mantenimientos, maxVehiculoValue('mantenimientos'))"
+              ></div>
+            </div>
+          </div>
+        } @empty {
+          <div class="text-secondary small">Sin datos para graficar.</div>
+        }
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white fw-semibold">Pago a transportistas</div>
+      <div class="card-body utility-chart-list">
+        @for (item of report.transportistas; track item.conductor.id) {
+          <div class="utility-bar-row">
+            <div class="utility-bar-label">
+              <strong>{{ item.conductor.nombre }}</strong>
+              <span>$ {{ money(item.totales.pago_transportistas) }}</span>
+            </div>
+            <div class="utility-bar-track">
+              <div
+                class="utility-bar utility-bar-blue"
+                [style.width]="barWidth(item.totales.pago_transportistas, maxTransportistaPago())"
+              ></div>
+            </div>
+            <div class="utility-bar-note">
+              Sueldo $ {{ money(item.totales.sueldos) }} · Bono $ {{ money(item.totales.bonos) }} · Retornos
+              $ {{ money(item.totales.retornos) }} · Domingo $ {{ money(item.totales.domingos) }}
+            </div>
+          </div>
+        } @empty {
+          <div class="text-secondary small">Sin transportistas para graficar.</div>
+        }
+      </div>
+    </div>
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white fw-semibold">Clientes</div>
+      <div class="card-body">
+        @if (report.clientes.length) {
+          <div class="utility-pie-layout">
+            <div class="utility-pie" [style.background]="clientPieGradient(report)">
+              <div class="utility-pie-center">
+                <span>Total</span>
+                <strong>$ {{ money(clientTotalFacturado(report)) }}</strong>
+              </div>
+            </div>
+            <div class="utility-pie-legend">
+              @for (item of report.clientes; track item.cliente.id; let index = $index) {
+                <div class="utility-pie-legend-item">
+                  <span class="utility-pie-dot" [style.background]="clientColor(index)"></span>
+                  <strong>{{ item.cliente.nombre }}</strong>
+                  <span>{{ clientPercent(item, report) }}%</span>
+                  <span>$ {{ money(item.totales.total_facturado) }}</span>
+                </div>
+              }
+            </div>
+          </div>
+        } @else {
+          <div class="text-secondary small">Sin clientes para graficar.</div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white fw-semibold">Desglose por semana</div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Semana</th>
+            <th>Fechas</th>
+            <th>Viajes</th>
+            <th>Precio fletes</th>
+            <th>Total facturado</th>
+            <th>Utilidad viajes</th>
+            <th>Mantenimientos</th>
+            <th>Sueldos</th>
+            <th>Bonos</th>
+            <th>Ganancia neta</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of report.semanas; track row.anio + '-' + row.numero_semana) {
+            <tr>
+              <td class="fw-semibold">Semana {{ row.numero_semana }}</td>
+              <td>{{ dateOnly(row.fecha_inicio) }} - {{ dateOnly(row.fecha_fin) }}</td>
+              <td>{{ row.cantidad_viajes }}</td>
+              <td>$ {{ money(row.totales.precio_fletes) }}</td>
+              <td>$ {{ money(row.totales.total_facturado) }}</td>
+              <td>$ {{ money(row.totales.utilidad_viajes) }}</td>
+              <td>$ {{ money(row.totales.mantenimientos) }}</td>
+              <td>$ {{ money(row.totales.sueldos) }}</td>
+              <td>$ {{ money(row.totales.bonos) }}</td>
+              <td class="fw-semibold" [class.text-danger]="number(row.totales.ganancia_neta) < 0">
+                $ {{ money(row.totales.ganancia_neta) }}
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="10" class="text-center text-secondary py-4">
+                @if (loading()) {
+                  Cargando reporte...
+                } @else {
+                  Sin semanas para los filtros seleccionados.
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+} @else {
+  <div class="card border-0 shadow-sm">
+    <div class="card-body text-secondary">
+      @if (loading()) {
+        Cargando reporte...
+      } @else {
+        Consulta un mes para ver la utilidad.
+      }
+    </div>
+  </div>
+}
+
+@if (downloading()) {
+  <div class="text-secondary mt-3">Generando archivo...</div>
+}

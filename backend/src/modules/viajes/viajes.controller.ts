@@ -3,6 +3,7 @@ import { asyncHandler } from '../../utils/async-handler.js';
 import { serializeResponse } from '../../utils/response.js';
 import { formatViaje, formatViajes } from './viajes.mapper.js';
 import {
+  addGuiasViaje,
   calculateViajeValores,
   cancelViaje,
   createViaje,
@@ -47,6 +48,11 @@ export const updateEstadoViajeController = asyncHandler(
 
 export const updateCobroViajeController = asyncHandler(async (req: Request, res: Response) => {
   const viaje = await updateCobroViaje(req.user!.propietario_id, req.params.id, req.body);
+  res.json(serializeResponse(formatViaje(viaje)));
+});
+
+export const addGuiasViajeController = asyncHandler(async (req: Request, res: Response) => {
+  const viaje = await addGuiasViaje(req.user!.propietario_id, req.params.id, req.body);
   res.json(serializeResponse(formatViaje(viaje)));
 });
 

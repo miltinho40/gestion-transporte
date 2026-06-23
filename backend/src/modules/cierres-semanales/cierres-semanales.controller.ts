@@ -17,7 +17,11 @@ export const getCierreSemanalController = asyncHandler(async (req: Request, res:
 
 export const generarGastosCierreSemanalController = asyncHandler(
   async (req: Request, res: Response) => {
-    const cierre = await generarGastosCierreSemanal(req.user!.propietario_id, req.body);
+    const cierre = await generarGastosCierreSemanal(
+      req.user!.propietario_id,
+      req.body,
+      req.user!.usuario_id
+    );
     res.status(201).json(serializeResponse(cierre));
   }
 );

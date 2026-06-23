@@ -1,7 +1,9 @@
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   LucideCalculator,
+  LucideCheck,
   LucideCopy,
   LucidePencil,
   LucidePlus,
@@ -14,6 +16,7 @@ import { Subscription, forkJoin, map, of, switchMap } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
+import { DialogService } from '../../shared/dialog.service';
 
 type EstadoViaje = 'programado' | 'en_curso' | 'completado' | 'cancelado';
 type ViajeCatalogField = 'cliente_id' | 'vehiculo_id' | 'conductor_id' | 'tarifa_ruta_id' | 'tipo_gasto_id';
@@ -214,6 +217,7 @@ const splitGuiasRemision = (value: unknown) =>
     FormsModule,
     ReactiveFormsModule,
     LucideCalculator,
+    LucideCheck,
     LucideCopy,
     LucidePencil,
     LucidePlus,
@@ -227,8 +231,12 @@ const splitGuiasRemision = (value: unknown) =>
 })
 export class ViajesPageComponent implements OnDestroy {
   private readonly api = inject(ApiService);
+  private readonly dialog = inject(DialogService);
   private readonly fb = inject(FormBuilder);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly sub = new Subscription();
+  private pendingEditId: string | null = null;
 
   readonly rows = signal<ViajeRow[]>([]);
   readonly clientes = signal<ClienteOption[]>([]);
@@ -241,6 +249,7 @@ export class ViajesPageComponent implements OnDestroy {
   readonly loading = signal(false);
   readonly saving = signal(false);
   readonly deletingId = signal<string | null>(null);
+  readonly markingCobroId = signal<string | null>(null);
   readonly formOpen = signal(false);
   readonly editingRow = signal<ViajeRow | null>(null);
   readonly error = signal<string | null>(null);
@@ -300,6 +309,23 @@ export class ViajesPageComponent implements OnDestroy {
   });
 
   constructor() {
+    this.sub.add(
+      this.route.queryParamMap.subscribe((params) => {
+        this.pendingEditId = params.get('edit') ?? params.get('editId');
+        this.openPendingEdit();
+      })
+    );
+    this.sub.add(
+      this.form.controls.cobrado.valueChanges.subscribe((cobrado) => {
+        if (cobrado && !this.form.controls.fecha_cobro.value) {
+          this.form.controls.fecha_cobro.setValue(todayInputDate(), { emitEvent: false });
+        }
+
+        if (!cobrado) {
+          this.form.controls.fecha_cobro.setValue('', { emitEvent: false });
+        }
+      })
+    );
     this.load();
   }
 
@@ -328,6 +354,7 @@ export class ViajesPageComponent implements OnDestroy {
           this.tarifasRuta.set(tarifasRuta);
           this.tiposGasto.set(tiposGasto);
           this.syncCatalogInputs();
+          this.openPendingEdit();
           this.loading.set(false);
         },
         error: (err) => {
@@ -505,12 +532,18 @@ export class ViajesPageComponent implements OnDestroy {
   }
 
   closeForm() {
+    const returnUrl = this.editReturnUrl();
     this.formOpen.set(false);
     this.editingRow.set(null);
     this.gastos.set([]);
     this.deletedGastoIds.set([]);
     this.saving.set(false);
     this.error.set(null);
+    if (returnUrl) {
+      void this.router.navigateByUrl(returnUrl);
+      return;
+    }
+    this.clearReturnQuery();
   }
 
   openCatalog(field: ViajeCatalogField) {
@@ -570,8 +603,14 @@ export class ViajesPageComponent implements OnDestroy {
   }
 
   onTarifaChange() {
+    const preserveViaticos = Boolean(this.editingRow());
+
     this.form.controls.precio_flete.setValue(0);
-    this.fetchCalculation({ forcePrecioFlete: true, resetPrecioReal: true, resetCostoReal: true });
+    this.fetchCalculation({
+      forcePrecioFlete: true,
+      resetPrecioReal: true,
+      resetCostoReal: !preserveViaticos
+    });
   }
 
   onCalculationInputChanged() {
@@ -735,6 +774,7 @@ export class ViajesPageComponent implements OnDestroy {
     }
 
     const row = this.editingRow();
+    const returnUrl = row ? this.editReturnUrl() : null;
     const payload = this.buildPayload();
     const request = row
       ? this.api.put<ViajeRow>(`/viajes/${row.id}`, payload)
@@ -757,6 +797,10 @@ export class ViajesPageComponent implements OnDestroy {
             this.saving.set(false);
             this.formOpen.set(false);
             this.message.set(row ? 'Viaje actualizado.' : 'Viaje creado.');
+            if (returnUrl) {
+              void this.router.navigateByUrl(returnUrl);
+              return;
+            }
             this.load();
           },
           error: (err) => {
@@ -767,10 +811,53 @@ export class ViajesPageComponent implements OnDestroy {
     );
   }
 
-  delete(row: ViajeRow) {
+  async marcarCobrado(row: ViajeRow) {
+    if (row.cobrado || row.estado === 'cancelado') return;
+
+    const confirmed = await this.dialog.confirm({
+      title: 'Marcar viaje como cobrado',
+      text: `Se registrará la fecha de cobro de hoy para el viaje de ${row.cliente?.nombre ?? 'este cliente'}.`,
+      confirmText: 'Sí, marcar cobrado'
+    });
+
+    if (!confirmed) return;
+
+    this.markingCobroId.set(row.id);
+    this.error.set(null);
+    this.message.set(null);
+
+    this.sub.add(
+      this.api
+        .patch<ViajeRow>(`/viajes/${row.id}/cobro`, {
+          cobrado: true,
+          fecha_cobro: todayInputDate()
+        })
+        .subscribe({
+          next: () => {
+            this.markingCobroId.set(null);
+            this.message.set('Viaje marcado como cobrado.');
+            this.load();
+          },
+          error: (err) => {
+            this.markingCobroId.set(null);
+            this.error.set(err?.error?.message ?? 'No se pudo marcar el viaje como cobrado.');
+          }
+        })
+    );
+  }
+
+  async delete(row: ViajeRow) {
     const isCancelado = row.estado === 'cancelado';
     const action = isCancelado ? 'eliminar definitivamente' : 'cancelar';
-    if (!confirm(`Deseas ${action} el viaje de ${row.cliente?.nombre ?? 'cliente'}?`)) return;
+    const confirmed = await this.dialog.confirm({
+      title: isCancelado ? 'Eliminar viaje definitivamente' : 'Cancelar viaje',
+      text: isCancelado
+        ? `Esta acción quitará de la tabla el viaje de ${row.cliente?.nombre ?? 'este cliente'}.`
+        : `El viaje de ${row.cliente?.nombre ?? 'este cliente'} quedará con estado cancelado.`,
+      confirmText: isCancelado ? 'Sí, eliminar' : 'Sí, cancelar'
+    });
+
+    if (!confirmed) return;
 
     this.deletingId.set(row.id);
     this.error.set(null);
@@ -837,7 +924,7 @@ export class ViajesPageComponent implements OnDestroy {
       costo_real_gastos: this.totalGastosReales(),
       cobrado: value.cobrado,
       retorno: value.retorno,
-      fecha_cobro: value.fecha_cobro || null,
+      fecha_cobro: value.cobrado ? value.fecha_cobro || todayInputDate() : null,
       estado: value.estado,
       observaciones: value.observaciones || null
     };
@@ -1003,5 +1090,46 @@ export class ViajesPageComponent implements OnDestroy {
         : this.form.controls[field].value;
     const option = this.catalogOptions(field).find((item) => String(item.value) === String(value));
     this.catalogInput.update((current) => ({ ...current, [field]: option?.label ?? '' }));
+  }
+
+  private openPendingEdit() {
+    if (!this.pendingEditId || !this.rows().length) return;
+
+    const row = this.rows().find((item) => String(item.id) === this.pendingEditId);
+    if (!row) {
+      this.error.set('No se encontró el viaje solicitado.');
+      this.pendingEditId = null;
+      this.clearEditQuery();
+      return;
+    }
+
+    this.pendingEditId = null;
+    this.openEdit(row);
+    this.clearEditQuery();
+  }
+
+  private clearEditQuery() {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { edit: null, editId: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
+  }
+
+  private editReturnUrl() {
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+    return returnUrl?.startsWith('/app/') ? returnUrl : null;
+  }
+
+  private clearReturnQuery() {
+    if (!this.route.snapshot.queryParamMap.has('returnUrl')) return;
+
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { returnUrl: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
   }
 }

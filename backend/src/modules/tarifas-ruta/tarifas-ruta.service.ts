@@ -273,11 +273,30 @@ export const deactivateTarifaRuta = async (
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getTarifaRutaById(propietarioId, id);
+  const current = await getTarifaRutaById(propietarioId, id);
 
-  return prisma.tarifaRuta.update({
-    where: { id },
-    data: { activa: false },
-    include: includeRelations
+  if (current.activa) {
+    return prisma.tarifaRuta.update({
+      where: { id },
+      data: { activa: false },
+      include: includeRelations
+    });
+  }
+
+  const viajes = await prisma.viaje.count({
+    where: {
+      propietario_id: propietarioId,
+      tarifa_ruta_id: id
+    }
   });
+
+  if (viajes > 0) {
+    throw new AppError('La tarifa ruta ya esta usada en algunos viajes', 409);
+  }
+
+  await prisma.tarifaRuta.delete({
+    where: { id }
+  });
+
+  return current;
 };

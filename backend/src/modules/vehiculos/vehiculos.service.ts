@@ -318,13 +318,58 @@ export const deactivateVehiculo = async (propietarioIdInput: unknown, idInput: u
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getVehiculoById(propietarioId, id);
+  const current = await getVehiculoById(propietarioId, id);
 
-  return prisma.vehiculo.update({
-    where: { id },
-    data: {
-      estado: EstadoVehiculo.INACTIVO
-    },
-    include: includeCategoria
+  if (current.estado !== EstadoVehiculo.INACTIVO) {
+    return prisma.vehiculo.update({
+      where: { id },
+      data: {
+        estado: EstadoVehiculo.INACTIVO
+      },
+      include: includeCategoria
+    });
+  }
+
+  const [viajes, mantenimientos, gastosSemanales, cierresSemanales] = await Promise.all([
+    prisma.viaje.count({
+      where: {
+        propietario_id: propietarioId,
+        vehiculo_id: id
+      }
+    }),
+    prisma.mantenimiento.count({
+      where: {
+        propietario_id: propietarioId,
+        vehiculo_id: id
+      }
+    }),
+    prisma.gastoSemanalVehiculo.count({
+      where: {
+        propietario_id: propietarioId,
+        vehiculo_id: id
+      }
+    }),
+    prisma.cierreSemanal.count({
+      where: {
+        propietario_id: propietarioId,
+        vehiculo_id: id
+      }
+    })
+  ]);
+
+  const blockers: string[] = [];
+  if (viajes > 0) blockers.push('El vehiculo ya esta usado en algunos viajes');
+  if (mantenimientos > 0) blockers.push('El vehiculo ya esta usado en algunos mantenimientos');
+  if (gastosSemanales > 0) blockers.push('El vehiculo ya esta usado en gastos semanales');
+  if (cierresSemanales > 0) blockers.push('El vehiculo ya esta usado en cierres semanales');
+
+  if (blockers.length) {
+    throw new AppError(blockers.join('. '), 409);
+  }
+
+  await prisma.vehiculo.delete({
+    where: { id }
   });
+
+  return current;
 };

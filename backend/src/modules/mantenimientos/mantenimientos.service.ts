@@ -501,13 +501,29 @@ export const cancelMantenimiento = async (
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getMantenimientoById(propietarioId, id);
+  const current = await getMantenimientoById(propietarioId, id);
 
-  return prisma.mantenimiento.update({
-    where: { id },
-    data: {
-      estado: EstadoMantenimiento.CANCELADO
-    },
-    include: includeRelations
+  if (current.estado !== EstadoMantenimiento.CANCELADO) {
+    return prisma.mantenimiento.update({
+      where: { id },
+      data: {
+        estado: EstadoMantenimiento.CANCELADO
+      },
+      include: includeRelations
+    });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.repuestoMantenimiento.deleteMany({
+      where: {
+        mantenimiento_id: id
+      }
+    });
+
+    await tx.mantenimiento.delete({
+      where: { id }
+    });
   });
+
+  return current;
 };

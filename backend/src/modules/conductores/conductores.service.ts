@@ -210,12 +210,43 @@ export const deactivateConductor = async (propietarioIdInput: unknown, idInput: 
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getConductorById(propietarioId, id);
+  const current = await getConductorById(propietarioId, id);
 
-  return prisma.conductor.update({
-    where: { id },
-    data: {
-      estado: EstadoConductor.INACTIVO
-    }
+  if (current.estado !== EstadoConductor.INACTIVO) {
+    return prisma.conductor.update({
+      where: { id },
+      data: {
+        estado: EstadoConductor.INACTIVO
+      }
+    });
+  }
+
+  const [viajes, gastosSemanales] = await Promise.all([
+    prisma.viaje.count({
+      where: {
+        propietario_id: propietarioId,
+        conductor_id: id
+      }
+    }),
+    prisma.gastoSemanalVehiculo.count({
+      where: {
+        propietario_id: propietarioId,
+        conductor_id: id
+      }
+    })
+  ]);
+
+  const blockers: string[] = [];
+  if (viajes > 0) blockers.push('El conductor ya esta usado en algunos viajes');
+  if (gastosSemanales > 0) blockers.push('El conductor ya esta usado en gastos semanales');
+
+  if (blockers.length) {
+    throw new AppError(blockers.join('. '), 409);
+  }
+
+  await prisma.conductor.delete({
+    where: { id }
   });
+
+  return current;
 };

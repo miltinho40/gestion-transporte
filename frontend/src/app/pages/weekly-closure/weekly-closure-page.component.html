@@ -181,31 +181,70 @@
       <table class="table table-hover mb-0 align-middle">
         <thead>
           <tr>
-            <th>Fecha</th>
+            <th class="weekly-activity-date-col">Fecha</th>
             <th>Tipo</th>
-            <th>Detalle</th>
+            <th class="weekly-activity-detail-col">Detalle</th>
             <th>Referencia</th>
             <th>Precio viaje</th>
             <th>Precio a facturar</th>
+            <th class="weekly-activity-viatico-col">Viático</th>
             <th>Utilidad / costo</th>
             <th>Estado</th>
+            <th class="text-end weekly-activity-actions-col">Acciones</th>
           </tr>
         </thead>
         <tbody>
           @for (item of actividadSemanal(c); track item.trackId) {
-            <tr>
-              <td>{{ item.fecha }}</td>
+            <tr [class]="item.rowClass">
+              <td class="weekly-activity-date-col">{{ item.fecha }}</td>
               <td><span class="badge text-bg-light">{{ item.tipo }}</span></td>
-              <td>{{ item.titulo }}</td>
+              <td class="weekly-activity-detail-col">{{ item.titulo }}</td>
               <td class="text-secondary small">{{ item.detalle }}</td>
               <td>{{ moneyOrDash(item.flete) }}</td>
               <td>{{ moneyOrDash(item.fleteReal) }}</td>
+              <td class="weekly-activity-viatico-col">{{ moneyOrDash(item.viaticos) }}</td>
               <td>{{ moneyOrDash(item.resultado) }}</td>
               <td><span class="badge {{ item.estadoClass }}">{{ item.estado }}</span></td>
+              <td class="text-end actions-cell weekly-activity-actions-col">
+                <div class="d-flex justify-content-end gap-1">
+                  @if (item.sourceType === 'viaje' && !item.cobrado) {
+                    <button
+                      type="button"
+                      class="btn btn-outline-success btn-sm weekly-activity-icon-btn"
+                      (click)="marcarCobradoActividad(item)"
+                      [disabled]="markingCobroId() === item.sourceId"
+                      title="Marcar cobrado"
+                      aria-label="Marcar cobrado"
+                    >
+                      <svg lucideCheck size="13"></svg>
+                    </button>
+                  }
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary btn-sm weekly-activity-icon-btn"
+                    (click)="editarActividad(item)"
+                    title="Modificar"
+                    aria-label="Modificar"
+                  >
+                    <svg lucidePencil size="13"></svg>
+                  </button>
+                  @if (item.copyText) {
+                    <button
+                      type="button"
+                      class="btn btn-outline-primary btn-sm weekly-activity-icon-btn"
+                      (click)="copiarViajeActividad(item)"
+                      title="Copiar"
+                      aria-label="Copiar"
+                    >
+                      <svg lucideCopy size="13"></svg>
+                    </button>
+                  }
+                </div>
+              </td>
             </tr>
           } @empty {
             <tr>
-              <td colspan="8" class="text-center text-secondary py-4">
+              <td colspan="10" class="text-center text-secondary py-4">
                 Sin viajes ni mantenimientos realizados en esta semana.
               </td>
             </tr>

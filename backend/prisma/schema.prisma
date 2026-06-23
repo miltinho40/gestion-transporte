@@ -141,6 +141,7 @@ model Usuario {
 
   usuarios_propietarios UsuarioPropietario[]
   invitaciones          InvitacionUsuario[]
+  cierres_semanales     CierreSemanal[]      @relation("UsuarioCierresSemanales")
 
   @@map("usuarios")
 }
@@ -438,8 +439,11 @@ model Viaje {
   gastos_viaje GastoViaje[]
 
   @@index([propietario_id, fecha_salida])
+  @@index([propietario_id, fecha_llegada])
   @@index([propietario_id, cliente_id])
+  @@index([propietario_id, cliente_id, fecha_llegada])
   @@index([propietario_id, vehiculo_id])
+  @@index([propietario_id, vehiculo_id, fecha_llegada])
   @@index([propietario_id, conductor_id])
   @@index([propietario_id, estado])
   @@index([propietario_id, cobrado, fecha_salida])
@@ -468,6 +472,7 @@ model GastoSemanalVehiculo {
   conductor   Conductor?  @relation(fields: [conductor_id], references: [id])
 
   @@index([propietario_id, anio, numero_semana])
+  @@index([propietario_id, vehiculo_id, anio, numero_semana])
   @@index([vehiculo_id, anio, numero_semana])
   @@index([conductor_id, anio, numero_semana])
   @@map("gastos_semanales_vehiculo")
@@ -494,15 +499,18 @@ model CierreSemanal {
   resultado_operativo       Decimal  @default(0) @db.Decimal(12, 2)
   snapshot                  Json
   cerrado_en                DateTime @default(now()) @db.Timestamptz(6)
+  cerrado_por_usuario_id    BigInt?
   created_at                DateTime @default(now()) @db.Timestamptz(6)
   updated_at                DateTime @updatedAt @db.Timestamptz(6)
 
-  propietario Propietario @relation(fields: [propietario_id], references: [id])
-  vehiculo    Vehiculo    @relation(fields: [vehiculo_id], references: [id])
+  propietario         Propietario @relation(fields: [propietario_id], references: [id])
+  vehiculo            Vehiculo    @relation(fields: [vehiculo_id], references: [id])
+  cerrado_por_usuario Usuario?    @relation("UsuarioCierresSemanales", fields: [cerrado_por_usuario_id], references: [id], onDelete: SetNull)
 
   @@unique([propietario_id, vehiculo_id, anio, numero_semana])
   @@index([propietario_id, anio, numero_semana])
   @@index([vehiculo_id, anio, numero_semana])
+  @@index([cerrado_por_usuario_id])
   @@map("cierres_semanales")
 }
 
@@ -595,6 +603,7 @@ model Mantenimiento {
   repuestos          RepuestoMantenimiento[]
 
   @@index([propietario_id, fecha_mantenimiento])
+  @@index([propietario_id, vehiculo_id, fecha_mantenimiento])
   @@index([vehiculo_id])
   @@map("mantenimientos")
 }

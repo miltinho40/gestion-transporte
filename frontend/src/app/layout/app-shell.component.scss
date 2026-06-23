@@ -62,6 +62,7 @@
 }
 
 .nav-list a,
+.account-link,
 .logout-button {
   min-height: 38px;
   display: flex;
@@ -125,14 +126,21 @@
 
 .nav-list a.active,
 .nav-list a:hover,
+.account-link.active,
+.account-link:hover,
 .logout-button:hover {
   color: #ffffff;
   background: var(--app-sidebar-active);
 }
 
-.logout-button {
+.account-link {
   flex: 0 0 auto;
   margin-top: 10px;
+}
+
+.logout-button {
+  flex: 0 0 auto;
+  margin-top: 4px;
   width: 100%;
 }
 

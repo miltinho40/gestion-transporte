@@ -333,6 +333,7 @@ const formatViajeCierre = (viaje: ViajeCierre, numeroSemana?: number) => {
     precio_flete: viaje.precio_flete,
     retorno_gastos_viaje: retornoGastosViaje,
     precio_real_flete: viaje.precio_real_flete,
+    viaticos: viaje.viaticos,
     costo_estimado_gastos: viaje.costo_estimado_gastos,
     costo_real_gastos: viaje.costo_real_gastos,
     utilidad,
@@ -774,6 +775,7 @@ const buildCierreSnapshot = (cierre: CierreData) => {
       ruta: `${viaje.ruta.origen} - ${viaje.ruta.destino}`,
       precio_flete: moneyString(viaje.precio_flete),
       precio_real_flete: moneyString(viaje.precio_real_flete),
+      viaticos: moneyString(viaje.viaticos),
       costo_real_gastos: moneyString(viaje.costo_real_gastos),
       utilidad: moneyString(viaje.utilidad),
       retorno: viaje.retorno,
@@ -804,9 +806,17 @@ const buildCierreSnapshot = (cierre: CierreData) => {
   } satisfies Prisma.InputJsonObject;
 };
 
-const saveCierreSemanalSnapshot = async (propietarioId: bigint, cierre: CierreData) => {
+const saveCierreSemanalSnapshot = async (
+  propietarioId: bigint,
+  cierre: CierreData,
+  cerradoPorUsuarioIdInput?: unknown
+) => {
   const metrics = buildCierreMetrics(cierre);
   const snapshot = buildCierreSnapshot(cierre);
+  const cerradoPorUsuarioId =
+    cerradoPorUsuarioIdInput === undefined
+      ? undefined
+      : parseBigIntId(cerradoPorUsuarioIdInput, 'usuario_id');
   const data = {
     fecha_inicio: cierre.semana.fecha_inicio,
     fecha_fin: cierre.semana.fecha_fin,
@@ -821,6 +831,7 @@ const saveCierreSemanalSnapshot = async (propietarioId: bigint, cierre: CierreDa
     total_sueldos: metrics.total_sueldos,
     total_bonificaciones: metrics.total_bonificaciones,
     resultado_operativo: metrics.resultado_operativo,
+    cerrado_por_usuario_id: cerradoPorUsuarioId,
     snapshot
   };
 
@@ -1174,7 +1185,8 @@ export const getCierreSemanal = async (propietarioIdInput: unknown, input: unkno
 
 export const snapshotCierreSemanalActual = async (
   propietarioIdInput: unknown,
-  input: unknown
+  input: unknown,
+  usuarioIdInput?: unknown
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const parsed = cierreSemanalSemanaSchema.parse(input);
@@ -1185,12 +1197,13 @@ export const snapshotCierreSemanalActual = async (
     parsed.vehiculo_id
   );
 
-  return saveCierreSemanalSnapshot(propietarioId, cierre);
+  return saveCierreSemanalSnapshot(propietarioId, cierre, usuarioIdInput);
 };
 
 export const generarGastosCierreSemanal = async (
   propietarioIdInput: unknown,
-  input: CierreSemanalGenerarGastosInput
+  input: CierreSemanalGenerarGastosInput,
+  usuarioIdInput?: unknown
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const cierre = await buildCierreData(
@@ -1262,7 +1275,11 @@ export const generarGastosCierreSemanal = async (
     input.numero_semana,
     input.vehiculo_id
   );
-  const cierreGuardado = await saveCierreSemanalSnapshot(propietarioId, cierreActualizado);
+  const cierreGuardado = await saveCierreSemanalSnapshot(
+    propietarioId,
+    cierreActualizado,
+    usuarioIdInput
+  );
   const { conductores_operativos: _internal, ...response } = cierreActualizado;
 
   return {

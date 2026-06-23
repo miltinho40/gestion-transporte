@@ -3,6 +3,7 @@ import { superAdminGuard } from './core/admin.guard';
 import { authGuard } from './core/auth.guard';
 import { AppShellComponent } from './layout/app-shell.component';
 import { AcceptInvitationPageComponent } from './pages/accept-invitation/accept-invitation-page.component';
+import { ChangePasswordPageComponent } from './pages/change-password/change-password-page.component';
 import { CrudPageComponent } from './pages/crud/crud-page.component';
 import { DashboardPageComponent } from './pages/dashboard/dashboard-page.component';
 import { LoginPageComponent } from './pages/login/login-page.component';
@@ -10,6 +11,7 @@ import { MantenimientosPageComponent } from './pages/mantenimientos/mantenimient
 import { PeajesPageComponent } from './pages/peajes/peajes-page.component';
 import { ReportsPageComponent } from './pages/reports/reports-page.component';
 import { RutasPageComponent } from './pages/rutas/rutas-page.component';
+import { UtilityReportPageComponent } from './pages/utility-report/utility-report-page.component';
 import { ViajesPageComponent } from './pages/viajes/viajes-page.component';
 import { WeeklyClosurePageComponent } from './pages/weekly-closure/weekly-closure-page.component';
 
@@ -40,6 +42,7 @@ export const routes: Routes = [
     canActivateChild: [authGuard],
     children: [
       { path: 'dashboard', component: DashboardPageComponent },
+      { path: 'cambiar-clave', component: ChangePasswordPageComponent },
       {
         path: 'propietarios',
         component: CrudPageComponent,
@@ -55,9 +58,9 @@ export const routes: Routes = [
             { label: 'Contacto', path: 'contacto_nombre' },
             { label: 'Teléfono', path: 'telefono' },
             { label: 'Email', path: 'email' },
-            { label: 'Suscripcion', path: 'estado_suscripcion', type: 'badge' },
-            { label: 'Vehiculos', path: 'uso_vehiculos' },
-            { label: 'Precio vehiculo', path: 'precio_por_vehiculo', type: 'money' },
+            { label: 'Suscripción', path: 'estado_suscripcion', type: 'badge' },
+            { label: 'Vehículos', path: 'uso_vehiculos' },
+            { label: 'Precio vehículo', path: 'precio_por_vehiculo', type: 'money' },
             { label: 'Total mensual', path: 'total_mensual_estimado', type: 'money' },
             { label: 'Activo', path: 'activo', type: 'boolean' }
           ],
@@ -70,7 +73,7 @@ export const routes: Routes = [
             { name: 'activo', label: 'Activo', type: 'checkbox', defaultValue: true, colClass: 'col-md-3' },
             {
               name: 'estado_suscripcion',
-              label: 'Suscripcion',
+              label: 'Suscripción',
               type: 'select',
               defaultValue: 'activa',
               colClass: 'col-md-3',
@@ -83,7 +86,7 @@ export const routes: Routes = [
             },
             {
               name: 'limite_vehiculos',
-              label: 'Limite vehiculos',
+              label: 'Límite vehículos',
               type: 'number',
               defaultValue: 0,
               min: 0,
@@ -92,7 +95,7 @@ export const routes: Routes = [
             },
             {
               name: 'precio_por_vehiculo',
-              label: 'Precio por vehiculo',
+              label: 'Precio por vehículo',
               type: 'number',
               defaultValue: 0,
               min: 0,
@@ -101,7 +104,7 @@ export const routes: Routes = [
             },
             {
               name: 'fecha_corte_facturacion',
-              label: 'Dia de corte',
+              label: 'Día de corte',
               type: 'number',
               defaultValue: 1,
               min: 1,
@@ -249,25 +252,25 @@ export const routes: Routes = [
         canActivate: [superAdminGuard],
         data: {
           title: 'Planes y suscripciones',
-          description: 'Control de limite de vehiculos, precio por vehiculo y estado de cobro.',
+          description: 'Control de límite de vehículos, precio por vehículo y estado de cobro.',
           endpoint: '/propietarios',
           displayField: 'nombre',
           createEnabled: false,
           deleteEnabled: false,
           columns: [
             { label: 'Propietario', path: 'nombre' },
-            { label: 'Suscripcion', path: 'estado_suscripcion', type: 'badge' },
-            { label: 'Vehiculos', path: 'uso_vehiculos' },
+            { label: 'Suscripción', path: 'estado_suscripcion', type: 'badge' },
+            { label: 'Vehículos', path: 'uso_vehiculos' },
             { label: 'Facturables', path: 'vehiculos_facturables' },
-            { label: 'Precio vehiculo', path: 'precio_por_vehiculo', type: 'money' },
+            { label: 'Precio vehículo', path: 'precio_por_vehiculo', type: 'money' },
             { label: 'Total mensual', path: 'total_mensual_estimado', type: 'money' },
-            { label: 'Dia corte', path: 'fecha_corte_facturacion' },
+            { label: 'Día corte', path: 'fecha_corte_facturacion' },
             { label: 'Activo', path: 'activo', type: 'boolean' }
           ],
           fields: [
             {
               name: 'estado_suscripcion',
-              label: 'Suscripcion',
+              label: 'Suscripción',
               type: 'select',
               required: true,
               colClass: 'col-md-4',
@@ -280,7 +283,7 @@ export const routes: Routes = [
             },
             {
               name: 'limite_vehiculos',
-              label: 'Limite vehiculos',
+              label: 'Límite vehículos',
               type: 'number',
               min: 0,
               step: 1,
@@ -288,7 +291,7 @@ export const routes: Routes = [
             },
             {
               name: 'precio_por_vehiculo',
-              label: 'Precio por vehiculo',
+              label: 'Precio por vehículo',
               type: 'number',
               min: 0,
               step: '0.01',
@@ -296,7 +299,7 @@ export const routes: Routes = [
             },
             {
               name: 'fecha_corte_facturacion',
-              label: 'Dia de corte',
+              label: 'Día de corte',
               type: 'number',
               min: 1,
               max: 31,
@@ -319,22 +322,22 @@ export const routes: Routes = [
         component: CrudPageComponent,
         canActivate: [superAdminGuard],
         data: {
-          title: 'Configuracion diesel',
-          description: 'Precio global del galon de diesel definido solo por el superadmin.',
+          title: 'Configuración diésel',
+          description: 'Precio global del galón de diésel definido solo por el superadmin.',
           endpoint: '/configuraciones/superadmin',
           displayField: 'nombre',
           createEnabled: false,
           deleteEnabled: false,
           columns: [
-            { label: 'Configuracion', path: 'nombre' },
+            { label: 'Configuración', path: 'nombre' },
             { label: 'Clave', path: 'clave' },
             { label: 'Valor', path: 'valor' },
-            { label: 'Descripcion', path: 'descripcion' }
+            { label: 'Descripción', path: 'descripcion' }
           ],
           fields: [
             {
               name: 'valor',
-              label: 'Precio galon diesel',
+              label: 'Precio galón diésel',
               type: 'number',
               required: true,
               min: 0,
@@ -343,7 +346,7 @@ export const routes: Routes = [
             },
             {
               name: 'descripcion',
-              label: 'Descripcion',
+              label: 'Descripción',
               type: 'textarea',
               rows: 2,
               colClass: 'col-12'
@@ -356,17 +359,17 @@ export const routes: Routes = [
         component: CrudPageComponent,
         data: {
           title: 'Configuraciones',
-          description: 'Parametros propios del propietario para bonos y alertas.',
+          description: 'Parámetros propios del propietario para bonos y alertas.',
           endpoint: '/configuraciones',
           displayField: 'nombre',
           createEnabled: false,
           deleteEnabled: false,
           columns: [
-            { label: 'Configuracion', path: 'nombre' },
+            { label: 'Configuración', path: 'nombre' },
             { label: 'Clave', path: 'clave' },
             { label: 'Valor', path: 'valor' },
             { label: 'Origen', path: 'origen', type: 'badge' },
-            { label: 'Descripcion', path: 'descripcion' }
+            { label: 'Descripción', path: 'descripcion' }
           ],
           fields: [
             {
@@ -380,7 +383,7 @@ export const routes: Routes = [
             },
             {
               name: 'descripcion',
-              label: 'Descripcion',
+              label: 'Descripción',
               type: 'textarea',
               rows: 2,
               colClass: 'col-12'
@@ -1059,6 +1062,7 @@ export const routes: Routes = [
       },
       { path: 'cierre-semanal', component: WeeklyClosurePageComponent },
       { path: 'reportes', component: ReportsPageComponent },
+      { path: 'utilidad', component: UtilityReportPageComponent },
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' }
     ]
   },

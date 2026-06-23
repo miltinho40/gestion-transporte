@@ -4,6 +4,7 @@ import { requirePropietarioContext, requireRoles } from '../../middlewares/roles
 import { validateBody } from '../../middlewares/validate.middleware.js';
 import { gastosViajeRouter } from '../gastos-viaje/gastos-viaje.routes.js';
 import {
+  addGuiasViajeController,
   createViajeController,
   calculateViajeController,
   deleteViajeController,
@@ -17,6 +18,7 @@ import {
   viajeCobroSchema,
   viajeCreateSchema,
   viajeEstadoSchema,
+  viajeGuiasSchema,
   viajeUpdateSchema
 } from './viajes.schema.js';
 
@@ -44,5 +46,11 @@ viajesRouter.patch(
   canWrite,
   validateBody(viajeCobroSchema),
   updateCobroViajeController
+);
+viajesRouter.patch(
+  '/:id/guias',
+  canWrite,
+  validateBody(viajeGuiasSchema),
+  addGuiasViajeController
 );
 viajesRouter.delete('/:id', canWrite, deleteViajeController);

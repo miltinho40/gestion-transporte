@@ -17,6 +17,7 @@ import { AuthService } from '../../core/auth.service';
 import { formatDateOnly } from '../../core/date-only';
 import type { ApiListColumn, CrudFieldConfig, CrudRouteData, SelectOption } from '../../core/models';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
+import { DialogService } from '../../shared/dialog.service';
 
 type Row = Record<string, unknown>;
 type FormValue = string | number | boolean | null;
@@ -82,6 +83,7 @@ const setPayloadValue = (payload: Row, field: CrudFieldConfig, value: unknown) =
 export class CrudPageComponent implements OnDestroy {
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
+  private readonly dialog = inject(DialogService);
   private readonly route = inject(ActivatedRoute);
   private readonly sub = new Subscription();
   private formSyncSub = new Subscription();
@@ -221,12 +223,20 @@ export class CrudPageComponent implements OnDestroy {
     });
   }
 
-  delete(row: Row) {
+  async delete(row: Row) {
     const config = this.config();
     if (!config) return;
 
     const name = this.textValue(row, { label: '', path: config.displayField });
-    if (!confirm(`Eliminar o desactivar ${name}?`)) return;
+    const disabled = this.rowDisabled(row);
+    const action = disabled ? 'eliminar definitivamente' : 'eliminar o desactivar';
+    const confirmed = await this.dialog.confirm({
+      title: disabled ? 'Eliminar registro definitivamente' : 'Eliminar o desactivar registro',
+      text: `Se va a ${action} ${name}.`,
+      confirmText: disabled ? 'Sí, eliminar' : 'Sí, continuar'
+    });
+
+    if (!confirmed) return;
 
     const id = this.idOf(row);
     this.deletingId.set(id);
@@ -236,12 +246,15 @@ export class CrudPageComponent implements OnDestroy {
     this.api.delete<Row>(`${config.endpoint}/${id}`).subscribe({
       next: () => {
         this.deletingId.set(null);
-        this.message.set('Registro eliminado o desactivado.');
+        this.message.set(disabled ? 'Registro eliminado.' : 'Registro desactivado.');
         this.load();
       },
       error: (err) => {
         this.deletingId.set(null);
-        this.error.set(err?.error?.message ?? 'No se pudo desactivar el registro.');
+        this.error.set(
+          err?.error?.message ??
+            (disabled ? 'No se pudo eliminar el registro.' : 'No se pudo desactivar el registro.')
+        );
       }
     });
   }
@@ -378,6 +391,16 @@ export class CrudPageComponent implements OnDestroy {
   canMutateRow(config: CrudRouteData, row: Row) {
     if (!config.readonlyGlobalRows || this.auth.usuario()?.es_super_admin) return true;
     return row['global'] !== true && row['propietario_id'] !== null;
+  }
+
+  rowDisabled(row: Row) {
+    const estado = String(row['estado'] ?? '').toLowerCase();
+    return (
+      row['activo'] === false ||
+      row['activa'] === false ||
+      estado === 'inactivo' ||
+      estado.includes('cancelad')
+    );
   }
 
   private buildForm(config: CrudRouteData, row?: Row) {

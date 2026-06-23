@@ -7,6 +7,7 @@ import type {
   ViajeCobroInput,
   ViajeCreateInput,
   ViajeEstadoInput,
+  ViajeGuiasInput,
   ViajeUpdateInput
 } from './viajes.schema.js';
 
@@ -693,6 +694,31 @@ export const updateCobroViaje = async (
     data: {
       cobrado: input.cobrado,
       fecha_cobro: resolveCobro(input.cobrado, input.fecha_cobro, current.fecha_cobro)
+    },
+    include: includeRelations
+  });
+};
+
+export const addGuiasViaje = async (
+  propietarioIdInput: unknown,
+  idInput: unknown,
+  input: ViajeGuiasInput
+) => {
+  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const id = parseBigIntId(idInput);
+  const current = await getViajeById(propietarioId, id);
+  const guias = [...current.numeros_guia_remision];
+
+  for (const guia of input.numeros_guia_remision) {
+    if (!guias.includes(guia)) {
+      guias.push(guia);
+    }
+  }
+
+  return prisma.viaje.update({
+    where: { id },
+    data: {
+      numeros_guia_remision: guias
     },
     include: includeRelations
   });

@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { asyncHandler } from '../../utils/async-handler.js';
-import { acceptInvitation, login, getMe } from './auth.service.js';
+import { acceptInvitation, changePassword, login, getMe } from './auth.service.js';
 
 export const loginController = asyncHandler(async (req: Request, res: Response) => {
   const result = await login(req.body);
@@ -14,5 +14,10 @@ export const meController = asyncHandler(async (req: Request, res: Response) => 
 
 export const acceptInvitationController = asyncHandler(async (req: Request, res: Response) => {
   const result = await acceptInvitation(req.body);
+  res.json(result);
+});
+
+export const changePasswordController = asyncHandler(async (req: Request, res: Response) => {
+  const result = await changePassword(req.user!.usuario_id, req.body);
   res.json(result);
 });

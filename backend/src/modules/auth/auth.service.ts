@@ -5,7 +5,7 @@ import { signToken } from '../../config/jwt.js';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import { hashInvitationToken } from '../../utils/user-invitations.js';
-import type { AcceptInvitationInput, LoginInput } from './auth.schema.js';
+import type { AcceptInvitationInput, ChangePasswordInput, LoginInput } from './auth.schema.js';
 
 const parseId = (value: string) => {
   try {
@@ -153,6 +153,45 @@ export const getMe = async (usuarioId: string, propietarioId?: string) => {
   const acceso = propietarioId ? resolveAcceso(usuario, propietarioId) : undefined;
 
   return buildAuthResponse(usuario, acceso);
+};
+
+export const changePassword = async (usuarioId: string, input: ChangePasswordInput) => {
+  const usuario = await prisma.usuario.findUnique({
+    where: { id: parseId(usuarioId) },
+    select: {
+      id: true,
+      activo: true,
+      password_hash: true
+    }
+  });
+
+  if (!usuario?.activo) {
+    throw new AppError('Usuario no disponible', 401);
+  }
+
+  if (!usuario.password_hash) {
+    throw new AppError('El usuario aun no tiene una clave activa', 400);
+  }
+
+  const currentPasswordValid = await bcrypt.compare(input.current_password, usuario.password_hash);
+
+  if (!currentPasswordValid) {
+    throw new AppError('La clave actual no es correcta', 400);
+  }
+
+  const passwordHash = await bcrypt.hash(input.new_password, 10);
+
+  await prisma.usuario.update({
+    where: { id: usuario.id },
+    data: {
+      password_hash: passwordHash,
+      requiere_password: false
+    }
+  });
+
+  return {
+    message: 'Clave actualizada correctamente'
+  };
 };
 
 export const acceptInvitation = async (input: AcceptInvitationInput) => {

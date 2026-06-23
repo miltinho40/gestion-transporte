@@ -52,7 +52,7 @@
         </thead>
         <tbody>
           @for (row of filteredRows(); track row['id'] ?? $index) {
-            <tr>
+            <tr [class.crud-row-disabled]="rowDisabled(row)">
               @for (column of cfg.columns; track column.path) {
                 <td>
                   @if (column.type === 'date') {
@@ -76,7 +76,7 @@
                   }
                 </td>
               }
-              <td class="text-end">
+              <td class="text-end actions-cell">
                 <div class="btn-group btn-group-sm">
                   @if (cfg.duplicateEnabled && canMutateRow(cfg, row)) {
                     <button type="button" class="btn btn-outline-secondary" (click)="openDuplicate(row)" title="Duplicar">
@@ -94,7 +94,7 @@
                       class="btn btn-outline-danger"
                       (click)="delete(row)"
                       [disabled]="deletingId() === idOf(row)"
-                      title="Eliminar o desactivar"
+                      [title]="rowDisabled(row) ? 'Eliminar definitivamente' : 'Eliminar o desactivar'"
                     >
                       <svg lucideTrash2 size="15"></svg>
                     </button>

@@ -67,8 +67,6 @@
           <th class="mantenimientos-vehicle-col">Vehículo</th>
           <th class="mantenimientos-type-col">Tipo</th>
           <th class="mantenimientos-description-col">Descripción</th>
-          <th class="mantenimientos-money-col">Mano obra</th>
-          <th class="mantenimientos-money-col">Repuestos</th>
           <th class="mantenimientos-total-col">Total</th>
           <th class="mantenimientos-current-km-col">Km actual</th>
           <th class="mantenimientos-km-col">Próx. km</th>
@@ -78,18 +76,16 @@
       </thead>
       <tbody>
         @for (row of filteredRows(); track row.id) {
-          <tr>
+          <tr [class.mantenimiento-row-cancelado]="row.estado === 'cancelado'">
             <td class="mantenimientos-date-col">{{ dateOnly(row.fecha_mantenimiento) }}</td>
             <td class="mantenimientos-vehicle-col">{{ vehiculoLabel(row.vehiculo) }}</td>
             <td class="mantenimientos-type-col">{{ tipoMantenimientoLabel(row.tipo_mantenimiento) }}</td>
             <td class="mantenimientos-description-col" [title]="row.descripcion || '-'">{{ row.descripcion || '-' }}</td>
-            <td class="mantenimientos-money-col">$ {{ money(row.costo_mano_obra) }}</td>
-            <td class="mantenimientos-money-col">$ {{ money(row.costo_repuestos) }}</td>
             <td class="mantenimientos-total-col">$ {{ money(row.costo_total) }}</td>
             <td class="mantenimientos-current-km-col">{{ row.kilometraje_actual_vehiculo }}</td>
             <td class="mantenimientos-km-col">{{ row.proximo_mantenimiento_km ?? '-' }}</td>
             <td><span class="badge" [class]="badgeClass(row.estado)">{{ estadoLabel(row.estado) }}</span></td>
-            <td class="text-end">
+            <td class="text-end actions-cell">
               <div class="btn-group btn-group-sm">
                 <button type="button" class="btn btn-outline-secondary" (click)="openDuplicate(row)" title="Duplicar">
                   <svg lucideCopy size="15"></svg>
@@ -102,7 +98,7 @@
                   class="btn btn-outline-danger"
                   (click)="delete(row)"
                   [disabled]="deletingId() === row.id"
-                  title="Cancelar"
+                  [title]="row.estado === 'cancelado' ? 'Eliminar definitivamente' : 'Cancelar'"
                 >
                   <svg lucideTrash2 size="15"></svg>
                 </button>
@@ -111,7 +107,7 @@
           </tr>
         } @empty {
           <tr>
-            <td colspan="11" class="text-center text-secondary py-4">
+            <td colspan="9" class="text-center text-secondary py-4">
               @if (loading()) {
                 Cargando mantenimientos...
               } @else {
