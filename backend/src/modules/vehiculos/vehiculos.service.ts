@@ -2,6 +2,7 @@ import { EstadoSuscripcionPropietario, EstadoVehiculo, Prisma } from '@prisma/cl
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import { toPrismaEstadoVehiculo } from './vehiculos.mapper.js';
 import type {
   VehiculoCreateInput,
@@ -157,12 +158,33 @@ export const listVehiculos = async (
   filters: ListVehiculosFilters
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const where = buildWhere(propietarioId, filters);
+  const orderBy = [
+    { estado: 'asc' },
+    { placa: 'asc' }
+  ] satisfies Prisma.VehiculoOrderByWithRelationInput[];
+  const pagination = parsePagination(filters as Record<string, unknown>);
 
-  return prisma.vehiculo.findMany({
-    where: buildWhere(propietarioId, filters),
-    include: includeCategoria,
-    orderBy: [{ estado: 'asc' }, { placa: 'asc' }]
-  });
+  if (!pagination) {
+    return prisma.vehiculo.findMany({
+      where,
+      include: includeCategoria,
+      orderBy
+    });
+  }
+
+  const [data, total] = await prisma.$transaction([
+    prisma.vehiculo.findMany({
+      where,
+      include: includeCategoria,
+      orderBy,
+      skip: pagination.skip,
+      take: pagination.limit
+    }),
+    prisma.vehiculo.count({ where })
+  ]);
+
+  return buildPaginatedResult(data, total, pagination);
 };
 
 export const getVehiculoById = async (propietarioIdInput: unknown, idInput: unknown) => {

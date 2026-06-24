@@ -44,7 +44,7 @@ export class LoginPageComponent {
         this.loading.set(false);
 
         if (response.contexto) {
-          void this.router.navigate(['/app/dashboard']);
+          void this.router.navigate([this.isMobileViewport() ? '/movil/viajes' : '/app/dashboard']);
           return;
         }
 
@@ -61,5 +61,9 @@ export class LoginPageComponent {
         this.error.set(err?.error?.message ?? 'No se pudo iniciar sesión.');
       }
     });
+  }
+
+  private isMobileViewport() {
+    return window.matchMedia('(max-width: 768px)').matches;
   }
 }

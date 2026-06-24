@@ -7,6 +7,21 @@ import { AppError } from '../../utils/app-error.js';
 import { hashInvitationToken } from '../../utils/user-invitations.js';
 import type { AcceptInvitationInput, ChangePasswordInput, LoginInput } from './auth.schema.js';
 
+const PASSWORD_HASH_ROUNDS = 12;
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+
+interface LoginContext {
+  clientIp?: string;
+}
+
+interface FailedLoginState {
+  attempts: number;
+  lockedUntil: number | null;
+}
+
+const failedLoginAttempts = new Map<string, FailedLoginState>();
+
 const parseId = (value: string) => {
   try {
     return BigInt(value);
@@ -79,6 +94,37 @@ const buildAuthResponse = (usuario: UsuarioConAccesos, acceso?: AccesoPropietari
   };
 };
 
+const loginAttemptKey = (input: LoginInput, context?: LoginContext) => {
+  return `${context?.clientIp ?? 'unknown'}:${input.email}`;
+};
+
+const assertLoginAllowed = (key: string) => {
+  const state = failedLoginAttempts.get(key);
+  const now = Date.now();
+
+  if (!state?.lockedUntil) return;
+
+  if (state.lockedUntil <= now) {
+    failedLoginAttempts.delete(key);
+    return;
+  }
+
+  throw new AppError('Demasiados intentos fallidos. Intenta nuevamente en unos minutos.', 429);
+};
+
+const recordFailedLogin = (key: string) => {
+  const current = failedLoginAttempts.get(key) ?? { attempts: 0, lockedUntil: null };
+  const attempts = current.attempts + 1;
+  failedLoginAttempts.set(key, {
+    attempts,
+    lockedUntil: attempts >= MAX_FAILED_LOGIN_ATTEMPTS ? Date.now() + LOGIN_LOCK_MS : null
+  });
+};
+
+const clearFailedLogin = (key: string) => {
+  failedLoginAttempts.delete(key);
+};
+
 const resolveAcceso = (usuario: UsuarioConAccesos, propietarioId?: string) => {
   if (propietarioId) {
     const id = parseId(propietarioId);
@@ -98,7 +144,11 @@ const resolveAcceso = (usuario: UsuarioConAccesos, propietarioId?: string) => {
   return undefined;
 };
 
-export const login = async (input: LoginInput) => {
+export const login = async (input: LoginInput, context?: LoginContext) => {
+  const attemptKey = loginAttemptKey(input, context);
+
+  assertLoginAllowed(attemptKey);
+
   const usuario = await prisma.usuario.findUnique({
     where: { email: input.email },
     include: {
@@ -120,17 +170,21 @@ export const login = async (input: LoginInput) => {
     }
   });
 
-  if (!usuario?.activo) {
+  if (!usuario || !usuario.activo) {
+    recordFailedLogin(attemptKey);
     throw new AppError('Credenciales invalidas', 401);
   }
 
   if (!usuario.password_hash) {
-    throw new AppError('Debes crear tu clave desde el enlace de invitacion', 401);
+    recordFailedLogin(attemptKey);
+    throw new AppError('Credenciales invalidas', 401);
   }
 
-  const passwordValido = await bcrypt.compare(input.password, usuario.password_hash);
+  const passwordHash = usuario.password_hash;
+  const passwordValido = await bcrypt.compare(input.password, passwordHash);
 
   if (!passwordValido) {
+    recordFailedLogin(attemptKey);
     throw new AppError('Credenciales invalidas', 401);
   }
 
@@ -139,6 +193,7 @@ export const login = async (input: LoginInput) => {
   }
 
   const acceso = resolveAcceso(usuario, input.propietario_id);
+  clearFailedLogin(attemptKey);
 
   return buildAuthResponse(usuario, acceso);
 };
@@ -179,7 +234,7 @@ export const changePassword = async (usuarioId: string, input: ChangePasswordInp
     throw new AppError('La clave actual no es correcta', 400);
   }
 
-  const passwordHash = await bcrypt.hash(input.new_password, 10);
+  const passwordHash = await bcrypt.hash(input.new_password, PASSWORD_HASH_ROUNDS);
 
   await prisma.usuario.update({
     where: { id: usuario.id },
@@ -214,7 +269,7 @@ export const acceptInvitation = async (input: AcceptInvitationInput) => {
     throw new AppError('Invitacion invalida o expirada', 400);
   }
 
-  const passwordHash = await bcrypt.hash(input.password, 10);
+  const passwordHash = await bcrypt.hash(input.password, PASSWORD_HASH_ROUNDS);
 
   await prisma.$transaction([
     prisma.usuario.update({

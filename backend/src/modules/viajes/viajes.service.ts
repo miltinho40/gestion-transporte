@@ -1,7 +1,10 @@
 import { EstadoConductor, EstadoVehiculo, EstadoViaje, Prisma, SentidoPeaje } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
+import type { AuditContext } from '../../utils/audit.js';
+import { recordAuditEvent } from '../../utils/audit.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import { toPrismaEstadoViaje } from './viajes.mapper.js';
 import type {
   ViajeCobroInput,
@@ -12,6 +15,9 @@ import type {
 } from './viajes.schema.js';
 
 interface ListViajesFilters {
+  search?: unknown;
+  cliente_search?: unknown;
+  vehiculo_search?: unknown;
   cliente_id?: unknown;
   vehiculo_id?: unknown;
   conductor_id?: unknown;
@@ -19,6 +25,8 @@ interface ListViajesFilters {
   ruta_id?: unknown;
   estado?: unknown;
   cobrado?: unknown;
+  anio_semana?: unknown;
+  numero_semana?: unknown;
   fecha_desde?: unknown;
   fecha_hasta?: unknown;
 }
@@ -57,6 +65,53 @@ const parseDateFilter = (value: unknown, field: string) => {
   }
 
   return toDateOnly(value)!;
+};
+
+const parsePositiveIntegerFilter = (value: unknown, field: string) => {
+  const parsed = Number(value);
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new AppError(`${field} debe ser un entero positivo`, 400);
+  }
+
+  return parsed;
+};
+
+const getIsoWeekRange = (anio: number, numeroSemana: number) => {
+  const jan4 = new Date(Date.UTC(anio, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const week1Monday = new Date(jan4);
+  week1Monday.setUTCDate(jan4.getUTCDate() - jan4Day + 1);
+
+  const fechaInicio = new Date(week1Monday);
+  fechaInicio.setUTCDate(week1Monday.getUTCDate() + (numeroSemana - 1) * 7);
+
+  const fechaFin = new Date(fechaInicio);
+  fechaFin.setUTCDate(fechaInicio.getUTCDate() + 6);
+
+  return { fechaInicio, fechaFin };
+};
+
+const buildViajeSemanaWhere = (fechaInicio: Date, fechaFin: Date): Prisma.ViajeWhereInput => ({
+  OR: [
+    {
+      fecha_llegada: {
+        gte: fechaInicio,
+        lte: fechaFin
+      }
+    },
+    {
+      fecha_llegada: null,
+      fecha_salida: {
+        gte: fechaInicio,
+        lte: fechaFin
+      }
+    }
+  ]
+});
+
+const appendAnd = (where: Prisma.ViajeWhereInput, condition: Prisma.ViajeWhereInput) => {
+  where.AND = Array.isArray(where.AND) ? [...where.AND, condition] : [condition];
 };
 
 const toDecimal = (value: number | string | Prisma.Decimal) => {
@@ -218,6 +273,47 @@ const buildWhere = (
     };
   }
 
+  if (typeof filters.search === 'string' && filters.search.trim()) {
+    const search = filters.search.trim();
+    appendAnd(where, {
+      OR: [
+        { descripcion_carga: { contains: search, mode: 'insensitive' } },
+        { observaciones: { contains: search, mode: 'insensitive' } },
+        { cliente: { nombre: { contains: search, mode: 'insensitive' } } },
+        { cliente: { ruc_cedula: { contains: search, mode: 'insensitive' } } },
+        { vehiculo: { placa: { contains: search, mode: 'insensitive' } } },
+        { vehiculo: { marca: { contains: search, mode: 'insensitive' } } },
+        { vehiculo: { modelo: { contains: search, mode: 'insensitive' } } },
+        { conductor: { nombre: { contains: search, mode: 'insensitive' } } },
+        { conductor: { cedula: { contains: search, mode: 'insensitive' } } },
+        { tarifa_ruta: { ruta: { origen: { contains: search, mode: 'insensitive' } } } },
+        { tarifa_ruta: { ruta: { destino: { contains: search, mode: 'insensitive' } } } },
+        { numeros_guia_remision: { has: search } }
+      ]
+    });
+  }
+
+  if (typeof filters.cliente_search === 'string' && filters.cliente_search.trim()) {
+    const search = filters.cliente_search.trim();
+    appendAnd(where, {
+      OR: [
+        { cliente: { nombre: { contains: search, mode: 'insensitive' } } },
+        { cliente: { ruc_cedula: { contains: search, mode: 'insensitive' } } }
+      ]
+    });
+  }
+
+  if (typeof filters.vehiculo_search === 'string' && filters.vehiculo_search.trim()) {
+    const search = filters.vehiculo_search.trim();
+    appendAnd(where, {
+      OR: [
+        { vehiculo: { placa: { contains: search, mode: 'insensitive' } } },
+        { vehiculo: { marca: { contains: search, mode: 'insensitive' } } },
+        { vehiculo: { modelo: { contains: search, mode: 'insensitive' } } }
+      ]
+    });
+  }
+
   if (
     filters.estado === 'programado' ||
     filters.estado === 'en_curso' ||
@@ -229,6 +325,19 @@ const buildWhere = (
 
   if (filters.cobrado === 'true') where.cobrado = true;
   if (filters.cobrado === 'false') where.cobrado = false;
+
+  if (filters.numero_semana) {
+    const numeroSemana = parsePositiveIntegerFilter(filters.numero_semana, 'numero_semana');
+    if (numeroSemana > 53) {
+      throw new AppError('numero_semana debe estar entre 1 y 53', 400);
+    }
+
+    const anioSemana = filters.anio_semana
+      ? parsePositiveIntegerFilter(filters.anio_semana, 'anio_semana')
+      : new Date().getUTCFullYear();
+    const { fechaInicio, fechaFin } = getIsoWeekRange(anioSemana, numeroSemana);
+    appendAnd(where, buildViajeSemanaWhere(fechaInicio, fechaFin));
+  }
 
   if (filters.fecha_desde || filters.fecha_hasta) {
     where.fecha_salida = {};
@@ -342,12 +451,30 @@ export const listViajes = async (
   filters: ListViajesFilters
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const where = buildWhere(propietarioId, filters);
+  const orderBy = [{ fecha_salida: 'desc' }, { id: 'desc' }] satisfies Prisma.ViajeOrderByWithRelationInput[];
+  const pagination = parsePagination(filters as Record<string, unknown>);
 
-  return prisma.viaje.findMany({
-    where: buildWhere(propietarioId, filters),
-    include: includeRelations,
-    orderBy: [{ fecha_salida: 'desc' }, { id: 'desc' }]
-  });
+  if (!pagination) {
+    return prisma.viaje.findMany({
+      where,
+      include: includeRelations,
+      orderBy
+    });
+  }
+
+  const [data, total] = await prisma.$transaction([
+    prisma.viaje.findMany({
+      where,
+      include: includeRelations,
+      orderBy,
+      skip: pagination.skip,
+      take: pagination.limit
+    }),
+    prisma.viaje.count({ where })
+  ]);
+
+  return buildPaginatedResult(data, total, pagination);
 };
 
 export const getViajeById = async (propietarioIdInput: unknown, idInput: unknown) => {
@@ -475,7 +602,11 @@ export const calculateViajeValores = async (
   };
 };
 
-export const createViaje = async (propietarioIdInput: unknown, input: ViajeCreateInput) => {
+export const createViaje = async (
+  propietarioIdInput: unknown,
+  input: ViajeCreateInput,
+  audit?: AuditContext
+) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const clienteId = parseBigIntId(input.cliente_id, 'cliente_id');
   const vehiculoId = parseBigIntId(input.vehiculo_id, 'vehiculo_id');
@@ -505,7 +636,7 @@ export const createViaje = async (propietarioIdInput: unknown, input: ViajeCreat
   const viaticos = toMoney(input.viaticos ?? input.costo_real_gastos ?? 0);
   const cobrado = input.cobrado ?? false;
 
-  return prisma.viaje.create({
+  const viaje = await prisma.viaje.create({
     data: {
       propietario_id: propietarioId,
       cliente_id: clienteId,
@@ -541,12 +672,25 @@ export const createViaje = async (propietarioIdInput: unknown, input: ViajeCreat
     },
     include: includeRelations
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'viaje',
+    entidadId: viaje.id,
+    accion: 'crear',
+    resumen: `Viaje creado ${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino}`,
+    despues: viaje
+  });
+
+  return viaje;
 };
 
 export const updateViaje = async (
   propietarioIdInput: unknown,
   idInput: unknown,
-  input: ViajeUpdateInput
+  input: ViajeUpdateInput,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
@@ -617,7 +761,7 @@ export const updateViaje = async (
       : undefined;
   const cobrado = Object.hasOwn(input, 'cobrado') ? input.cobrado! : current.cobrado;
 
-  return prisma.viaje.update({
+  const viaje = await prisma.viaje.update({
     where: { id },
     data: {
       cliente_id: input.cliente_id ? clienteId : undefined,
@@ -659,37 +803,65 @@ export const updateViaje = async (
     },
     include: includeRelations
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'viaje',
+    entidadId: viaje.id,
+    accion: 'actualizar',
+    resumen: `Viaje actualizado ${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino}`,
+    antes: current,
+    despues: viaje
+  });
+
+  return viaje;
 };
 
 export const updateEstadoViaje = async (
   propietarioIdInput: unknown,
   idInput: unknown,
-  input: ViajeEstadoInput
+  input: ViajeEstadoInput,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getViajeById(propietarioId, id);
+  const current = await getViajeById(propietarioId, id);
 
-  return prisma.viaje.update({
+  const viaje = await prisma.viaje.update({
     where: { id },
     data: {
       estado: toPrismaEstadoViaje(input.estado)
     },
     include: includeRelations
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'viaje',
+    entidadId: viaje.id,
+    accion: 'cambiar_estado',
+    resumen: `Estado de viaje cambiado a ${input.estado}`,
+    antes: { estado: current.estado },
+    despues: { estado: viaje.estado }
+  });
+
+  return viaje;
 };
 
 export const updateCobroViaje = async (
   propietarioIdInput: unknown,
   idInput: unknown,
-  input: ViajeCobroInput
+  input: ViajeCobroInput,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
   const current = await getViajeById(propietarioId, id);
 
-  return prisma.viaje.update({
+  const viaje = await prisma.viaje.update({
     where: { id },
     data: {
       cobrado: input.cobrado,
@@ -697,12 +869,26 @@ export const updateCobroViaje = async (
     },
     include: includeRelations
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'viaje',
+    entidadId: viaje.id,
+    accion: input.cobrado ? 'marcar_cobrado' : 'marcar_no_cobrado',
+    resumen: input.cobrado ? 'Viaje marcado como cobrado' : 'Viaje marcado como no cobrado',
+    antes: { cobrado: current.cobrado, fecha_cobro: current.fecha_cobro },
+    despues: { cobrado: viaje.cobrado, fecha_cobro: viaje.fecha_cobro }
+  });
+
+  return viaje;
 };
 
 export const addGuiasViaje = async (
   propietarioIdInput: unknown,
   idInput: unknown,
-  input: ViajeGuiasInput
+  input: ViajeGuiasInput,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
@@ -715,16 +901,33 @@ export const addGuiasViaje = async (
     }
   }
 
-  return prisma.viaje.update({
+  const viaje = await prisma.viaje.update({
     where: { id },
     data: {
       numeros_guia_remision: guias
     },
     include: includeRelations
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'viaje',
+    entidadId: viaje.id,
+    accion: 'agregar_guias',
+    resumen: `Guías agregadas: ${input.numeros_guia_remision.join(', ')}`,
+    antes: { numeros_guia_remision: current.numeros_guia_remision },
+    despues: { numeros_guia_remision: viaje.numeros_guia_remision }
+  });
+
+  return viaje;
 };
 
-export const cancelViaje = async (propietarioIdInput: unknown, idInput: unknown) => {
+export const cancelViaje = async (
+  propietarioIdInput: unknown,
+  idInput: unknown,
+  audit?: AuditContext
+) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
@@ -741,14 +944,38 @@ export const cancelViaje = async (propietarioIdInput: unknown, idInput: unknown)
       });
     });
 
+    await recordAuditEvent({
+      ...audit,
+      propietarioId: propietarioIdInput,
+      entidad: 'viaje',
+      entidadId: current.id,
+      accion: 'eliminar',
+      resumen: 'Viaje eliminado definitivamente',
+      antes: current,
+      despues: null
+    });
+
     return current;
   }
 
-  return prisma.viaje.update({
+  const viaje = await prisma.viaje.update({
     where: { id },
     data: {
       estado: EstadoViaje.CANCELADO
     },
     include: includeRelations
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'viaje',
+    entidadId: viaje.id,
+    accion: 'cancelar',
+    resumen: 'Viaje cancelado',
+    antes: { estado: current.estado },
+    despues: { estado: viaje.estado }
+  });
+
+  return viaje;
 };

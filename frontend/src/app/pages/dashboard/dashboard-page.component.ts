@@ -17,6 +17,7 @@ interface AlertasResponse {
   licencias: unknown[];
   viajes_sin_cobrar: unknown[];
   cierres_semanales: unknown[];
+  actividad_reciente: unknown[];
 }
 
 @Component({
@@ -61,5 +62,48 @@ export class DashboardPageComponent {
 
   dateOnly(value: unknown) {
     return formatDateOnly(value);
+  }
+
+  dateTime(value: unknown) {
+    if (!value) return '-';
+    const date = new Date(String(value));
+    if (Number.isNaN(date.getTime())) return String(value);
+
+    return new Intl.DateTimeFormat('es-EC', {
+      dateStyle: 'short',
+      timeStyle: 'short'
+    }).format(date);
+  }
+
+  entityLabel(value: unknown) {
+    const labels: Record<string, string> = {
+      auth: 'Acceso',
+      cierre_semanal: 'Cierre semanal',
+      mantenimiento: 'Mantenimiento',
+      tarifa_ruta: 'Tarifa ruta',
+      viaje: 'Viaje'
+    };
+    const key = String(value ?? '');
+    return labels[key] ?? key;
+  }
+
+  actionLabel(value: unknown) {
+    const labels: Record<string, string> = {
+      activar: 'Activó',
+      actualizar: 'Actualizó',
+      agregar_guias: 'Agregó guías',
+      cambiar_clave: 'Cambió clave',
+      cambiar_estado: 'Cambió estado',
+      cancelar: 'Canceló',
+      crear: 'Creó',
+      desactivar: 'Desactivó',
+      eliminar: 'Eliminó',
+      generar_gastos: 'Generó gastos',
+      login: 'Ingresó',
+      marcar_cobrado: 'Marcó cobrado',
+      marcar_no_cobrado: 'Marcó no cobrado'
+    };
+    const key = String(value ?? '');
+    return labels[key] ?? key;
   }
 }

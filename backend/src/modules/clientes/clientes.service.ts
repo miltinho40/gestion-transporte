@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import type {
   ClienteCreateInput,
   ClienteEstadoInput,
@@ -62,11 +63,31 @@ const ensureRucAvailable = async (
 
 export const listClientes = async (propietarioIdInput: unknown, filters: ListClientesFilters) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const where = buildWhere(propietarioId, filters);
+  const orderBy = [
+    { activo: 'desc' },
+    { nombre: 'asc' }
+  ] satisfies Prisma.ClienteOrderByWithRelationInput[];
+  const pagination = parsePagination(filters as Record<string, unknown>);
 
-  return prisma.cliente.findMany({
-    where: buildWhere(propietarioId, filters),
-    orderBy: [{ activo: 'desc' }, { nombre: 'asc' }]
-  });
+  if (!pagination) {
+    return prisma.cliente.findMany({
+      where,
+      orderBy
+    });
+  }
+
+  const [data, total] = await prisma.$transaction([
+    prisma.cliente.findMany({
+      where,
+      orderBy,
+      skip: pagination.skip,
+      take: pagination.limit
+    }),
+    prisma.cliente.count({ where })
+  ]);
+
+  return buildPaginatedResult(data, total, pagination);
 };
 
 export const getClienteById = async (propietarioIdInput: unknown, idInput: unknown) => {

@@ -1,0 +1,187 @@
+.mobile-mantenimientos {
+  display: grid;
+  gap: 12px;
+}
+
+.mobile-page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 800;
+}
+
+p {
+  margin: 2px 0 0;
+  color: var(--app-muted);
+}
+
+.add-button {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.mobile-filter-card,
+.mantenimiento-card {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(24, 34, 48, 0.06);
+}
+
+.mobile-filter-card {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.search-box {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--app-muted);
+}
+
+.search-box input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  color: var(--app-text);
+}
+
+.filter-row {
+  display: grid;
+  grid-template-columns: 1fr 42px;
+  gap: 8px;
+}
+
+.refresh-button {
+  display: grid;
+  place-items: center;
+}
+
+.mantenimientos-list {
+  display: grid;
+  gap: 10px;
+}
+
+.mantenimiento-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.mantenimiento-card.cancelado {
+  color: #b42318;
+}
+
+.card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.card-top h2 {
+  margin: 4px 0 2px;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.date-pill,
+.state-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.date-pill {
+  color: #065f46;
+  background: #d1fae5;
+}
+
+.state-pill {
+  flex: 0 0 auto;
+  color: #475467;
+  background: #f2f4f7;
+}
+
+.state-pill.ok {
+  color: #027a48;
+  background: #dcfae6;
+}
+
+.state-pill.warning {
+  color: #93370d;
+  background: #fef0c7;
+}
+
+.state-pill.danger {
+  color: #b42318;
+  background: #fee4e2;
+}
+
+.description {
+  color: var(--app-muted);
+  font-size: 0.84rem;
+}
+
+.money-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.money-grid div {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  padding: 8px;
+  background: #fbfdff;
+}
+
+.money-grid span {
+  color: var(--app-muted);
+  font-size: 0.68rem;
+}
+
+.money-grid strong {
+  font-size: 0.9rem;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.card-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.empty-state {
+  padding: 28px 12px;
+  color: var(--app-muted);
+  text-align: center;
+}

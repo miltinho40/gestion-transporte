@@ -282,12 +282,50 @@ export const listAlertasViajesSinCobrar = async (propietarioIdInput: unknown) =>
   };
 };
 
+export const listActividadReciente = async (propietarioIdInput: unknown) => {
+  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const eventos = await prisma.auditoriaEvento.findMany({
+    where: {
+      propietario_id: propietarioId
+    },
+    include: {
+      usuario: {
+        select: {
+          id: true,
+          nombre: true,
+          email: true
+        }
+      }
+    },
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    take: 12
+  });
+
+  return eventos.map((evento) => ({
+    id: evento.id,
+    fecha: evento.created_at,
+    entidad: evento.entidad,
+    entidad_id: evento.entidad_id,
+    accion: evento.accion,
+    resumen: evento.resumen,
+    usuario: evento.usuario
+      ? {
+          id: evento.usuario.id,
+          nombre: evento.usuario.nombre,
+          email: evento.usuario.email
+        }
+      : null,
+    ip: evento.ip
+  }));
+};
+
 export const listAlertas = async (propietarioIdInput: unknown) => {
-  const [mantenimientos, licencias, viajesSinCobrar, cierresSemanales] = await Promise.all([
+  const [mantenimientos, licencias, viajesSinCobrar, cierresSemanales, actividadReciente] = await Promise.all([
     listAlertasMantenimientos(propietarioIdInput),
     listAlertasLicencias(propietarioIdInput),
     listAlertasViajesSinCobrar(propietarioIdInput),
-    listAnomaliasCierresSemanales(propietarioIdInput)
+    listAnomaliasCierresSemanales(propietarioIdInput),
+    listActividadReciente(propietarioIdInput)
   ]);
 
   return {
@@ -323,6 +361,7 @@ export const listAlertas = async (propietarioIdInput: unknown) => {
     mantenimientos: mantenimientos.items,
     licencias: licencias.items,
     viajes_sin_cobrar: viajesSinCobrar.items,
-    cierres_semanales: cierresSemanales.items
+    cierres_semanales: cierresSemanales.items,
+    actividad_reciente: actividadReciente
   };
 };

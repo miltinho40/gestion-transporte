@@ -14,8 +14,10 @@ import {
 import { Subscription, forkJoin } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
+import { isPaginatedResponse, PaginatedResponse, PaginationMeta } from '../../core/pagination';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 import { DialogService } from '../../shared/dialog.service';
+import { PaginationControlsComponent } from '../../shared/pagination-controls.component';
 
 type EstadoMantenimiento = 'programado' | 'realizado' | 'cancelado' | 'vencido';
 type CatalogField = 'vehiculo_id' | 'tipo_mantenimiento_id';
@@ -70,6 +72,8 @@ interface MantenimientoRow {
   repuestos?: RepuestoItem[];
 }
 
+type MantenimientosListResponse = MantenimientoRow[] | PaginatedResponse<MantenimientoRow>;
+
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -118,7 +122,8 @@ const addDaysInput = (dateInput: string, days: number) => {
     LucideSearch,
     LucideTrash2,
     LucideX,
-    AutoDismissAlertDirective
+    AutoDismissAlertDirective,
+    PaginationControlsComponent
   ],
   templateUrl: './mantenimientos-page.component.html'
 })
@@ -130,8 +135,12 @@ export class MantenimientosPageComponent implements OnDestroy {
   private readonly router = inject(Router);
   private readonly sub = new Subscription();
   private pendingEditId: string | null = null;
+  private filterTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly rows = signal<MantenimientoRow[]>([]);
+  readonly pagination = signal<PaginationMeta | null>(null);
+  readonly page = signal(1);
+  readonly limit = signal(50);
   readonly vehiculos = signal<VehiculoOption[]>([]);
   readonly tiposMantenimiento = signal<TipoMantenimientoOption[]>([]);
   readonly repuestos = signal<RepuestoItem[]>([]);
@@ -182,6 +191,9 @@ export class MantenimientosPageComponent implements OnDestroy {
   }
 
   ngOnDestroy() {
+    if (this.filterTimer) {
+      clearTimeout(this.filterTimer);
+    }
     this.sub.unsubscribe();
   }
 
@@ -191,12 +203,12 @@ export class MantenimientosPageComponent implements OnDestroy {
 
     this.sub.add(
       forkJoin({
-        mantenimientos: this.api.get<MantenimientoRow[]>('/mantenimientos'),
+        mantenimientos: this.api.get<MantenimientosListResponse>('/mantenimientos', this.listParams()),
         vehiculos: this.api.get<VehiculoOption[]>('/vehiculos'),
         tipos: this.api.get<TipoMantenimientoOption[]>('/tipos-mantenimiento', { activo: true })
       }).subscribe({
         next: ({ mantenimientos, vehiculos, tipos }) => {
-          this.rows.set(mantenimientos);
+          this.setMantenimientosResponse(mantenimientos);
           this.vehiculos.set(vehiculos);
           this.tiposMantenimiento.set(tipos);
           this.syncCatalogInputs();
@@ -388,15 +400,33 @@ export class MantenimientosPageComponent implements OnDestroy {
   }
 
   filteredRows() {
-    const term = this.search().trim().toLowerCase();
-    const placaTerm = this.filterPlacaTerm().trim().toLowerCase();
+    return this.rows();
+  }
 
-    return this.rows().filter((row) => {
-      const matchesPlaca = !placaTerm || this.vehiculoSearchText(row).includes(placaTerm);
-      const matchesSearch = !term || JSON.stringify(row).toLowerCase().includes(term);
+  changePage(page: number) {
+    const meta = this.pagination();
+    if (!meta || page < 1 || page > meta.total_pages || page === this.page()) return;
 
-      return matchesPlaca && matchesSearch;
-    });
+    this.page.set(page);
+    this.load();
+  }
+
+  changeLimit(limit: number) {
+    if (limit === this.limit()) return;
+
+    this.limit.set(limit);
+    this.page.set(1);
+    this.load();
+  }
+
+  setSearch(value: string) {
+    this.search.set(value);
+    this.scheduleFilterLoad();
+  }
+
+  setFilterPlaca(value: string) {
+    this.filterPlacaTerm.set(value);
+    this.scheduleFilterLoad();
   }
 
   openCatalog(field: CatalogField) {
@@ -640,13 +670,26 @@ export class MantenimientosPageComponent implements OnDestroy {
   }
 
   private openPendingEdit() {
-    if (!this.pendingEditId || !this.rows().length) return;
+    if (!this.pendingEditId) return;
 
     const row = this.rows().find((item) => String(item.id) === this.pendingEditId);
     if (!row) {
-      this.error.set('No se encontró el mantenimiento solicitado.');
-      this.pendingEditId = null;
-      this.clearEditQuery();
+      const id = this.pendingEditId;
+      this.sub.add(
+        this.api.get<MantenimientoRow>(`/mantenimientos/${id}`).subscribe({
+          next: (response) => {
+            if (this.pendingEditId !== id) return;
+            this.pendingEditId = null;
+            this.openEdit(response);
+            this.clearEditQuery();
+          },
+          error: () => {
+            this.error.set('No se encontró el mantenimiento solicitado.');
+            this.pendingEditId = null;
+            this.clearEditQuery();
+          }
+        })
+      );
       return;
     }
 
@@ -678,6 +721,37 @@ export class MantenimientosPageComponent implements OnDestroy {
       queryParamsHandling: 'merge',
       replaceUrl: true
     });
+  }
+
+  private setMantenimientosResponse(response: MantenimientosListResponse) {
+    if (isPaginatedResponse(response)) {
+      this.rows.set(response.data);
+      this.pagination.set(response.meta);
+      return;
+    }
+
+    this.rows.set(response);
+    this.pagination.set(null);
+  }
+
+  private listParams() {
+    return {
+      page: this.page(),
+      limit: this.limit(),
+      search: this.search().trim() || undefined,
+      placa_search: this.filterPlacaTerm().trim() || undefined
+    };
+  }
+
+  private scheduleFilterLoad() {
+    if (this.filterTimer) {
+      clearTimeout(this.filterTimer);
+    }
+
+    this.filterTimer = setTimeout(() => {
+      this.page.set(1);
+      this.load();
+    }, 350);
   }
 
   private buildPayload() {

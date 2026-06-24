@@ -16,12 +16,15 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { formatDateOnly } from '../../core/date-only';
 import type { ApiListColumn, CrudFieldConfig, CrudRouteData, SelectOption } from '../../core/models';
+import { isPaginatedResponse, PaginatedResponse, PaginationMeta } from '../../core/pagination';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 import { DialogService } from '../../shared/dialog.service';
+import { PaginationControlsComponent } from '../../shared/pagination-controls.component';
 
 type Row = Record<string, unknown>;
 type FormValue = string | number | boolean | null;
 type CrudForm = FormGroup<Record<string, FormControl<FormValue>>>;
+type RowsListResponse = Row[] | PaginatedResponse<Row>;
 
 const toHoursTime = (value: unknown) => {
   if (value === null || value === undefined || value === '') return '';
@@ -76,7 +79,8 @@ const setPayloadValue = (payload: Row, field: CrudFieldConfig, value: unknown) =
     LucideSearch,
     LucideTrash2,
     LucideX,
-    AutoDismissAlertDirective
+    AutoDismissAlertDirective,
+    PaginationControlsComponent
   ],
   templateUrl: './crud-page.component.html'
 })
@@ -90,6 +94,9 @@ export class CrudPageComponent implements OnDestroy {
 
   readonly config = signal<CrudRouteData | null>(null);
   readonly rows = signal<Row[]>([]);
+  readonly pagination = signal<PaginationMeta | null>(null);
+  readonly page = signal(1);
+  readonly limit = signal(50);
   readonly catalogOptions = signal<Record<string, SelectOption[]>>({});
   readonly loading = signal(false);
   readonly saving = signal(false);
@@ -110,6 +117,8 @@ export class CrudPageComponent implements OnDestroy {
         const config = data as CrudRouteData;
         this.config.set(config);
         this.search.set('');
+        this.page.set(1);
+        this.pagination.set(null);
         this.message.set(null);
         this.error.set(null);
         this.formOpen.set(false);
@@ -133,9 +142,9 @@ export class CrudPageComponent implements OnDestroy {
     this.loading.set(true);
     this.error.set(null);
 
-    this.api.get<Row[]>(config.endpoint).subscribe({
-      next: (rows) => {
-        this.rows.set(rows);
+    this.api.get<RowsListResponse>(config.endpoint, this.listParams()).subscribe({
+      next: (response) => {
+        this.setRowsResponse(response);
         this.loading.set(false);
       },
       error: (err) => {
@@ -143,6 +152,22 @@ export class CrudPageComponent implements OnDestroy {
         this.loading.set(false);
       }
     });
+  }
+
+  changePage(page: number) {
+    const meta = this.pagination();
+    if (!meta || page < 1 || page > meta.total_pages || page === this.page()) return;
+
+    this.page.set(page);
+    this.load();
+  }
+
+  changeLimit(limit: number) {
+    if (limit === this.limit()) return;
+
+    this.limit.set(limit);
+    this.page.set(1);
+    this.load();
   }
 
   openCreate() {
@@ -524,6 +549,24 @@ export class CrudPageComponent implements OnDestroy {
     }
 
     return 'Registro creado.';
+  }
+
+  private setRowsResponse(response: RowsListResponse) {
+    if (isPaginatedResponse(response)) {
+      this.rows.set(response.data);
+      this.pagination.set(response.meta);
+      return;
+    }
+
+    this.rows.set(response);
+    this.pagination.set(null);
+  }
+
+  private listParams() {
+    return {
+      page: this.page(),
+      limit: this.limit()
+    };
   }
 
   private loadCatalogs(config: CrudRouteData) {

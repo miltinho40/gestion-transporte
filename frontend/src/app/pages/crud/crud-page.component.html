@@ -116,6 +116,13 @@
         </tbody>
       </table>
     </div>
+
+    <app-pagination-controls
+      [meta]="pagination()"
+      [loading]="loading()"
+      (pageChange)="changePage($event)"
+      (limitChange)="changeLimit($event)"
+    />
   </div>
 
   @if (formOpen()) {

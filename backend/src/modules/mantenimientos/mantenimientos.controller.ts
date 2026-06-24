@@ -1,5 +1,7 @@
 import type { Request, Response } from 'express';
 import { asyncHandler } from '../../utils/async-handler.js';
+import { auditContextFromRequest } from '../../utils/audit.js';
+import { mapPaginatedResult } from '../../utils/pagination.js';
 import { serializeResponse } from '../../utils/response.js';
 import { formatMantenimiento, formatMantenimientos } from './mantenimientos.mapper.js';
 import {
@@ -13,7 +15,7 @@ import {
 
 export const listMantenimientosController = asyncHandler(async (req: Request, res: Response) => {
   const mantenimientos = await listMantenimientos(req.user!.propietario_id, req.query);
-  res.json(serializeResponse(formatMantenimientos(mantenimientos)));
+  res.json(serializeResponse(mapPaginatedResult(mantenimientos, formatMantenimientos)));
 });
 
 export const getMantenimientoController = asyncHandler(async (req: Request, res: Response) => {
@@ -23,7 +25,11 @@ export const getMantenimientoController = asyncHandler(async (req: Request, res:
 
 export const createMantenimientoController = asyncHandler(
   async (req: Request, res: Response) => {
-    const mantenimiento = await createMantenimiento(req.user!.propietario_id, req.body);
+    const mantenimiento = await createMantenimiento(
+      req.user!.propietario_id,
+      req.body,
+      auditContextFromRequest(req)
+    );
     res.status(201).json(serializeResponse(formatMantenimiento(mantenimiento)));
   }
 );
@@ -33,7 +39,8 @@ export const updateMantenimientoController = asyncHandler(
     const mantenimiento = await updateMantenimiento(
       req.user!.propietario_id,
       req.params.id,
-      req.body
+      req.body,
+      auditContextFromRequest(req)
     );
     res.json(serializeResponse(formatMantenimiento(mantenimiento)));
   }
@@ -44,7 +51,8 @@ export const updateEstadoMantenimientoController = asyncHandler(
     const mantenimiento = await updateEstadoMantenimiento(
       req.user!.propietario_id,
       req.params.id,
-      req.body
+      req.body,
+      auditContextFromRequest(req)
     );
     res.json(serializeResponse(formatMantenimiento(mantenimiento)));
   }
@@ -52,7 +60,11 @@ export const updateEstadoMantenimientoController = asyncHandler(
 
 export const deleteMantenimientoController = asyncHandler(
   async (req: Request, res: Response) => {
-    const mantenimiento = await cancelMantenimiento(req.user!.propietario_id, req.params.id);
+    const mantenimiento = await cancelMantenimiento(
+      req.user!.propietario_id,
+      req.params.id,
+      auditContextFromRequest(req)
+    );
     res.json(serializeResponse(formatMantenimiento(mantenimiento)));
   }
 );

@@ -1,0 +1,113 @@
+<section class="mobile-precio-form">
+  <header class="form-header">
+    <button type="button" class="icon-button" aria-label="Volver" (click)="goBack()">
+      <svg lucideArrowLeft size="20"></svg>
+    </button>
+    <div>
+      <h1>{{ editing ? 'Editar precio' : duplicating ? 'Duplicar precio' : 'Nuevo precio' }}</h1>
+      <p>Tarifa de ruta para viajes.</p>
+    </div>
+  </header>
+
+  @if (error()) {
+    <div class="alert alert-danger py-2" [appAutoDismissAlert]="error()">{{ error() }}</div>
+  }
+
+  <form [formGroup]="form" (ngSubmit)="save()" class="form-stack">
+    <section class="form-section">
+      <h2>Ruta</h2>
+
+      <label class="mobile-field">
+        <span>Ruta</span>
+        <input
+          class="form-control"
+          type="search"
+          list="mobile-rutas-precio"
+          autocomplete="off"
+          [ngModel]="catalogInputValue('ruta_id')"
+          [ngModelOptions]="{ standalone: true }"
+          (ngModelChange)="setCatalogInput('ruta_id', $event)"
+        />
+      </label>
+      <datalist id="mobile-rutas-precio">
+        @for (option of catalogOptions('ruta_id'); track option.value) {
+          <option [value]="option.label"></option>
+        }
+      </datalist>
+
+      <label class="mobile-field">
+        <span>Tipo de carga</span>
+        <input
+          class="form-control"
+          type="search"
+          list="mobile-tipos-carga-precio"
+          autocomplete="off"
+          [ngModel]="catalogInputValue('tipo_carga_id')"
+          [ngModelOptions]="{ standalone: true }"
+          (ngModelChange)="setCatalogInput('tipo_carga_id', $event)"
+        />
+      </label>
+      <datalist id="mobile-tipos-carga-precio">
+        @for (option of catalogOptions('tipo_carga_id'); track option.value) {
+          <option [value]="option.label"></option>
+        }
+      </datalist>
+    </section>
+
+    <section class="form-section">
+      <h2>Precio</h2>
+
+      <div class="two-columns">
+        <label class="mobile-field">
+          <span>Capacidad</span>
+          <input class="form-control" type="text" formControlName="capacidad" />
+        </label>
+        <label class="mobile-field">
+          <span>Toneladas</span>
+          <input class="form-control" type="number" min="0" step="0.01" formControlName="toneladas" />
+        </label>
+      </div>
+
+      <label class="mobile-field">
+        <span>Precio</span>
+        <input class="form-control" type="number" min="0" step="0.01" formControlName="precio" />
+      </label>
+
+      <div class="price-preview">
+        <span>Valor</span>
+        <strong>$ {{ money(form.controls.precio.value) }}</strong>
+      </div>
+    </section>
+
+    <section class="form-section">
+      <h2>Vigencia</h2>
+
+      <div class="two-columns">
+        <label class="mobile-field">
+          <span>Desde</span>
+          <input class="form-control" type="date" formControlName="vigente_desde" />
+        </label>
+        <label class="mobile-field">
+          <span>Hasta</span>
+          <input class="form-control" type="date" formControlName="vigente_hasta" />
+        </label>
+      </div>
+
+      <label class="switch-row">
+        <span>Activa</span>
+        <input class="form-check-input" type="checkbox" formControlName="activa" />
+      </label>
+    </section>
+
+    <div class="save-bar">
+      <button type="submit" class="btn btn-primary" [disabled]="saving() || loading()">
+        <svg lucideSave size="18"></svg>
+        @if (saving()) {
+          Guardando...
+        } @else {
+          Guardar precio
+        }
+      </button>
+    </div>
+  </form>
+</section>

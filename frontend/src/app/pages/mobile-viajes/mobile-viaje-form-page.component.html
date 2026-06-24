@@ -1,0 +1,303 @@
+<section class="mobile-viaje-form">
+  <header class="form-header">
+    <button type="button" class="icon-button" aria-label="Volver" (click)="goBack()">
+      <svg lucideArrowLeft size="20"></svg>
+    </button>
+    <div>
+      <h1>{{ editing ? 'Editar viaje' : duplicating ? 'Duplicar viaje' : 'Nuevo viaje' }}</h1>
+      <p>Registro rápido para móvil</p>
+    </div>
+  </header>
+
+  @if (error()) {
+    <div class="alert alert-danger py-2" [appAutoDismissAlert]="error()">{{ error() }}</div>
+  }
+
+  <form [formGroup]="form" (ngSubmit)="save()" class="form-stack">
+    <section class="form-section">
+      <h2>Datos</h2>
+
+      <label class="mobile-field">
+        <span>Cliente</span>
+        <input
+          class="form-control"
+          type="search"
+          list="mobile-clientes"
+          autocomplete="off"
+          [ngModel]="catalogInputValue('cliente_id')"
+          [ngModelOptions]="{ standalone: true }"
+          (ngModelChange)="setCatalogInput('cliente_id', $event)"
+        />
+      </label>
+      <datalist id="mobile-clientes">
+        @for (option of catalogOptions('cliente_id'); track option.value) {
+          <option [value]="option.label"></option>
+        }
+      </datalist>
+
+      <label class="mobile-field">
+        <span>Vehículo</span>
+        <input
+          class="form-control"
+          type="search"
+          list="mobile-vehiculos"
+          autocomplete="off"
+          [ngModel]="catalogInputValue('vehiculo_id')"
+          [ngModelOptions]="{ standalone: true }"
+          (ngModelChange)="setCatalogInput('vehiculo_id', $event)"
+        />
+      </label>
+      <datalist id="mobile-vehiculos">
+        @for (option of catalogOptions('vehiculo_id'); track option.value) {
+          <option [value]="option.label"></option>
+        }
+      </datalist>
+
+      <label class="mobile-field">
+        <span>Conductor</span>
+        <input
+          class="form-control"
+          type="search"
+          list="mobile-conductores"
+          autocomplete="off"
+          [ngModel]="catalogInputValue('conductor_id')"
+          [ngModelOptions]="{ standalone: true }"
+          (ngModelChange)="setCatalogInput('conductor_id', $event)"
+        />
+      </label>
+      <datalist id="mobile-conductores">
+        @for (option of catalogOptions('conductor_id'); track option.value) {
+          <option [value]="option.label"></option>
+        }
+      </datalist>
+
+      <div class="two-columns">
+        <label class="mobile-field">
+          <span>Salida</span>
+          <input class="form-control" type="date" formControlName="fecha_salida" (change)="onFechaSalidaChange()" />
+        </label>
+        <label class="mobile-field">
+          <span>Entrega</span>
+          <input class="form-control" type="date" formControlName="fecha_llegada" />
+        </label>
+      </div>
+
+      <label class="switch-row">
+        <span>Viaje retorno</span>
+        <input class="form-check-input" type="checkbox" formControlName="retorno" />
+      </label>
+    </section>
+
+    <section class="form-section">
+      <div class="section-title">
+        <h2>Ruta y valores</h2>
+        @if (calculating()) {
+          <span><svg lucideCalculator size="14"></svg> Calculando</span>
+        }
+      </div>
+
+      <label class="mobile-field">
+        <span>Tarifa ruta</span>
+        <input
+          class="form-control"
+          type="search"
+          list="mobile-tarifas"
+          autocomplete="off"
+          [ngModel]="catalogInputValue('tarifa_ruta_id')"
+          [ngModelOptions]="{ standalone: true }"
+          (ngModelChange)="setCatalogInput('tarifa_ruta_id', $event)"
+        />
+      </label>
+      <datalist id="mobile-tarifas">
+        @for (option of catalogOptions('tarifa_ruta_id'); track option.value) {
+          <option [value]="option.label"></option>
+        }
+      </datalist>
+
+      <label class="mobile-field">
+        <span>Detalle carga</span>
+        <textarea class="form-control" rows="2" formControlName="descripcion_carga"></textarea>
+      </label>
+
+      <div class="two-columns">
+        <label class="mobile-field">
+          <span>Precio viaje</span>
+          <input
+            class="form-control"
+            type="number"
+            min="0"
+            step="0.01"
+            formControlName="precio_flete"
+            (change)="onPrecioFleteChanged()"
+          />
+        </label>
+        <label class="mobile-field">
+          <span>A facturar</span>
+          <input
+            class="form-control"
+            type="number"
+            min="0"
+            step="0.01"
+            formControlName="precio_real_flete"
+            (input)="onPrecioRealChanged()"
+          />
+        </label>
+      </div>
+
+      <div class="two-columns">
+        <label class="mobile-field">
+          <span>Viáticos</span>
+          <input
+            class="form-control"
+            type="number"
+            min="0"
+            step="0.01"
+            formControlName="viaticos"
+            (input)="onViaticosChanged()"
+          />
+        </label>
+        <label class="mobile-field">
+          <span>Peso kg</span>
+          <input class="form-control" type="number" min="0" step="0.01" formControlName="peso_carga_kg" />
+        </label>
+      </div>
+
+      <div class="summary-grid">
+        <div>
+          <span>Diesel</span>
+          <strong>$ {{ money(form.controls.costo_diesel.value) }}</strong>
+        </div>
+        <div>
+          <span>Peajes</span>
+          <strong>$ {{ money(form.controls.costo_peajes.value) }}</strong>
+        </div>
+        <div>
+          <span>Utilidad</span>
+          <strong>$ {{ money(utilidadViaje()) }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="form-section">
+      <h2>Gastos adicionales</h2>
+
+      <div class="gasto-box" [formGroup]="gastoForm">
+        <label class="mobile-field">
+          <span>Tipo gasto</span>
+          <input
+            class="form-control"
+            type="search"
+            list="mobile-tipos-gasto"
+            autocomplete="off"
+            [ngModel]="catalogInputValue('tipo_gasto_id')"
+            [ngModelOptions]="{ standalone: true }"
+            (ngModelChange)="setCatalogInput('tipo_gasto_id', $event)"
+          />
+        </label>
+        <datalist id="mobile-tipos-gasto">
+          @for (option of catalogOptions('tipo_gasto_id'); track option.value) {
+            <option [value]="option.label"></option>
+          }
+        </datalist>
+
+        <div class="two-columns">
+          <label class="mobile-field">
+            <span>Monto</span>
+            <input class="form-control" type="number" min="0" step="0.01" formControlName="monto" />
+          </label>
+          <label class="mobile-field">
+            <span>Detalle</span>
+            <input class="form-control" type="text" formControlName="descripcion" />
+          </label>
+        </div>
+
+        <button type="button" class="btn btn-outline-primary w-100" (click)="addGasto()">
+          <svg lucidePlus size="16"></svg>
+          Agregar gasto
+        </button>
+      </div>
+
+      @if (gastos().length) {
+        <div class="gastos-list">
+          @for (gasto of gastos(); track gasto.id ?? $index; let index = $index) {
+            <div class="gasto-item">
+              <div>
+                <strong>{{ gasto.tipo_gasto_nombre }}</strong>
+                <span>{{ gasto.descripcion || 'Sin detalle' }}</span>
+              </div>
+              <div class="gasto-amount">
+                <strong>$ {{ money(gasto.monto) }}</strong>
+                <button type="button" class="btn btn-outline-danger btn-sm" (click)="removeGasto(index)" aria-label="Quitar gasto">
+                  <svg lucideTrash2 size="15"></svg>
+                </button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+
+      <div class="summary-grid">
+        <div>
+          <span>Adicionales</span>
+          <strong>$ {{ money(totalGastosAdicionales()) }}</strong>
+        </div>
+        <div>
+          <span>Gasto real</span>
+          <strong>$ {{ money(totalGastosReales()) }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="form-section">
+      <h2>Guías y estado</h2>
+
+      <label class="mobile-field">
+        <span>Guías de remisión</span>
+        <textarea
+          class="form-control"
+          rows="2"
+          placeholder="Separadas por coma o guion"
+          formControlName="numeros_guia_remision"
+        ></textarea>
+      </label>
+
+      <label class="mobile-field">
+        <span>Estado</span>
+        <select class="form-select" formControlName="estado">
+          <option value="programado">Programado</option>
+          <option value="en_curso">En curso</option>
+          <option value="completado">Completado</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+      </label>
+
+      <label class="switch-row">
+        <span>Cobrado</span>
+        <input class="form-check-input" type="checkbox" formControlName="cobrado" />
+      </label>
+
+      @if (form.controls.cobrado.value) {
+        <label class="mobile-field">
+          <span>Fecha cobro</span>
+          <input class="form-control" type="date" formControlName="fecha_cobro" />
+        </label>
+      }
+
+      <label class="mobile-field">
+        <span>Observaciones</span>
+        <textarea class="form-control" rows="2" formControlName="observaciones"></textarea>
+      </label>
+    </section>
+
+    <div class="save-bar">
+      <button type="submit" class="btn btn-primary" [disabled]="saving() || loading()">
+        <svg lucideSave size="18"></svg>
+        @if (saving()) {
+          Guardando...
+        } @else {
+          Guardar viaje
+        }
+      </button>
+    </div>
+  </form>
+</section>

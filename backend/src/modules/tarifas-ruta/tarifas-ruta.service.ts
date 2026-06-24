@@ -1,7 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
+import type { AuditContext } from '../../utils/audit.js';
+import { recordAuditEvent } from '../../utils/audit.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import type {
   TarifaRutaCreateInput,
   TarifaRutaEstadoInput,
@@ -112,17 +115,35 @@ export const listTarifasRuta = async (
   filters: ListFilters
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const where = buildWhere(propietarioId, filters);
+  const orderBy = [
+    { activa: 'desc' },
+    { ruta_id: 'asc' },
+    { tipo_carga_id: 'asc' },
+    { vigente_desde: 'desc' }
+  ] satisfies Prisma.TarifaRutaOrderByWithRelationInput[];
+  const pagination = parsePagination(filters as Record<string, unknown>);
 
-  return prisma.tarifaRuta.findMany({
-    where: buildWhere(propietarioId, filters),
-    include: includeRelations,
-    orderBy: [
-      { activa: 'desc' },
-      { ruta_id: 'asc' },
-      { tipo_carga_id: 'asc' },
-      { vigente_desde: 'desc' }
-    ]
-  });
+  if (!pagination) {
+    return prisma.tarifaRuta.findMany({
+      where,
+      include: includeRelations,
+      orderBy
+    });
+  }
+
+  const [data, total] = await prisma.$transaction([
+    prisma.tarifaRuta.findMany({
+      where,
+      include: includeRelations,
+      orderBy,
+      skip: pagination.skip,
+      take: pagination.limit
+    }),
+    prisma.tarifaRuta.count({ where })
+  ]);
+
+  return buildPaginatedResult(data, total, pagination);
 };
 
 export const getTarifaRutaById = async (
@@ -149,7 +170,8 @@ export const getTarifaRutaById = async (
 
 export const createTarifaRuta = async (
   propietarioIdInput: unknown,
-  input: TarifaRutaCreateInput
+  input: TarifaRutaCreateInput,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const rutaId = parseBigIntId(input.ruta_id, 'ruta_id');
@@ -174,7 +196,7 @@ export const createTarifaRuta = async (
     vigenteDesde
   );
 
-  return prisma.tarifaRuta.create({
+  const tarifa = await prisma.tarifaRuta.create({
     data: {
       propietario_id: propietarioId,
       ruta_id: rutaId,
@@ -188,12 +210,25 @@ export const createTarifaRuta = async (
     },
     include: includeRelations
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'tarifa_ruta',
+    entidadId: tarifa.id,
+    accion: 'crear',
+    resumen: `Tarifa creada ${tarifa.ruta.origen} - ${tarifa.ruta.destino}`,
+    despues: tarifa
+  });
+
+  return tarifa;
 };
 
 export const updateTarifaRuta = async (
   propietarioIdInput: unknown,
   idInput: unknown,
-  input: TarifaRutaUpdateInput
+  input: TarifaRutaUpdateInput,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
@@ -233,7 +268,7 @@ export const updateTarifaRuta = async (
     id
   );
 
-  return prisma.tarifaRuta.update({
+  const tarifa = await prisma.tarifaRuta.update({
     where: { id },
     data: {
       ruta_id: input.ruta_id ? rutaId : undefined,
@@ -247,28 +282,56 @@ export const updateTarifaRuta = async (
     },
     include: includeRelations
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'tarifa_ruta',
+    entidadId: tarifa.id,
+    accion: 'actualizar',
+    resumen: `Tarifa actualizada ${tarifa.ruta.origen} - ${tarifa.ruta.destino}`,
+    antes: current,
+    despues: tarifa
+  });
+
+  return tarifa;
 };
 
 export const updateEstadoTarifaRuta = async (
   propietarioIdInput: unknown,
   idInput: unknown,
-  input: TarifaRutaEstadoInput
+  input: TarifaRutaEstadoInput,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getTarifaRutaById(propietarioId, id);
+  const current = await getTarifaRutaById(propietarioId, id);
 
-  return prisma.tarifaRuta.update({
+  const tarifa = await prisma.tarifaRuta.update({
     where: { id },
     data: { activa: input.activa },
     include: includeRelations
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'tarifa_ruta',
+    entidadId: tarifa.id,
+    accion: input.activa ? 'activar' : 'desactivar',
+    resumen: input.activa ? 'Tarifa activada' : 'Tarifa desactivada',
+    antes: { activa: current.activa },
+    despues: { activa: tarifa.activa }
+  });
+
+  return tarifa;
 };
 
 export const deactivateTarifaRuta = async (
   propietarioIdInput: unknown,
-  idInput: unknown
+  idInput: unknown,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
@@ -276,11 +339,24 @@ export const deactivateTarifaRuta = async (
   const current = await getTarifaRutaById(propietarioId, id);
 
   if (current.activa) {
-    return prisma.tarifaRuta.update({
+    const tarifa = await prisma.tarifaRuta.update({
       where: { id },
       data: { activa: false },
       include: includeRelations
     });
+
+    await recordAuditEvent({
+      ...audit,
+      propietarioId: propietarioIdInput,
+      entidad: 'tarifa_ruta',
+      entidadId: tarifa.id,
+      accion: 'desactivar',
+      resumen: `Tarifa desactivada ${tarifa.ruta.origen} - ${tarifa.ruta.destino}`,
+      antes: { activa: current.activa },
+      despues: { activa: tarifa.activa }
+    });
+
+    return tarifa;
   }
 
   const viajes = await prisma.viaje.count({
@@ -296,6 +372,17 @@ export const deactivateTarifaRuta = async (
 
   await prisma.tarifaRuta.delete({
     where: { id }
+  });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'tarifa_ruta',
+    entidadId: current.id,
+    accion: 'eliminar',
+    resumen: `Tarifa eliminada ${current.ruta.origen} - ${current.ruta.destino}`,
+    antes: current,
+    despues: null
   });
 
   return current;

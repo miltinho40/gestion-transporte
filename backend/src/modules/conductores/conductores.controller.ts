@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { asyncHandler } from '../../utils/async-handler.js';
+import { mapPaginatedResult } from '../../utils/pagination.js';
 import { serializeResponse } from '../../utils/response.js';
 import { formatConductor, formatConductores } from './conductores.mapper.js';
 import {
@@ -13,7 +14,7 @@ import {
 
 export const listConductoresController = asyncHandler(async (req: Request, res: Response) => {
   const conductores = await listConductores(req.user!.propietario_id, req.query);
-  res.json(serializeResponse(formatConductores(conductores)));
+  res.json(serializeResponse(mapPaginatedResult(conductores, formatConductores)));
 });
 
 export const getConductorController = asyncHandler(async (req: Request, res: Response) => {

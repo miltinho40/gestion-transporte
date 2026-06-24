@@ -1,19 +1,38 @@
-import { Routes } from '@angular/router';
+﻿import { Routes } from '@angular/router';
 import { superAdminGuard } from './core/admin.guard';
 import { authGuard } from './core/auth.guard';
 import { AppShellComponent } from './layout/app-shell.component';
-import { AcceptInvitationPageComponent } from './pages/accept-invitation/accept-invitation-page.component';
-import { ChangePasswordPageComponent } from './pages/change-password/change-password-page.component';
-import { CrudPageComponent } from './pages/crud/crud-page.component';
-import { DashboardPageComponent } from './pages/dashboard/dashboard-page.component';
-import { LoginPageComponent } from './pages/login/login-page.component';
-import { MantenimientosPageComponent } from './pages/mantenimientos/mantenimientos-page.component';
-import { PeajesPageComponent } from './pages/peajes/peajes-page.component';
-import { ReportsPageComponent } from './pages/reports/reports-page.component';
-import { RutasPageComponent } from './pages/rutas/rutas-page.component';
-import { UtilityReportPageComponent } from './pages/utility-report/utility-report-page.component';
-import { ViajesPageComponent } from './pages/viajes/viajes-page.component';
-import { WeeklyClosurePageComponent } from './pages/weekly-closure/weekly-closure-page.component';
+import { MobileShellComponent } from './layout/mobile-shell.component';
+
+const loadAcceptInvitationPage = () =>
+  import('./pages/accept-invitation/accept-invitation-page.component').then(
+    (m) => m.AcceptInvitationPageComponent
+  );
+const loadChangePasswordPage = () =>
+  import('./pages/change-password/change-password-page.component').then(
+    (m) => m.ChangePasswordPageComponent
+  );
+const loadCrudPage = () => import('./pages/crud/crud-page.component').then((m) => m.CrudPageComponent);
+const loadDashboardPage = () =>
+  import('./pages/dashboard/dashboard-page.component').then((m) => m.DashboardPageComponent);
+const loadLoginPage = () => import('./pages/login/login-page.component').then((m) => m.LoginPageComponent);
+const loadMantenimientosPage = () =>
+  import('./pages/mantenimientos/mantenimientos-page.component').then(
+    (m) => m.MantenimientosPageComponent
+  );
+const loadPeajesPage = () => import('./pages/peajes/peajes-page.component').then((m) => m.PeajesPageComponent);
+const loadReportsPage = () =>
+  import('./pages/reports/reports-page.component').then((m) => m.ReportsPageComponent);
+const loadRutasPage = () => import('./pages/rutas/rutas-page.component').then((m) => m.RutasPageComponent);
+const loadUtilityReportPage = () =>
+  import('./pages/utility-report/utility-report-page.component').then(
+    (m) => m.UtilityReportPageComponent
+  );
+const loadViajesPage = () => import('./pages/viajes/viajes-page.component').then((m) => m.ViajesPageComponent);
+const loadWeeklyClosurePage = () =>
+  import('./pages/weekly-closure/weekly-closure-page.component').then(
+    (m) => m.WeeklyClosurePageComponent
+  );
 
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
@@ -33,19 +52,86 @@ const yearsFromTodayInputDate = (years: number) => {
 };
 
 export const routes: Routes = [
-  { path: 'login', component: LoginPageComponent },
-  { path: 'aceptar-invitacion', component: AcceptInvitationPageComponent },
+  { path: 'login', loadComponent: loadLoginPage },
+  { path: 'aceptar-invitacion', loadComponent: loadAcceptInvitationPage },
+  {
+    path: 'movil',
+    component: MobileShellComponent,
+    canActivate: [authGuard],
+    canActivateChild: [authGuard],
+    children: [
+      {
+        path: 'viajes',
+        loadComponent: () =>
+          import('./pages/mobile-viajes/mobile-viajes-page.component').then((m) => m.MobileViajesPageComponent)
+      },
+      {
+        path: 'viajes/nuevo',
+        loadComponent: () =>
+          import('./pages/mobile-viajes/mobile-viaje-form-page.component').then((m) => m.MobileViajeFormPageComponent)
+      },
+      {
+        path: 'viajes/:id/editar',
+        loadComponent: () =>
+          import('./pages/mobile-viajes/mobile-viaje-form-page.component').then((m) => m.MobileViajeFormPageComponent)
+      },
+      {
+        path: 'mantenimientos',
+        loadComponent: () =>
+          import('./pages/mobile-mantenimientos/mobile-mantenimientos-page.component').then(
+            (m) => m.MobileMantenimientosPageComponent
+          )
+      },
+      {
+        path: 'mantenimientos/nuevo',
+        loadComponent: () =>
+          import('./pages/mobile-mantenimientos/mobile-mantenimiento-form-page.component').then(
+            (m) => m.MobileMantenimientoFormPageComponent
+          )
+      },
+      {
+        path: 'mantenimientos/:id/editar',
+        loadComponent: () =>
+          import('./pages/mobile-mantenimientos/mobile-mantenimiento-form-page.component').then(
+            (m) => m.MobileMantenimientoFormPageComponent
+          )
+      },
+      {
+        path: 'cierre-semanal',
+        loadComponent: () =>
+          import('./pages/mobile-weekly-closure/mobile-weekly-closure-page.component').then(
+            (m) => m.MobileWeeklyClosurePageComponent
+          )
+      },
+      {
+        path: 'precios',
+        loadComponent: () =>
+          import('./pages/mobile-precios/mobile-precios-page.component').then((m) => m.MobilePreciosPageComponent)
+      },
+      {
+        path: 'precios/nuevo',
+        loadComponent: () =>
+          import('./pages/mobile-precios/mobile-precio-form-page.component').then((m) => m.MobilePrecioFormPageComponent)
+      },
+      {
+        path: 'precios/:id/editar',
+        loadComponent: () =>
+          import('./pages/mobile-precios/mobile-precio-form-page.component').then((m) => m.MobilePrecioFormPageComponent)
+      },
+      { path: '', pathMatch: 'full', redirectTo: 'viajes' }
+    ]
+  },
   {
     path: 'app',
     component: AppShellComponent,
     canActivate: [authGuard],
     canActivateChild: [authGuard],
     children: [
-      { path: 'dashboard', component: DashboardPageComponent },
-      { path: 'cambiar-clave', component: ChangePasswordPageComponent },
+      { path: 'dashboard', loadComponent: loadDashboardPage },
+      { path: 'cambiar-clave', loadComponent: loadChangePasswordPage },
       {
         path: 'propietarios',
-        component: CrudPageComponent,
+        loadComponent: loadCrudPage,
         canActivate: [superAdminGuard],
         data: {
           title: 'Propietarios',
@@ -54,26 +140,26 @@ export const routes: Routes = [
           displayField: 'nombre',
           columns: [
             { label: 'Nombre', path: 'nombre' },
-            { label: 'RUC/Cédula', path: 'ruc_cedula' },
+            { label: 'RUC/CÃ©dula', path: 'ruc_cedula' },
             { label: 'Contacto', path: 'contacto_nombre' },
-            { label: 'Teléfono', path: 'telefono' },
+            { label: 'TelÃ©fono', path: 'telefono' },
             { label: 'Email', path: 'email' },
-            { label: 'Suscripción', path: 'estado_suscripcion', type: 'badge' },
-            { label: 'Vehículos', path: 'uso_vehiculos' },
-            { label: 'Precio vehículo', path: 'precio_por_vehiculo', type: 'money' },
+            { label: 'SuscripciÃ³n', path: 'estado_suscripcion', type: 'badge' },
+            { label: 'VehÃ­culos', path: 'uso_vehiculos' },
+            { label: 'Precio vehÃ­culo', path: 'precio_por_vehiculo', type: 'money' },
             { label: 'Total mensual', path: 'total_mensual_estimado', type: 'money' },
             { label: 'Activo', path: 'activo', type: 'boolean' }
           ],
           fields: [
             { name: 'nombre', label: 'Nombre', type: 'text', required: true, colClass: 'col-md-6' },
-            { name: 'ruc_cedula', label: 'RUC/Cédula', type: 'text', required: true, colClass: 'col-md-3' },
-            { name: 'telefono', label: 'Teléfono', type: 'text', colClass: 'col-md-3' },
+            { name: 'ruc_cedula', label: 'RUC/CÃ©dula', type: 'text', required: true, colClass: 'col-md-3' },
+            { name: 'telefono', label: 'TelÃ©fono', type: 'text', colClass: 'col-md-3' },
             { name: 'contacto_nombre', label: 'Contacto', type: 'text', colClass: 'col-md-6' },
             { name: 'email', label: 'Email', type: 'email', colClass: 'col-md-6' },
             { name: 'activo', label: 'Activo', type: 'checkbox', defaultValue: true, colClass: 'col-md-3' },
             {
               name: 'estado_suscripcion',
-              label: 'Suscripción',
+              label: 'SuscripciÃ³n',
               type: 'select',
               defaultValue: 'activa',
               colClass: 'col-md-3',
@@ -86,7 +172,7 @@ export const routes: Routes = [
             },
             {
               name: 'limite_vehiculos',
-              label: 'Límite vehículos',
+              label: 'LÃ­mite vehÃ­culos',
               type: 'number',
               defaultValue: 0,
               min: 0,
@@ -95,7 +181,7 @@ export const routes: Routes = [
             },
             {
               name: 'precio_por_vehiculo',
-              label: 'Precio por vehículo',
+              label: 'Precio por vehÃ­culo',
               type: 'number',
               defaultValue: 0,
               min: 0,
@@ -104,7 +190,7 @@ export const routes: Routes = [
             },
             {
               name: 'fecha_corte_facturacion',
-              label: 'Día de corte',
+              label: 'DÃ­a de corte',
               type: 'number',
               defaultValue: 1,
               min: 1,
@@ -112,7 +198,7 @@ export const routes: Routes = [
               step: 1,
               colClass: 'col-md-3'
             },
-            { name: 'direccion', label: 'Dirección', type: 'textarea', rows: 2, colClass: 'col-12' },
+            { name: 'direccion', label: 'DirecciÃ³n', type: 'textarea', rows: 2, colClass: 'col-12' },
             {
               name: 'observaciones_facturacion',
               label: 'Observaciones facturacion',
@@ -153,7 +239,7 @@ export const routes: Routes = [
       },
       {
         path: 'usuarios',
-        component: CrudPageComponent,
+        loadComponent: loadCrudPage,
         canActivate: [superAdminGuard],
         data: {
           title: 'Usuarios',
@@ -185,7 +271,7 @@ export const routes: Routes = [
       },
       {
         path: 'usuarios-propietarios',
-        component: CrudPageComponent,
+        loadComponent: loadCrudPage,
         canActivate: [superAdminGuard],
         data: {
           title: 'Asignaciones',
@@ -248,29 +334,29 @@ export const routes: Routes = [
       },
       {
         path: 'planes',
-        component: CrudPageComponent,
+        loadComponent: loadCrudPage,
         canActivate: [superAdminGuard],
         data: {
           title: 'Planes y suscripciones',
-          description: 'Control de límite de vehículos, precio por vehículo y estado de cobro.',
+          description: 'Control de lÃ­mite de vehÃ­culos, precio por vehÃ­culo y estado de cobro.',
           endpoint: '/propietarios',
           displayField: 'nombre',
           createEnabled: false,
           deleteEnabled: false,
           columns: [
             { label: 'Propietario', path: 'nombre' },
-            { label: 'Suscripción', path: 'estado_suscripcion', type: 'badge' },
-            { label: 'Vehículos', path: 'uso_vehiculos' },
+            { label: 'SuscripciÃ³n', path: 'estado_suscripcion', type: 'badge' },
+            { label: 'VehÃ­culos', path: 'uso_vehiculos' },
             { label: 'Facturables', path: 'vehiculos_facturables' },
-            { label: 'Precio vehículo', path: 'precio_por_vehiculo', type: 'money' },
+            { label: 'Precio vehÃ­culo', path: 'precio_por_vehiculo', type: 'money' },
             { label: 'Total mensual', path: 'total_mensual_estimado', type: 'money' },
-            { label: 'Día corte', path: 'fecha_corte_facturacion' },
+            { label: 'DÃ­a corte', path: 'fecha_corte_facturacion' },
             { label: 'Activo', path: 'activo', type: 'boolean' }
           ],
           fields: [
             {
               name: 'estado_suscripcion',
-              label: 'Suscripción',
+              label: 'SuscripciÃ³n',
               type: 'select',
               required: true,
               colClass: 'col-md-4',
@@ -283,7 +369,7 @@ export const routes: Routes = [
             },
             {
               name: 'limite_vehiculos',
-              label: 'Límite vehículos',
+              label: 'LÃ­mite vehÃ­culos',
               type: 'number',
               min: 0,
               step: 1,
@@ -291,7 +377,7 @@ export const routes: Routes = [
             },
             {
               name: 'precio_por_vehiculo',
-              label: 'Precio por vehículo',
+              label: 'Precio por vehÃ­culo',
               type: 'number',
               min: 0,
               step: '0.01',
@@ -299,7 +385,7 @@ export const routes: Routes = [
             },
             {
               name: 'fecha_corte_facturacion',
-              label: 'Día de corte',
+              label: 'DÃ­a de corte',
               type: 'number',
               min: 1,
               max: 31,
@@ -319,25 +405,25 @@ export const routes: Routes = [
       },
       {
         path: 'configuracion-diesel',
-        component: CrudPageComponent,
+        loadComponent: loadCrudPage,
         canActivate: [superAdminGuard],
         data: {
-          title: 'Configuración diésel',
-          description: 'Precio global del galón de diésel definido solo por el superadmin.',
+          title: 'ConfiguraciÃ³n diÃ©sel',
+          description: 'Precio global del galÃ³n de diÃ©sel definido solo por el superadmin.',
           endpoint: '/configuraciones/superadmin',
           displayField: 'nombre',
           createEnabled: false,
           deleteEnabled: false,
           columns: [
-            { label: 'Configuración', path: 'nombre' },
+            { label: 'ConfiguraciÃ³n', path: 'nombre' },
             { label: 'Clave', path: 'clave' },
             { label: 'Valor', path: 'valor' },
-            { label: 'Descripción', path: 'descripcion' }
+            { label: 'DescripciÃ³n', path: 'descripcion' }
           ],
           fields: [
             {
               name: 'valor',
-              label: 'Precio galón diésel',
+              label: 'Precio galÃ³n diÃ©sel',
               type: 'number',
               required: true,
               min: 0,
@@ -346,7 +432,7 @@ export const routes: Routes = [
             },
             {
               name: 'descripcion',
-              label: 'Descripción',
+              label: 'DescripciÃ³n',
               type: 'textarea',
               rows: 2,
               colClass: 'col-12'
@@ -356,20 +442,20 @@ export const routes: Routes = [
       },
       {
         path: 'configuraciones',
-        component: CrudPageComponent,
+        loadComponent: loadCrudPage,
         data: {
           title: 'Configuraciones',
-          description: 'Parámetros propios del propietario para bonos y alertas.',
+          description: 'ParÃ¡metros propios del propietario para bonos y alertas.',
           endpoint: '/configuraciones',
           displayField: 'nombre',
           createEnabled: false,
           deleteEnabled: false,
           columns: [
-            { label: 'Configuración', path: 'nombre' },
+            { label: 'ConfiguraciÃ³n', path: 'nombre' },
             { label: 'Clave', path: 'clave' },
             { label: 'Valor', path: 'valor' },
             { label: 'Origen', path: 'origen', type: 'badge' },
-            { label: 'Descripción', path: 'descripcion' }
+            { label: 'DescripciÃ³n', path: 'descripcion' }
           ],
           fields: [
             {
@@ -383,7 +469,7 @@ export const routes: Routes = [
             },
             {
               name: 'descripcion',
-              label: 'Descripción',
+              label: 'DescripciÃ³n',
               type: 'textarea',
               rows: 2,
               colClass: 'col-12'
@@ -393,28 +479,28 @@ export const routes: Routes = [
       },
       {
         path: 'clientes',
-        component: CrudPageComponent,
+        loadComponent: loadCrudPage,
         data: {
           title: 'Clientes',
-          description: 'Clientes activos, comisión y datos de contacto.',
+          description: 'Clientes activos, comisiÃ³n y datos de contacto.',
           endpoint: '/clientes',
           displayField: 'nombre',
           columns: [
             { label: 'Nombre', path: 'nombre' },
-            { label: 'RUC/Cédula', path: 'ruc_cedula' },
-            { label: 'Teléfono', path: 'telefono' },
-            { label: 'Comisión %', path: 'porcentaje_comision' },
+            { label: 'RUC/CÃ©dula', path: 'ruc_cedula' },
+            { label: 'TelÃ©fono', path: 'telefono' },
+            { label: 'ComisiÃ³n %', path: 'porcentaje_comision' },
             { label: 'Activo', path: 'activo', type: 'boolean' }
           ],
           fields: [
             { name: 'nombre', label: 'Nombre', type: 'text', required: true, colClass: 'col-md-6' },
-            { name: 'ruc_cedula', label: 'RUC/Cédula', type: 'text', required: true, colClass: 'col-md-3' },
-            { name: 'telefono', label: 'Teléfono', type: 'text', colClass: 'col-md-3' },
+            { name: 'ruc_cedula', label: 'RUC/CÃ©dula', type: 'text', required: true, colClass: 'col-md-3' },
+            { name: 'telefono', label: 'TelÃ©fono', type: 'text', colClass: 'col-md-3' },
             { name: 'contacto_nombre', label: 'Contacto', type: 'text', colClass: 'col-md-6' },
             { name: 'email', label: 'Email', type: 'email', colClass: 'col-md-6' },
             {
               name: 'porcentaje_comision',
-              label: 'Comisión %',
+              label: 'ComisiÃ³n %',
               type: 'number',
               defaultValue: 0,
               min: 0,
@@ -423,34 +509,34 @@ export const routes: Routes = [
               colClass: 'col-md-3'
             },
             { name: 'activo', label: 'Activo', type: 'checkbox', defaultValue: true, colClass: 'col-md-3' },
-            { name: 'direccion', label: 'Dirección', type: 'textarea', rows: 2, colClass: 'col-12' }
+            { name: 'direccion', label: 'DirecciÃ³n', type: 'textarea', rows: 2, colClass: 'col-12' }
           ]
         }
       },
       {
         path: 'conductores',
-        component: CrudPageComponent,
+        loadComponent: loadCrudPage,
         data: {
           title: 'Conductores',
-          description: 'Conductores, licencias, teléfono obligatorio y sueldo semanal.',
+          description: 'Conductores, licencias, telÃ©fono obligatorio y sueldo semanal.',
           endpoint: '/conductores',
           displayField: 'nombre',
           columns: [
             { label: 'Nombre', path: 'nombre' },
-            { label: 'Cédula', path: 'cedula' },
-            { label: 'Teléfono', path: 'telefono' },
+            { label: 'CÃ©dula', path: 'cedula' },
+            { label: 'TelÃ©fono', path: 'telefono' },
             { label: 'Sueldo semanal', path: 'sueldo_semanal', type: 'money' },
             { label: 'Caduca licencia', path: 'fecha_caducidad_licencia', type: 'date' },
             { label: 'Estado', path: 'estado', type: 'badge' }
           ],
           fields: [
             { name: 'nombre', label: 'Nombre', type: 'text', required: true, colClass: 'col-md-6' },
-            { name: 'cedula', label: 'Cédula', type: 'text', required: true, colClass: 'col-md-3' },
-            { name: 'telefono', label: 'Teléfono', type: 'text', required: true, colClass: 'col-md-3' },
+            { name: 'cedula', label: 'CÃ©dula', type: 'text', required: true, colClass: 'col-md-3' },
+            { name: 'telefono', label: 'TelÃ©fono', type: 'text', required: true, colClass: 'col-md-3' },
             { name: 'fecha_nacimiento', label: 'Fecha de nacimiento', type: 'date', colClass: 'col-md-4' },
             {
               name: 'numero_licencia',
-              label: 'Número de licencia',
+              label: 'NÃºmero de licencia',
               type: 'text',
               required: true,
               colClass: 'col-md-4'
@@ -490,9 +576,9 @@ export const routes: Routes = [
       },
       {
         path: 'vehiculos',
-        component: CrudPageComponent,
+        loadComponent: loadCrudPage,
         data: {
-          title: 'Vehículos',
+          title: 'VehÃ­culos',
           description: 'Flota, capacidad, tonelaje, rendimiento y kilometraje actual.',
           endpoint: '/vehiculos',
           displayField: 'placa',
@@ -500,7 +586,7 @@ export const routes: Routes = [
             { label: 'Placa', path: 'placa' },
             { label: 'Marca', path: 'marca' },
             { label: 'Modelo', path: 'modelo' },
-            { label: 'Categoría de peaje', path: 'categoria_peaje.nombre' },
+            { label: 'CategorÃ­a de peaje', path: 'categoria_peaje.nombre' },
             { label: 'Capacidad', path: 'capacidad' },
             { label: 'Toneladas', path: 'toneladas' },
             { label: 'Km actual', path: 'kilometraje_actual' },
@@ -510,7 +596,7 @@ export const routes: Routes = [
           fields: [
             {
               name: 'categoria_peaje_id',
-              label: 'Categoría de peaje',
+              label: 'CategorÃ­a de peaje',
               type: 'select',
               required: true,
               colClass: 'col-md-4',
@@ -525,7 +611,7 @@ export const routes: Routes = [
             { name: 'marca', label: 'Marca', type: 'text', required: true, colClass: 'col-md-4' },
             { name: 'modelo', label: 'Modelo', type: 'text', colClass: 'col-md-4' },
             { name: 'color', label: 'Color', type: 'text', colClass: 'col-md-4' },
-            { name: 'anio', label: 'Año', type: 'number', min: 1900, max: 2100, colClass: 'col-md-4' },
+            { name: 'anio', label: 'AÃ±o', type: 'number', min: 1900, max: 2100, colClass: 'col-md-4' },
             {
               name: 'capacidad',
               label: 'Capacidad cartones',
@@ -555,7 +641,7 @@ export const routes: Routes = [
             },
             {
               name: 'rendimiento_km_galon',
-              label: 'Rendimiento km/galón',
+              label: 'Rendimiento km/galÃ³n',
               type: 'number',
               required: true,
               defaultValue: 16,
@@ -585,24 +671,24 @@ export const routes: Routes = [
       },
       {
         path: 'categorias-peaje',
-        component: CrudPageComponent,
+        loadComponent: loadCrudPage,
         canActivate: [superAdminGuard],
         data: {
-          title: 'Categorías de peaje',
-          description: 'Categorías usadas para clasificar vehículos y calcular tarifas de peaje.',
+          title: 'CategorÃ­as de peaje',
+          description: 'CategorÃ­as usadas para clasificar vehÃ­culos y calcular tarifas de peaje.',
           endpoint: '/categorias-peaje',
           displayField: 'nombre',
           columns: [
             { label: 'Nombre', path: 'nombre' },
-            { label: 'Número de ejes', path: 'numero_ejes' },
-            { label: 'Descripción', path: 'descripcion' },
+            { label: 'NÃºmero de ejes', path: 'numero_ejes' },
+            { label: 'DescripciÃ³n', path: 'descripcion' },
             { label: 'Activo', path: 'activo', type: 'boolean' }
           ],
           fields: [
             { name: 'nombre', label: 'Nombre', type: 'text', required: true, colClass: 'col-md-6' },
             {
               name: 'numero_ejes',
-              label: 'Número de ejes',
+              label: 'NÃºmero de ejes',
               type: 'number',
               min: 0,
               step: 1,
@@ -610,13 +696,13 @@ export const routes: Routes = [
             },
             { name: 'activo', label: 'Activo', type: 'checkbox', defaultValue: true, colClass: 'col-md-3' },
             { name: 'global', label: 'Registro global', type: 'checkbox', defaultValue: false, colClass: 'col-md-3' },
-            { name: 'descripcion', label: 'Descripción', type: 'textarea', rows: 2, colClass: 'col-12' }
+            { name: 'descripcion', label: 'DescripciÃ³n', type: 'textarea', rows: 2, colClass: 'col-12' }
           ]
         }
       },
       {
         path: 'viajes',
-        component: ViajesPageComponent,
+        loadComponent: loadViajesPage,
         data: {
           title: 'Viajes',
           description: 'Viajes, fletes, gastos y estado de cobro.',
@@ -625,7 +711,7 @@ export const routes: Routes = [
           columns: [
             { label: 'Fecha', path: 'fecha_salida', type: 'date' },
             { label: 'Cliente', path: 'cliente.nombre' },
-            { label: 'Vehículo', path: 'vehiculo.placa' },
+            { label: 'VehÃ­culo', path: 'vehiculo.placa' },
             { label: 'Conductor', path: 'conductor.nombre' },
             { label: 'Destino', path: 'tarifa_ruta.ruta.destino' },
             { label: 'Flete', path: 'precio_flete', type: 'money' },
@@ -650,7 +736,7 @@ export const routes: Routes = [
             },
             {
               name: 'vehiculo_id',
-              label: 'Vehículo',
+              label: 'VehÃ­culo',
               type: 'select',
               required: true,
               colClass: 'col-md-4',
@@ -699,14 +785,14 @@ export const routes: Routes = [
             { name: 'fecha_llegada', label: 'Fecha llegada', type: 'date', colClass: 'col-md-3' },
             {
               name: 'descripcion_carga',
-              label: 'Descripción carga',
+              label: 'DescripciÃ³n carga',
               type: 'textarea',
               rows: 2,
               colClass: 'col-md-6'
             },
             {
               name: 'numeros_guia_remision',
-              label: 'Guías de remisión',
+              label: 'GuÃ­as de remisiÃ³n',
               type: 'textarea',
               rows: 2,
               parseAs: 'stringArray',
@@ -731,7 +817,7 @@ export const routes: Routes = [
             },
             {
               name: 'galones_diesel',
-              label: 'Galones diésel',
+              label: 'Galones diÃ©sel',
               type: 'number',
               defaultValue: 0,
               min: 0,
@@ -740,7 +826,7 @@ export const routes: Routes = [
             },
             {
               name: 'costo_diesel',
-              label: 'Costo diésel',
+              label: 'Costo diÃ©sel',
               type: 'number',
               defaultValue: 0,
               min: 0,
@@ -758,7 +844,7 @@ export const routes: Routes = [
             },
             {
               name: 'viaticos',
-              label: 'Viáticos',
+              label: 'ViÃ¡ticos',
               type: 'number',
               min: 0,
               step: '0.01',
@@ -786,26 +872,26 @@ export const routes: Routes = [
       },
       {
         path: 'tipos-mantenimiento',
-        component: CrudPageComponent,
+        loadComponent: loadCrudPage,
         data: {
           title: 'Tipos de mantenimiento',
-          description: 'Tipos de mantenimiento y periodicidad por kilometraje o días.',
+          description: 'Tipos de mantenimiento y periodicidad por kilometraje o dÃ­as.',
           endpoint: '/tipos-mantenimiento',
           displayField: 'nombre',
           readonlyGlobalRows: true,
           columns: [
             { label: 'Nombre', path: 'nombre' },
-            { label: 'Periódico', path: 'es_periodico', type: 'boolean' },
+            { label: 'PeriÃ³dico', path: 'es_periodico', type: 'boolean' },
             { label: 'Intervalo km', path: 'intervalo_km' },
-            { label: 'Intervalo días', path: 'intervalo_dias' },
+            { label: 'Intervalo dÃ­as', path: 'intervalo_dias' },
             { label: 'Activo', path: 'activo', type: 'boolean' }
           ],
           fields: [
             { name: 'nombre', label: 'Nombre', type: 'text', required: true, colClass: 'col-md-6' },
-            { name: 'es_periodico', label: 'Periódico', type: 'checkbox', defaultValue: false, colClass: 'col-md-3' },
+            { name: 'es_periodico', label: 'PeriÃ³dico', type: 'checkbox', defaultValue: false, colClass: 'col-md-3' },
             { name: 'activo', label: 'Activo', type: 'checkbox', defaultValue: true, colClass: 'col-md-3' },
             { name: 'intervalo_km', label: 'Intervalo km', type: 'number', min: 1, step: 1, colClass: 'col-md-3' },
-            { name: 'intervalo_dias', label: 'Intervalo días', type: 'number', min: 1, step: 1, colClass: 'col-md-3' },
+            { name: 'intervalo_dias', label: 'Intervalo dÃ­as', type: 'number', min: 1, step: 1, colClass: 'col-md-3' },
             {
               name: 'global',
               label: 'Registro global',
@@ -815,31 +901,31 @@ export const routes: Routes = [
               superAdminOnly: true,
               colClass: 'col-md-3'
             },
-            { name: 'descripcion', label: 'Descripción', type: 'textarea', rows: 2, colClass: 'col-12' }
+            { name: 'descripcion', label: 'DescripciÃ³n', type: 'textarea', rows: 2, colClass: 'col-12' }
           ]
         }
       },
       {
         path: 'mantenimientos',
-        component: MantenimientosPageComponent,
+        loadComponent: loadMantenimientosPage,
         data: {
           title: 'Mantenimientos',
           description: 'Historial de mantenimientos, costos y repuestos.',
           endpoint: '/mantenimientos',
           columns: [
             { label: 'Fecha', path: 'fecha_mantenimiento', type: 'date' },
-            { label: 'Vehículo', path: 'vehiculo.placa' },
+            { label: 'VehÃ­culo', path: 'vehiculo.placa' },
             { label: 'Tipo', path: 'tipo_mantenimiento.nombre' },
-            { label: 'Descripción', path: 'descripcion' },
+            { label: 'DescripciÃ³n', path: 'descripcion' },
             { label: 'Costo total', path: 'costo_total', type: 'money' },
-            { label: 'Próx. km', path: 'proximo_mantenimiento_km' },
+            { label: 'PrÃ³x. km', path: 'proximo_mantenimiento_km' },
             { label: 'Estado', path: 'estado', type: 'badge' }
           ]
         }
       },
       {
         path: 'rutas',
-        component: RutasPageComponent,
+        loadComponent: loadRutasPage,
         data: {
           title: 'Rutas',
           description: 'Origen, destino y distancia de rutas.',
@@ -849,7 +935,7 @@ export const routes: Routes = [
             { label: 'Origen', path: 'origen' },
             { label: 'Destino', path: 'destino' },
             { label: 'Distancia km', path: 'distancia_km' },
-            { label: 'Duración', path: 'duracion_estimada_horas', type: 'hoursTime' },
+            { label: 'DuraciÃ³n', path: 'duracion_estimada_horas', type: 'hoursTime' },
             { label: 'Activa', path: 'activa', type: 'boolean' }
           ],
           fields: [
@@ -866,7 +952,7 @@ export const routes: Routes = [
             },
             {
               name: 'duracion_estimada_horas',
-              label: 'Duración estimada',
+              label: 'DuraciÃ³n estimada',
               type: 'time',
               parseAs: 'hoursTime',
               colClass: 'col-md-4'
@@ -878,7 +964,7 @@ export const routes: Routes = [
       },
       {
         path: 'tipos-carga',
-        component: CrudPageComponent,
+        loadComponent: loadCrudPage,
         data: {
           title: 'Tipos de carga',
           description: 'Tipos de carga globales y propios para tarifas de ruta.',
@@ -889,7 +975,7 @@ export const routes: Routes = [
             { label: 'Nombre', path: 'nombre' },
             { label: 'Origen', path: 'origen', type: 'badge' },
             { label: 'Propietario', path: 'propietario_nombre' },
-            { label: 'Descripción', path: 'descripcion' },
+            { label: 'DescripciÃ³n', path: 'descripcion' },
             { label: 'Activo', path: 'activo', type: 'boolean' }
           ],
           fields: [
@@ -904,13 +990,13 @@ export const routes: Routes = [
               superAdminOnly: true,
               colClass: 'col-md-3'
             },
-            { name: 'descripcion', label: 'Descripción', type: 'textarea', rows: 2, colClass: 'col-12' }
+            { name: 'descripcion', label: 'DescripciÃ³n', type: 'textarea', rows: 2, colClass: 'col-12' }
           ]
         }
       },
       {
         path: 'peajes',
-        component: PeajesPageComponent,
+        loadComponent: loadPeajesPage,
         canActivate: [superAdminGuard],
         data: {
           title: 'Peajes',
@@ -919,12 +1005,12 @@ export const routes: Routes = [
           displayField: 'nombre',
           columns: [
             { label: 'Nombre', path: 'nombre' },
-            { label: 'Ubicación', path: 'ubicacion' },
+            { label: 'UbicaciÃ³n', path: 'ubicacion' },
             { label: 'Activo', path: 'activo', type: 'boolean' }
           ],
           fields: [
             { name: 'nombre', label: 'Nombre', type: 'text', required: true, colClass: 'col-md-6' },
-            { name: 'ubicacion', label: 'Ubicación', type: 'text', colClass: 'col-md-6' },
+            { name: 'ubicacion', label: 'UbicaciÃ³n', type: 'text', colClass: 'col-md-6' },
             { name: 'activo', label: 'Activo', type: 'checkbox', defaultValue: true, colClass: 'col-md-3' },
             { name: 'global', label: 'Registro global', type: 'checkbox', defaultValue: false, colClass: 'col-md-3' }
           ]
@@ -932,11 +1018,11 @@ export const routes: Routes = [
       },
       {
         path: 'rutas-peajes',
-        component: CrudPageComponent,
+        loadComponent: loadCrudPage,
         canActivate: [superAdminGuard],
         data: {
           title: 'Rutas peajes',
-          description: 'Relación entre rutas y peajes por orden y sentido.',
+          description: 'RelaciÃ³n entre rutas y peajes por orden y sentido.',
           endpoint: '/rutas-peajes',
           displayField: 'peaje.nombre',
           columns: [
@@ -994,7 +1080,7 @@ export const routes: Routes = [
       },
       {
         path: 'tarifas-ruta',
-        component: CrudPageComponent,
+        loadComponent: loadCrudPage,
         data: {
           title: 'Tarifas Ruta',
           description: 'Precios por ruta, tipo de carga, capacidad y vigencia.',
@@ -1060,12 +1146,13 @@ export const routes: Routes = [
           ]
         }
       },
-      { path: 'cierre-semanal', component: WeeklyClosurePageComponent },
-      { path: 'reportes', component: ReportsPageComponent },
-      { path: 'utilidad', component: UtilityReportPageComponent },
+      { path: 'cierre-semanal', loadComponent: loadWeeklyClosurePage },
+      { path: 'reportes', loadComponent: loadReportsPage },
+      { path: 'utilidad', loadComponent: loadUtilityReportPage },
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' }
     ]
   },
   { path: '', pathMatch: 'full', redirectTo: 'app/dashboard' },
   { path: '**', redirectTo: 'app/dashboard' }
 ];
+

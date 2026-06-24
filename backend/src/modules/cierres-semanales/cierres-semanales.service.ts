@@ -1103,6 +1103,16 @@ const buildCierreRevision = async (
   };
 };
 
+export const __testing = {
+  addViajeToTotales,
+  buildCierreDiferencias,
+  buildViajeSemanaWhere,
+  createTotalesViajes,
+  formatViajeCierre,
+  isRetornoGastoViaje,
+  viajeFechaEntrega
+};
+
 const upsertGeneratedGasto = async (
   tx: Prisma.TransactionClient,
   data: {

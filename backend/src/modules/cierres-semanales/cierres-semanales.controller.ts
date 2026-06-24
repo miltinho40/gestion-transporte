@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { asyncHandler } from '../../utils/async-handler.js';
+import { auditContextFromRequest, recordAuditEvent } from '../../utils/audit.js';
 import { serializeResponse } from '../../utils/response.js';
 import {
   createGastoSemanal,
@@ -22,6 +23,20 @@ export const generarGastosCierreSemanalController = asyncHandler(
       req.body,
       req.user!.usuario_id
     );
+    await recordAuditEvent({
+      ...auditContextFromRequest(req),
+      propietarioId: req.user!.propietario_id,
+      entidad: 'cierre_semanal',
+      entidadId: cierre.cierre_guardado.id,
+      accion: 'generar_gastos',
+      resumen: `Gastos generados para semana ${cierre.cierre.semana.numero_semana} - ${cierre.cierre.vehiculo.placa}`,
+      despues: {
+        semana: cierre.cierre.semana,
+        vehiculo: cierre.cierre.vehiculo,
+        resumen: cierre.cierre.resumen,
+        gastos_generados: cierre.gastos_generados.length
+      }
+    });
     res.status(201).json(serializeResponse(cierre));
   }
 );

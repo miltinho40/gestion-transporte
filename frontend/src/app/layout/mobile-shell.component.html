@@ -1,0 +1,37 @@
+<div class="mobile-shell">
+  <header class="mobile-topbar">
+    <div class="brand">
+      <span class="brand-icon"><svg lucideTruck size="20"></svg></span>
+      <div>
+        <strong>Transporte</strong>
+        <span>{{ auth.contexto()?.propietario_nombre ?? 'Superadmin' }}</span>
+      </div>
+    </div>
+    <button type="button" class="icon-button" aria-label="Salir" (click)="logout()">
+      <svg lucideLogOut size="20"></svg>
+    </button>
+  </header>
+
+  <main class="mobile-content">
+    <router-outlet />
+  </main>
+
+  <nav class="mobile-nav" aria-label="Navegación móvil">
+    <a routerLink="/movil/viajes" routerLinkActive="active">
+      <svg lucideClipboardList size="20"></svg>
+      <span>Viajes</span>
+    </a>
+    <a routerLink="/movil/mantenimientos" routerLinkActive="active">
+      <svg lucideWrench size="20"></svg>
+      <span>Mant.</span>
+    </a>
+    <a routerLink="/movil/cierre-semanal" routerLinkActive="active">
+      <svg lucideCalendarDays size="20"></svg>
+      <span>Cierre</span>
+    </a>
+    <a routerLink="/movil/precios" routerLinkActive="active">
+      <svg lucideDollarSign size="20"></svg>
+      <span>Precios</span>
+    </a>
+  </nav>
+</div>

@@ -1,0 +1,251 @@
+<section class="mobile-weekly">
+  <header class="mobile-page-heading">
+    <div>
+      <h1>Cierre semanal</h1>
+      <p>Viajes, mantenimientos, sueldos y bonos.</p>
+    </div>
+  </header>
+
+  <form class="mobile-filter-card" [formGroup]="form" (ngSubmit)="load()">
+    <div class="filter-grid">
+      <label class="mobile-field">
+        <span>Año</span>
+        <input class="form-control form-control-sm" type="number" formControlName="anio" />
+      </label>
+      <label class="mobile-field">
+        <span>Semana</span>
+        <input class="form-control form-control-sm" type="number" min="1" max="53" formControlName="numero_semana" />
+      </label>
+    </div>
+
+    <label class="mobile-field">
+      <span>Vehículo</span>
+      <select class="form-select form-select-sm" formControlName="vehiculo_id">
+        @for (vehiculo of vehiculos(); track vehiculo.id) {
+          <option [value]="vehiculo.id">{{ vehiculoLabel(vehiculo) }}</option>
+        }
+      </select>
+    </label>
+
+    <div class="actions-grid">
+      <button class="btn btn-outline-secondary btn-sm" type="submit" [disabled]="loading() || loadingVehiculos()">
+        <svg lucideRefreshCw size="15"></svg>
+        Consultar
+      </button>
+      <button
+        class="btn btn-outline-primary btn-sm"
+        type="button"
+        (click)="copyAndSendReport()"
+        [disabled]="sharing() || loading() || loadingVehiculos() || !canCopyWeeklyImage(cierre())"
+      >
+        <svg lucideSend size="15"></svg>
+        {{ sharing() ? 'Preparando...' : 'Copiar y enviar' }}
+      </button>
+      <button
+        class="btn btn-primary btn-sm"
+        type="button"
+        (click)="generarGastos()"
+        [disabled]="generating() || loading() || loadingVehiculos() || !canGenerateGastos(cierre())"
+      >
+        <svg lucideCalculator size="15"></svg>
+        {{ generateButtonLabel(cierre()) }}
+      </button>
+    </div>
+  </form>
+
+  @if (error()) {
+    <div class="alert alert-danger py-2">{{ error() }}</div>
+  }
+
+  @if (message()) {
+    <div class="alert alert-success py-2" [appAutoDismissAlert]="message()" (click)="clearMessage()">
+      {{ message() }}
+    </div>
+  }
+
+  @if (cierre(); as c) {
+    @if (c.revision_cierre?.requiere_revision) {
+      <div class="alert alert-warning py-2">
+        Este cierre tiene diferencias. Puedes regenerar los gastos.
+      </div>
+    }
+
+    @if (c.resumen.cantidad_gastos_generados > 0) {
+      <div class="alert alert-info py-2">
+        Los gastos de esta semana ya fueron generados.
+      </div>
+    }
+
+    <section class="driver-card">
+      <span>Transportista</span>
+      <strong>{{ transportistaLabel(c) }}</strong>
+      <small>
+        <b>Semana {{ c.semana.numero_semana }}</b>:
+        {{ dateOnly(c.semana.fecha_inicio) }} - {{ dateOnly(c.semana.fecha_fin) }}
+      </small>
+    </section>
+
+    <section class="quick-summary">
+      <div class="quick-card quick-card-third">
+        <span>Sueldo semanal</span>
+        <strong>$ {{ money(totalSueldoSemanal(c)) }}</strong>
+      </div>
+      <div class="quick-card quick-card-third">
+        <span>Bono</span>
+        <strong>$ {{ money(totalBonos(c)) }}</strong>
+      </div>
+      <div class="quick-card quick-card-third">
+        <span>Retornos</span>
+        <strong>{{ cantidadRetornos(c) }} ($ {{ money(totalGastoRetornoRetornos(c)) }})</strong>
+      </div>
+      <div class="quick-card quick-card-third">
+        <span>Domingo</span>
+        <strong>{{ cantidadDomingos(c) }} ($ {{ money(totalGastoRetornoDomingos(c)) }})</strong>
+      </div>
+      <div class="quick-card quick-card-third summary-total">
+        <span>Total semana</span>
+        <strong>$ {{ money(totalSemanaReporte(c)) }}</strong>
+      </div>
+      <div class="quick-card quick-card-third">
+        <span>Viajes</span>
+        <strong>{{ c.resumen.cantidad_viajes }}</strong>
+      </div>
+    </section>
+
+    <section class="metric-grid">
+      <div class="metric-row-three metric-green">
+        <span>Total viajes</span>
+        <strong>$ {{ money(c.resumen.totales['precio_flete']) }}</strong>
+      </div>
+      <div class="metric-row-three metric-green">
+        <span>A facturar</span>
+        <strong>$ {{ money(c.resumen.totales['precio_real_flete']) }}</strong>
+      </div>
+      <div class="metric-row-three metric-info">
+        <span>Utilidad viajes</span>
+        <strong>$ {{ money(c.resumen.totales['utilidad']) }}</strong>
+      </div>
+      <div class="metric-row-three metric-danger">
+        <span>Mantenimientos</span>
+        <strong>$ {{ money(c.resumen.totales['mantenimientos']) }}</strong>
+      </div>
+      <div class="metric-row-three metric-danger">
+        <span>Sueldo</span>
+        <strong>$ {{ money(totalSueldoBonos(c)) }}</strong>
+      </div>
+      <div class="metric-row-three metric-info">
+        <span>Ganancia</span>
+        <strong>$ {{ money(gananciaSemanal(c)) }}</strong>
+      </div>
+    </section>
+
+    <section class="activity-section">
+      <h2>Viajes y mantenimientos</h2>
+
+      <div class="activity-list">
+        @for (item of actividadSemanal(c); track item.trackId) {
+          <article class="activity-card" [class]="item.rowClass">
+            <div class="activity-top">
+              <div>
+                <span class="date-pill">{{ item.fecha }}</span>
+                <h3>{{ item.titulo }}</h3>
+                <p>{{ item.detalle }}</p>
+              </div>
+              <span class="type-pill">{{ item.tipo }}</span>
+            </div>
+
+            <div class="activity-money">
+              <div>
+                <span>Precio</span>
+                <strong>{{ moneyOrDash(item.precio) }}</strong>
+              </div>
+              <div>
+                <span>A facturar</span>
+                <strong>{{ moneyOrDash(item.facturar) }}</strong>
+              </div>
+              <div>
+                <span>Viático</span>
+                <strong>{{ moneyOrDash(item.viaticos) }}</strong>
+              </div>
+              <div>
+                <span>Utilidad / costo</span>
+                <strong>{{ moneyOrDash(item.resultado) }}</strong>
+              </div>
+            </div>
+
+            <div class="card-actions">
+              @if (item.sourceType === 'viaje' && !item.cobrado) {
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm"
+                  title="Agregar guías"
+                  aria-label="Agregar guías"
+                  (click)="openGuides(item)"
+                >
+                  <svg lucideClipboardList size="15"></svg>
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-outline-success btn-sm"
+                  (click)="marcarCobradoActividad(item)"
+                  [disabled]="markingCobroId() === item.sourceId"
+                >
+                  <svg lucideCheck size="15"></svg>
+                </button>
+              }
+              <button type="button" class="btn btn-outline-secondary btn-sm" (click)="editarActividad(item)">
+                <svg lucidePencil size="15"></svg>
+              </button>
+              @if (item.copyText) {
+                <button type="button" class="btn btn-outline-primary btn-sm" (click)="copiarViajeActividad(item)">
+                  <svg lucideCopy size="15"></svg>
+                </button>
+              }
+            </div>
+          </article>
+        } @empty {
+          <div class="empty-state">Sin viajes ni mantenimientos en esta semana.</div>
+        }
+      </div>
+    </section>
+  } @else if (loading()) {
+    <div class="empty-state">Cargando cierre...</div>
+  }
+
+  @if (guideItem(); as item) {
+    <div class="mobile-modal-backdrop" (click)="closeGuides()"></div>
+    <div class="mobile-bottom-sheet" role="dialog" aria-modal="true" aria-label="Agregar guías">
+      <div class="sheet-header">
+        <div>
+          <h2>Agregar guías</h2>
+          <p>{{ item.titulo }}</p>
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm" (click)="closeGuides()">Cerrar</button>
+      </div>
+
+      <label class="mobile-field">
+        <span>Guías de remisión</span>
+        <textarea
+          class="form-control"
+          rows="3"
+          placeholder="Separadas por coma o guion"
+          [ngModel]="guideInput()"
+          (ngModelChange)="guideInput.set($event)"
+        ></textarea>
+      </label>
+
+      <button
+        type="button"
+        class="btn btn-primary w-100"
+        (click)="saveGuides()"
+        [disabled]="savingGuidesId() === item.sourceId"
+      >
+        @if (savingGuidesId() === item.sourceId) {
+          Guardando...
+        } @else {
+          Guardar guías
+        }
+      </button>
+    </div>
+  }
+</section>

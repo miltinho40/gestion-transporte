@@ -15,8 +15,10 @@ import {
 import { Subscription, forkJoin, map, of, switchMap } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
+import { isPaginatedResponse, PaginatedResponse, PaginationMeta } from '../../core/pagination';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 import { DialogService } from '../../shared/dialog.service';
+import { PaginationControlsComponent } from '../../shared/pagination-controls.component';
 
 type EstadoViaje = 'programado' | 'en_curso' | 'completado' | 'cancelado';
 type ViajeCatalogField = 'cliente_id' | 'vehiculo_id' | 'conductor_id' | 'tarifa_ruta_id' | 'tipo_gasto_id';
@@ -97,6 +99,8 @@ interface ViajeRow {
   estado: EstadoViaje;
   observaciones?: string | null;
 }
+
+type ViajesListResponse = ViajeRow[] | PaginatedResponse<ViajeRow>;
 
 interface CalculoViaje {
   distancia_km: string | number;
@@ -225,7 +229,8 @@ const splitGuiasRemision = (value: unknown) =>
     LucideSave,
     LucideSearch,
     LucideTrash2,
-    AutoDismissAlertDirective
+    AutoDismissAlertDirective,
+    PaginationControlsComponent
   ],
   templateUrl: './viajes-page.component.html'
 })
@@ -237,8 +242,12 @@ export class ViajesPageComponent implements OnDestroy {
   private readonly router = inject(Router);
   private readonly sub = new Subscription();
   private pendingEditId: string | null = null;
+  private filterTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly rows = signal<ViajeRow[]>([]);
+  readonly pagination = signal<PaginationMeta | null>(null);
+  readonly page = signal(1);
+  readonly limit = signal(50);
   readonly clientes = signal<ClienteOption[]>([]);
   readonly vehiculos = signal<VehiculoOption[]>([]);
   readonly conductores = signal<ConductorOption[]>([]);
@@ -330,6 +339,9 @@ export class ViajesPageComponent implements OnDestroy {
   }
 
   ngOnDestroy() {
+    if (this.filterTimer) {
+      clearTimeout(this.filterTimer);
+    }
     this.sub.unsubscribe();
   }
 
@@ -339,7 +351,7 @@ export class ViajesPageComponent implements OnDestroy {
 
     this.sub.add(
       forkJoin({
-        viajes: this.api.get<ViajeRow[]>('/viajes'),
+        viajes: this.api.get<ViajesListResponse>('/viajes', this.listParams()),
         clientes: this.api.get<ClienteOption[]>('/clientes', { activo: true }),
         vehiculos: this.api.get<VehiculoOption[]>('/vehiculos'),
         conductores: this.api.get<ConductorOption[]>('/conductores', { estado: 'activo' }),
@@ -347,7 +359,7 @@ export class ViajesPageComponent implements OnDestroy {
         tiposGasto: this.api.get<TipoGastoOption[]>('/tipos-gasto-viaje', { activo: true })
       }).subscribe({
         next: ({ viajes, clientes, vehiculos, conductores, tarifasRuta, tiposGasto }) => {
-          this.rows.set(viajes);
+          this.setViajesResponse(viajes);
           this.clientes.set(clientes);
           this.vehiculos.set(vehiculos);
           this.conductores.set(conductores);
@@ -366,22 +378,53 @@ export class ViajesPageComponent implements OnDestroy {
   }
 
   filteredRows() {
-    const term = this.search().trim().toLowerCase();
-    const clienteTerm = this.filterClienteTerm().trim().toLowerCase();
-    const vehiculoTerm = this.filterVehiculoTerm().trim().toLowerCase();
-    const semanaTerm = this.filterSemanaTerm().trim().toLowerCase();
-    const cobrado = this.filterCobrado();
-
     return this.rows()
-      .filter((row) => !clienteTerm || this.clienteSearchText(row).includes(clienteTerm))
-      .filter((row) => !vehiculoTerm || this.vehiculoSearchText(row).includes(vehiculoTerm))
-      .filter((row) => !semanaTerm || this.matchesSemanaFilter(row, semanaTerm))
-      .filter((row) => cobrado === '' || String(row.cobrado) === cobrado)
-      .filter((row) => !term || JSON.stringify(row).toLowerCase().includes(term))
       .sort((left, right) => {
         const dateDiff = dateSortValue(this.fechaSemanaViaje(right)) - dateSortValue(this.fechaSemanaViaje(left));
         return dateDiff || Number(right.id) - Number(left.id);
       });
+  }
+
+  changePage(page: number) {
+    const meta = this.pagination();
+    if (!meta || page < 1 || page > meta.total_pages || page === this.page()) return;
+
+    this.page.set(page);
+    this.load();
+  }
+
+  changeLimit(limit: number) {
+    if (limit === this.limit()) return;
+
+    this.limit.set(limit);
+    this.page.set(1);
+    this.load();
+  }
+
+  setSearch(value: string) {
+    this.search.set(value);
+    this.scheduleFilterLoad();
+  }
+
+  setFilterCliente(value: string) {
+    this.filterClienteTerm.set(value);
+    this.scheduleFilterLoad();
+  }
+
+  setFilterVehiculo(value: string) {
+    this.filterVehiculoTerm.set(value);
+    this.scheduleFilterLoad();
+  }
+
+  setFilterSemana(value: string) {
+    this.filterSemanaTerm.set(value);
+    this.scheduleFilterLoad();
+  }
+
+  setFilterCobrado(value: string) {
+    this.filterCobrado.set(value);
+    this.page.set(1);
+    this.load();
   }
 
   displayRows(): ViajeDisplayRow[] {
@@ -1093,13 +1136,26 @@ export class ViajesPageComponent implements OnDestroy {
   }
 
   private openPendingEdit() {
-    if (!this.pendingEditId || !this.rows().length) return;
+    if (!this.pendingEditId) return;
 
     const row = this.rows().find((item) => String(item.id) === this.pendingEditId);
     if (!row) {
-      this.error.set('No se encontró el viaje solicitado.');
-      this.pendingEditId = null;
-      this.clearEditQuery();
+      const id = this.pendingEditId;
+      this.sub.add(
+        this.api.get<ViajeRow>(`/viajes/${id}`).subscribe({
+          next: (response) => {
+            if (this.pendingEditId !== id) return;
+            this.pendingEditId = null;
+            this.openEdit(response);
+            this.clearEditQuery();
+          },
+          error: () => {
+            this.error.set('No se encontró el viaje solicitado.');
+            this.pendingEditId = null;
+            this.clearEditQuery();
+          }
+        })
+      );
       return;
     }
 
@@ -1131,5 +1187,45 @@ export class ViajesPageComponent implements OnDestroy {
       queryParamsHandling: 'merge',
       replaceUrl: true
     });
+  }
+
+  private setViajesResponse(response: ViajesListResponse) {
+    if (isPaginatedResponse(response)) {
+      this.rows.set(response.data);
+      this.pagination.set(response.meta);
+      return;
+    }
+
+    this.rows.set(response);
+    this.pagination.set(null);
+  }
+
+  private listParams() {
+    const semana = this.filterSemanaTerm()
+      .trim()
+      .replace(/^sem(?:ana)?\s*/i, '')
+      .trim();
+
+    return {
+      page: this.page(),
+      limit: this.limit(),
+      search: this.search().trim() || undefined,
+      cliente_search: this.filterClienteTerm().trim() || undefined,
+      vehiculo_search: this.filterVehiculoTerm().trim() || undefined,
+      cobrado: this.filterCobrado() || undefined,
+      numero_semana: /^\d+$/.test(semana) ? Number(semana) : undefined,
+      anio_semana: /^\d+$/.test(semana) ? new Date().getFullYear() : undefined
+    };
+  }
+
+  private scheduleFilterLoad() {
+    if (this.filterTimer) {
+      clearTimeout(this.filterTimer);
+    }
+
+    this.filterTimer = setTimeout(() => {
+      this.page.set(1);
+      this.load();
+    }, 350);
   }
 }

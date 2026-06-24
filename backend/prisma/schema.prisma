@@ -110,6 +110,7 @@ model Propietario {
   gastos_semanales_vehiculo GastoSemanalVehiculo[]
   cierres_semanales         CierreSemanal[]
   invitaciones_usuario      InvitacionUsuario[]
+  auditoria_eventos         AuditoriaEvento[]
 
   @@map("propietarios")
 }
@@ -142,8 +143,32 @@ model Usuario {
   usuarios_propietarios UsuarioPropietario[]
   invitaciones          InvitacionUsuario[]
   cierres_semanales     CierreSemanal[]      @relation("UsuarioCierresSemanales")
+  auditoria_eventos     AuditoriaEvento[]
 
   @@map("usuarios")
+}
+
+model AuditoriaEvento {
+  id             BigInt   @id @default(autoincrement())
+  propietario_id BigInt?
+  usuario_id     BigInt?
+  entidad        String   @db.VarChar(80)
+  entidad_id     String?  @db.VarChar(80)
+  accion         String   @db.VarChar(80)
+  resumen        String?  @db.VarChar(255)
+  antes          Json?
+  despues        Json?
+  ip             String?  @db.VarChar(64)
+  user_agent     String?  @db.VarChar(255)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  propietario Propietario? @relation(fields: [propietario_id], references: [id], onDelete: SetNull)
+  usuario     Usuario?     @relation(fields: [usuario_id], references: [id], onDelete: SetNull)
+
+  @@index([propietario_id, created_at])
+  @@index([usuario_id, created_at])
+  @@index([entidad, entidad_id])
+  @@map("auditoria_eventos")
 }
 
 model InvitacionUsuario {
@@ -207,6 +232,7 @@ model Cliente {
 
   @@unique([propietario_id, ruc_cedula])
   @@index([propietario_id])
+  @@index([propietario_id, activo, nombre], map: "idx_clientes_prop_activo_nombre")
   @@map("clientes")
 }
 
@@ -232,6 +258,7 @@ model Conductor {
   @@unique([propietario_id, cedula])
   @@unique([propietario_id, numero_licencia])
   @@index([propietario_id, estado])
+  @@index([propietario_id, estado, nombre], map: "idx_conductores_prop_estado_nombre")
   @@map("conductores")
 }
 
@@ -282,6 +309,7 @@ model Vehiculo {
 
   @@unique([propietario_id, placa])
   @@index([propietario_id, estado])
+  @@index([propietario_id, estado, placa], map: "idx_vehiculos_prop_estado_placa")
   @@index([categoria_peaje_id])
   @@map("vehiculos")
 }
@@ -341,6 +369,7 @@ model TarifaRuta {
   viajes      Viaje[]
 
   @@index([propietario_id, ruta_id, tipo_carga_id])
+  @@index([propietario_id, activa, ruta_id, tipo_carga_id], map: "idx_tarifas_ruta_prop_activa_ruta_carga")
   @@map("tarifas_ruta")
 }
 
@@ -444,6 +473,8 @@ model Viaje {
   @@index([propietario_id, cliente_id, fecha_llegada])
   @@index([propietario_id, vehiculo_id])
   @@index([propietario_id, vehiculo_id, fecha_llegada])
+  @@index([propietario_id, cobrado, fecha_llegada], map: "idx_viajes_prop_cobro_llegada")
+  @@index([propietario_id, vehiculo_id, cobrado, fecha_llegada], map: "idx_viajes_prop_vehiculo_cobro_llegada")
   @@index([propietario_id, conductor_id])
   @@index([propietario_id, estado])
   @@index([propietario_id, cobrado, fecha_salida])
@@ -473,6 +504,7 @@ model GastoSemanalVehiculo {
 
   @@index([propietario_id, anio, numero_semana])
   @@index([propietario_id, vehiculo_id, anio, numero_semana])
+  @@index([propietario_id, vehiculo_id, es_generado, anio, numero_semana], map: "idx_gastos_sem_prop_veh_gen_semana")
   @@index([vehiculo_id, anio, numero_semana])
   @@index([conductor_id, anio, numero_semana])
   @@map("gastos_semanales_vehiculo")
@@ -604,6 +636,7 @@ model Mantenimiento {
 
   @@index([propietario_id, fecha_mantenimiento])
   @@index([propietario_id, vehiculo_id, fecha_mantenimiento])
+  @@index([propietario_id, estado, fecha_mantenimiento], map: "idx_mantenimientos_prop_estado_fecha")
   @@index([vehiculo_id])
   @@map("mantenimientos")
 }

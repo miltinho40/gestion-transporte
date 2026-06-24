@@ -1,7 +1,10 @@
 import { EstadoMantenimiento, EstadoVehiculo, Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
+import type { AuditContext } from '../../utils/audit.js';
+import { recordAuditEvent } from '../../utils/audit.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import { toPrismaEstadoMantenimiento } from './mantenimientos.mapper.js';
 import type {
   MantenimientoCreateInput,
@@ -16,6 +19,7 @@ interface ListFilters {
   fecha_desde?: unknown;
   fecha_hasta?: unknown;
   search?: unknown;
+  placa_search?: unknown;
 }
 
 type RepuestoInput = NonNullable<MantenimientoCreateInput['repuestos']>[number];
@@ -114,6 +118,18 @@ const buildWhere = (
         ]
       }
     ];
+  }
+
+  if (typeof filters.placa_search === 'string' && filters.placa_search.trim()) {
+    const search = filters.placa_search.trim();
+    const condition: Prisma.MantenimientoWhereInput = {
+      OR: [
+        { vehiculo: { placa: { contains: search, mode: 'insensitive' } } },
+        { vehiculo: { marca: { contains: search, mode: 'insensitive' } } },
+        { vehiculo: { modelo: { contains: search, mode: 'insensitive' } } }
+      ]
+    };
+    where.AND = Array.isArray(where.AND) ? [...where.AND, condition] : [condition];
   }
 
   return where;
@@ -244,12 +260,33 @@ export const listMantenimientos = async (
   filters: ListFilters
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const where = buildWhere(propietarioId, filters);
+  const orderBy = [
+    { fecha_mantenimiento: 'desc' },
+    { id: 'desc' }
+  ] satisfies Prisma.MantenimientoOrderByWithRelationInput[];
+  const pagination = parsePagination(filters as Record<string, unknown>);
 
-  return prisma.mantenimiento.findMany({
-    where: buildWhere(propietarioId, filters),
-    include: includeRelations,
-    orderBy: [{ fecha_mantenimiento: 'desc' }, { id: 'desc' }]
-  });
+  if (!pagination) {
+    return prisma.mantenimiento.findMany({
+      where,
+      include: includeRelations,
+      orderBy
+    });
+  }
+
+  const [data, total] = await prisma.$transaction([
+    prisma.mantenimiento.findMany({
+      where,
+      include: includeRelations,
+      orderBy,
+      skip: pagination.skip,
+      take: pagination.limit
+    }),
+    prisma.mantenimiento.count({ where })
+  ]);
+
+  return buildPaginatedResult(data, total, pagination);
 };
 
 export const getMantenimientoById = async (
@@ -276,7 +313,8 @@ export const getMantenimientoById = async (
 
 export const createMantenimiento = async (
   propietarioIdInput: unknown,
-  input: MantenimientoCreateInput
+  input: MantenimientoCreateInput,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const vehiculoId = parseBigIntId(input.vehiculo_id, 'vehiculo_id');
@@ -311,7 +349,7 @@ export const createMantenimiento = async (
   );
   const shouldUpdateKilometraje = input.actualizar_kilometraje_vehiculo ?? true;
 
-  return prisma.$transaction(async (tx) => {
+  const mantenimientoCreado = await prisma.$transaction(async (tx) => {
     const mantenimiento = await tx.mantenimiento.create({
       data: {
         propietario_id: propietarioId,
@@ -351,12 +389,25 @@ export const createMantenimiento = async (
       include: includeRelations
     });
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'mantenimiento',
+    entidadId: mantenimientoCreado.id,
+    accion: 'crear',
+    resumen: `Mantenimiento creado para ${mantenimientoCreado.vehiculo.placa}`,
+    despues: mantenimientoCreado
+  });
+
+  return mantenimientoCreado;
 };
 
 export const updateMantenimiento = async (
   propietarioIdInput: unknown,
   idInput: unknown,
-  input: MantenimientoUpdateInput
+  input: MantenimientoUpdateInput,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
@@ -415,7 +466,7 @@ export const updateMantenimiento = async (
     (Object.hasOwn(input, 'kilometraje_actual_vehiculo') ||
       Object.hasOwn(input, 'vehiculo_id'));
 
-  return prisma.$transaction(async (tx) => {
+  const mantenimientoActualizado = await prisma.$transaction(async (tx) => {
     const mantenimiento = await tx.mantenimiento.update({
       where: { id },
       data: {
@@ -473,30 +524,58 @@ export const updateMantenimiento = async (
       include: includeRelations
     });
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'mantenimiento',
+    entidadId: mantenimientoActualizado.id,
+    accion: 'actualizar',
+    resumen: `Mantenimiento actualizado para ${mantenimientoActualizado.vehiculo.placa}`,
+    antes: current,
+    despues: mantenimientoActualizado
+  });
+
+  return mantenimientoActualizado;
 };
 
 export const updateEstadoMantenimiento = async (
   propietarioIdInput: unknown,
   idInput: unknown,
-  input: MantenimientoEstadoInput
+  input: MantenimientoEstadoInput,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getMantenimientoById(propietarioId, id);
+  const current = await getMantenimientoById(propietarioId, id);
 
-  return prisma.mantenimiento.update({
+  const mantenimiento = await prisma.mantenimiento.update({
     where: { id },
     data: {
       estado: toPrismaEstadoMantenimiento(input.estado)
     },
     include: includeRelations
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'mantenimiento',
+    entidadId: mantenimiento.id,
+    accion: 'cambiar_estado',
+    resumen: `Estado de mantenimiento cambiado a ${input.estado}`,
+    antes: { estado: current.estado },
+    despues: { estado: mantenimiento.estado }
+  });
+
+  return mantenimiento;
 };
 
 export const cancelMantenimiento = async (
   propietarioIdInput: unknown,
-  idInput: unknown
+  idInput: unknown,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
@@ -504,13 +583,26 @@ export const cancelMantenimiento = async (
   const current = await getMantenimientoById(propietarioId, id);
 
   if (current.estado !== EstadoMantenimiento.CANCELADO) {
-    return prisma.mantenimiento.update({
+    const mantenimiento = await prisma.mantenimiento.update({
       where: { id },
       data: {
         estado: EstadoMantenimiento.CANCELADO
       },
       include: includeRelations
     });
+
+    await recordAuditEvent({
+      ...audit,
+      propietarioId: propietarioIdInput,
+      entidad: 'mantenimiento',
+      entidadId: mantenimiento.id,
+      accion: 'cancelar',
+      resumen: `Mantenimiento cancelado para ${mantenimiento.vehiculo.placa}`,
+      antes: { estado: current.estado },
+      despues: { estado: mantenimiento.estado }
+    });
+
+    return mantenimiento;
   }
 
   await prisma.$transaction(async (tx) => {
@@ -523,6 +615,17 @@ export const cancelMantenimiento = async (
     await tx.mantenimiento.delete({
       where: { id }
     });
+  });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'mantenimiento',
+    entidadId: current.id,
+    accion: 'eliminar',
+    resumen: `Mantenimiento eliminado para ${current.vehiculo.placa}`,
+    antes: current,
+    despues: null
   });
 
   return current;

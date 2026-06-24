@@ -28,7 +28,7 @@
         type="search"
         placeholder="Buscar mantenimientos"
         [ngModel]="search()"
-        (ngModelChange)="search.set($event)"
+        (ngModelChange)="setSearch($event)"
       />
     </div>
     <button type="button" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2" (click)="load()">
@@ -49,7 +49,7 @@
         placeholder="Filtrar placa"
         aria-label="Filtrar por placa"
         [ngModel]="filterPlacaTerm()"
-        (ngModelChange)="filterPlacaTerm.set($event)"
+        (ngModelChange)="setFilterPlaca($event)"
       />
     </div>
     <datalist id="mantenimientos-vehiculos-filter-options">
@@ -119,6 +119,13 @@
       </tbody>
     </table>
   </div>
+
+  <app-pagination-controls
+    [meta]="pagination()"
+    [loading]="loading()"
+    (pageChange)="changePage($event)"
+    (limitChange)="changeLimit($event)"
+  />
 </div>
 
 @if (formOpen()) {
