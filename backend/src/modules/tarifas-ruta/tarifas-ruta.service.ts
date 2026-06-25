@@ -1,9 +1,11 @@
 import { Prisma } from '@prisma/client';
+import type { JwtPayload } from '../../config/jwt.js';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import type { AuditContext } from '../../utils/audit.js';
 import { recordAuditEvent } from '../../utils/audit.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { resolveReadScopeFromUserOrPropietarioId } from '../../utils/ownership-scope.js';
 import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import type {
   TarifaRutaCreateInput,
@@ -12,6 +14,7 @@ import type {
 } from './tarifas-ruta.schema.js';
 
 interface ListFilters {
+  search?: unknown;
   ruta_id?: unknown;
   tipo_carga_id?: unknown;
   activa?: unknown;
@@ -33,12 +36,15 @@ const todayDateOnly = () => {
 };
 
 const buildWhere = (
-  propietarioId: bigint,
+  scopeInput: JwtPayload | unknown,
   filters: ListFilters
 ): Prisma.TarifaRutaWhereInput => {
-  const where: Prisma.TarifaRutaWhereInput = {
-    propietario_id: propietarioId
-  };
+  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
+  const where: Prisma.TarifaRutaWhereInput = scope.all
+    ? {}
+    : {
+        propietario_id: scope.propietarioId
+      };
 
   if (filters.ruta_id) {
     where.ruta_id = parseBigIntId(filters.ruta_id, 'ruta_id');
@@ -46,6 +52,16 @@ const buildWhere = (
 
   if (filters.tipo_carga_id) {
     where.tipo_carga_id = parseBigIntId(filters.tipo_carga_id, 'tipo_carga_id');
+  }
+
+  if (typeof filters.search === 'string' && filters.search.trim()) {
+    const search = filters.search.trim();
+    where.OR = [
+      { ruta: { origen: { contains: search, mode: 'insensitive' } } },
+      { ruta: { destino: { contains: search, mode: 'insensitive' } } },
+      { tipo_carga: { nombre: { contains: search, mode: 'insensitive' } } },
+      { capacidad: { contains: search, mode: 'insensitive' } }
+    ];
   }
 
   if (filters.activa === 'true') where.activa = true;
@@ -111,11 +127,10 @@ const ensureTarifaRutaAvailable = async (
 };
 
 export const listTarifasRuta = async (
-  propietarioIdInput: unknown,
+  scopeInput: JwtPayload | unknown,
   filters: ListFilters
 ) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
-  const where = buildWhere(propietarioId, filters);
+  const where = buildWhere(scopeInput, filters);
   const orderBy = [
     { activa: 'desc' },
     { ruta_id: 'asc' },
@@ -147,16 +162,16 @@ export const listTarifasRuta = async (
 };
 
 export const getTarifaRutaById = async (
-  propietarioIdInput: unknown,
+  scopeInput: JwtPayload | unknown,
   idInput: unknown
 ) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
   const id = parseBigIntId(idInput);
 
   const tarifa = await prisma.tarifaRuta.findFirst({
     where: {
       id,
-      propietario_id: propietarioId
+      ...(scope.all ? {} : { propietario_id: scope.propietarioId })
     },
     include: includeRelations
   });
@@ -359,14 +374,22 @@ export const deactivateTarifaRuta = async (
     return tarifa;
   }
 
-  const viajes = await prisma.viaje.count({
-    where: {
-      propietario_id: propietarioId,
-      tarifa_ruta_id: id
-    }
-  });
+  const [viajes, viajesProveedor] = await Promise.all([
+    prisma.viaje.count({
+      where: {
+        propietario_id: propietarioId,
+        tarifa_ruta_id: id
+      }
+    }),
+    prisma.viajeProveedor.count({
+      where: {
+        propietario_id: propietarioId,
+        tarifa_ruta_id: id
+      }
+    })
+  ]);
 
-  if (viajes > 0) {
+  if (viajes > 0 || viajesProveedor > 0) {
     throw new AppError('La tarifa ruta ya esta usada en algunos viajes', 409);
   }
 

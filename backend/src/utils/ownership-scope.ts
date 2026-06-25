@@ -7,7 +7,7 @@ export const resolveReadScope = (user: JwtPayload | undefined) => {
     throw new AppError('Usuario no autenticado', 401);
   }
 
-  if (user.es_super_admin && !user.propietario_id) {
+  if (user.es_super_admin) {
     return {
       all: true,
       propietarioId: undefined
@@ -21,6 +21,19 @@ export const resolveReadScope = (user: JwtPayload | undefined) => {
   return {
     all: false,
     propietarioId: parseBigIntId(user.propietario_id, 'propietario_id')
+  };
+};
+
+export const resolveReadScopeFromUserOrPropietarioId = (
+  input: JwtPayload | unknown
+) => {
+  if (input && typeof input === 'object' && 'usuario_id' in input) {
+    return resolveReadScope(input as JwtPayload);
+  }
+
+  return {
+    all: false,
+    propietarioId: parseBigIntId(input, 'propietario_id')
   };
 };
 

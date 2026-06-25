@@ -1,8 +1,9 @@
-import { Component, OnDestroy, inject, signal } from '@angular/core';
+﻿import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import {
   LucideCopy,
+  LucideKeyRound,
   LucidePencil,
   LucidePlus,
   LucideRefreshCw,
@@ -72,6 +73,7 @@ const setPayloadValue = (payload: Row, field: CrudFieldConfig, value: unknown) =
     FormsModule,
     ReactiveFormsModule,
     LucideCopy,
+    LucideKeyRound,
     LucidePencil,
     LucidePlus,
     LucideRefreshCw,
@@ -101,6 +103,7 @@ export class CrudPageComponent implements OnDestroy {
   readonly loading = signal(false);
   readonly saving = signal(false);
   readonly deletingId = signal<string | null>(null);
+  readonly resettingPasswordId = signal<string | null>(null);
   readonly formOpen = signal(false);
   readonly editingRow = signal<Row | null>(null);
   readonly catalogInput = signal<Record<string, string>>({});
@@ -108,6 +111,7 @@ export class CrudPageComponent implements OnDestroy {
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly search = signal('');
+  private searchTimer: ReturnType<typeof setTimeout> | null = null;
 
   form: CrudForm = new FormGroup<Record<string, FormControl<FormValue>>>({});
 
@@ -133,6 +137,7 @@ export class CrudPageComponent implements OnDestroy {
   ngOnDestroy() {
     this.sub.unsubscribe();
     this.formSyncSub.unsubscribe();
+    if (this.searchTimer) clearTimeout(this.searchTimer);
   }
 
   load() {
@@ -168,6 +173,11 @@ export class CrudPageComponent implements OnDestroy {
     this.limit.set(limit);
     this.page.set(1);
     this.load();
+  }
+
+  isReadOnly() {
+    const config = this.config();
+    return Boolean(config?.superAdminReadOnly && this.auth.isSuperAdmin());
   }
 
   openCreate() {
@@ -284,11 +294,50 @@ export class CrudPageComponent implements OnDestroy {
     });
   }
 
+  async resetPassword(row: Row) {
+    const config = this.config();
+    if (!config?.passwordResetEnabled) return;
+
+    const name = this.textValue(row, { label: '', path: config.displayField });
+    const confirmed = await this.dialog.confirm({
+      title: 'Resetear clave',
+      text: `Se asignará una clave temporal a ${name} y deberá cambiarla al iniciar sesión.`,
+      confirmText: 'Sí, resetear',
+      icon: 'question'
+    });
+
+    if (!confirmed) return;
+
+    const id = this.idOf(row);
+    this.resettingPasswordId.set(id);
+    this.error.set(null);
+    this.message.set(null);
+
+    this.api.patch<Row>(`${config.endpoint}/${id}/reset-password`, {}).subscribe({
+      next: (response) => {
+        this.resettingPasswordId.set(null);
+        this.message.set(this.passwordResetMessage(response));
+        this.load();
+      },
+      error: (err) => {
+        this.resettingPasswordId.set(null);
+        this.error.set(err?.error?.message ?? 'No se pudo resetear la clave.');
+      }
+    });
+  }
+
   filteredRows() {
     const term = this.search().trim().toLowerCase();
-    if (!term) return this.rows();
+    if (!term || this.pagination()) return this.rows();
 
     return this.rows().filter((row) => JSON.stringify(row).toLowerCase().includes(term));
+  }
+
+  setSearch(value: string) {
+    this.search.set(value);
+    this.page.set(1);
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => this.load(), 350);
   }
 
   visibleFields(fields: CrudFieldConfig[]) {
@@ -414,6 +463,7 @@ export class CrudPageComponent implements OnDestroy {
   }
 
   canMutateRow(config: CrudRouteData, row: Row) {
+    if (this.isReadOnly()) return false;
     if (!config.readonlyGlobalRows || this.auth.usuario()?.es_super_admin) return true;
     return row['global'] !== true && row['propietario_id'] !== null;
   }
@@ -538,17 +588,29 @@ export class CrudPageComponent implements OnDestroy {
   private successMessage(row: Row | null, response: unknown) {
     if (row) return 'Registro actualizado.';
 
+    const claveTemporal = (response as Row | null)?.['clave_temporal'];
+    if (typeof claveTemporal === 'string' && claveTemporal) {
+      return `Registro creado. Clave temporal: ${claveTemporal}`;
+    }
+
     const invitacion = (response as Row | null)?.['invitacion'] as Row | null | undefined;
     const enlace = invitacion?.['enlace'];
     if (typeof enlace === 'string') {
       const estadoCorreo = invitacion?.['email_enviado']
         ? ' La invitación fue enviada por correo.'
-        : ' SMTP no esta configurado; usa este enlace para probar.';
+        : ' SMTP no está configurado; usa este enlace para probar.';
 
       return `Registro creado.${estadoCorreo} Enlace: ${enlace}`;
     }
 
     return 'Registro creado.';
+  }
+
+  private passwordResetMessage(response: Row) {
+    const claveTemporal = response['clave_temporal'];
+    return typeof claveTemporal === 'string' && claveTemporal
+      ? `Clave reseteada. Clave temporal: ${claveTemporal}`
+      : 'Clave reseteada.';
   }
 
   private setRowsResponse(response: RowsListResponse) {
@@ -564,6 +626,7 @@ export class CrudPageComponent implements OnDestroy {
 
   private listParams() {
     return {
+      search: this.search().trim(),
       page: this.page(),
       limit: this.limit()
     };

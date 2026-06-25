@@ -1,0 +1,143 @@
+<div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">Resumen de proveedores</h1>
+    <p class="text-secondary mb-0">Viajes intermediados por cliente y proveedor.</p>
+  </div>
+</div>
+
+@if (error()) {
+  <div class="alert alert-danger" [appAutoDismissAlert]="error()">{{ error() }}</div>
+}
+
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-white d-flex align-items-center gap-2 fw-semibold">
+    <svg lucideFileSpreadsheet size="18"></svg>
+    Filtros
+  </div>
+  <div class="card-body">
+    <form [formGroup]="form" class="provider-report-filter-bar">
+      <div>
+        <label class="form-label">Año</label>
+        <input class="form-control form-control-sm" type="number" formControlName="anio" />
+      </div>
+      <app-multi-select-filter
+        label="Meses"
+        emptyLabel="Todos"
+        selectedLabel="meses"
+        [options]="monthOptions"
+        [selectedValues]="selectedMonths()"
+        (selectedValuesChange)="setMonths($event)"
+      />
+      <app-multi-select-filter
+        label="Proveedores"
+        emptyLabel="Todos"
+        selectedLabel="proveedores"
+        searchPlaceholder="Buscar proveedor"
+        [options]="providerOptions()"
+        [selectedValues]="selectedProviders()"
+        [disabled]="loadingCatalogs()"
+        (selectedValuesChange)="setProviders($event)"
+      />
+    </form>
+  </div>
+</div>
+
+@if (report(); as report) {
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+    <div class="text-secondary">{{ periodoLabel(report) }}</div>
+    <div class="small text-secondary">
+      {{ report.resumen.cantidad_clientes }} clientes · {{ report.resumen.cantidad_proveedores }} proveedores
+    </div>
+  </div>
+
+  <div class="reports-summary-grid provider-report-summary-grid mb-3">
+    <div class="reports-summary-card">
+      <span>Viajes</span>
+      <strong>{{ report.resumen.cantidad_viajes }}</strong>
+    </div>
+    <div class="reports-summary-card reports-summary-green">
+      <span>A facturar</span>
+      <strong>$ {{ money(report.resumen.totales.valor_a_facturar) }}</strong>
+    </div>
+    <div class="reports-summary-card reports-summary-danger">
+      <span>A pagar</span>
+      <strong>$ {{ money(report.resumen.totales.precio_pagar_proveedor) }}</strong>
+    </div>
+    <div class="reports-summary-card reports-summary-danger">
+      <span>Viáticos</span>
+      <strong>$ {{ money(report.resumen.totales.viaticos) }}</strong>
+    </div>
+    <div class="reports-summary-card reports-summary-info">
+      <span>Utilidad</span>
+      <strong>$ {{ money(report.resumen.totales.utilidad) }}</strong>
+    </div>
+  </div>
+
+  <div class="utility-chart-grid mb-3">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white fw-semibold">Clientes</div>
+      <div class="card-body">
+        @if (report.clientes.length) {
+          <div class="utility-pie-layout">
+            <div class="utility-pie" [style.background]="clientePieGradient(report)">
+              <div class="utility-pie-center">
+                <span>A facturar</span>
+                <strong>$ {{ money(clienteTotal(report)) }}</strong>
+              </div>
+            </div>
+            <div class="utility-pie-legend">
+              @for (item of report.clientes; track item.cliente.id; let index = $index) {
+                <div class="utility-pie-legend-item">
+                  <span class="utility-pie-dot" [style.background]="color(index)"></span>
+                  <strong>{{ item.cliente.nombre }}</strong>
+                  <span>{{ clientePercent(item, report) }}%</span>
+                  <span>$ {{ money(item.totales.valor_a_facturar) }}</span>
+                </div>
+              }
+            </div>
+          </div>
+        } @else {
+          <div class="text-secondary small">Sin clientes para graficar.</div>
+        }
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white fw-semibold">Proveedores</div>
+      <div class="card-body">
+        @if (report.proveedores.length) {
+          <div class="utility-pie-layout">
+            <div class="utility-pie" [style.background]="proveedorPieGradient(report)">
+              <div class="utility-pie-center">
+                <span>A pagar</span>
+                <strong>$ {{ money(proveedorTotal(report)) }}</strong>
+              </div>
+            </div>
+            <div class="utility-pie-legend">
+              @for (item of report.proveedores; track item.proveedor.id; let index = $index) {
+                <div class="utility-pie-legend-item">
+                  <span class="utility-pie-dot" [style.background]="color(index)"></span>
+                  <strong>{{ item.proveedor.nombre }}</strong>
+                  <span>{{ proveedorPercent(item, report) }}%</span>
+                  <span>$ {{ money(item.totales.precio_pagar_proveedor) }}</span>
+                </div>
+              }
+            </div>
+          </div>
+        } @else {
+          <div class="text-secondary small">Sin proveedores para graficar.</div>
+        }
+      </div>
+    </div>
+  </div>
+} @else {
+  <div class="card border-0 shadow-sm">
+    <div class="card-body text-secondary">
+      @if (loading()) {
+        Cargando resumen...
+      } @else {
+        Consulta los filtros para ver el resumen.
+      }
+    </div>
+  </div>
+}

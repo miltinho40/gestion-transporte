@@ -15,8 +15,10 @@ import {
 import { Subscription, forkJoin } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { isPaginatedResponse, PaginatedResponse, PaginationMeta } from '../../core/pagination';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 import { DialogService } from '../../shared/dialog.service';
+import { PaginationControlsComponent } from '../../shared/pagination-controls.component';
 
 type SentidoPeaje = 'ida' | 'retorno' | 'ambos';
 
@@ -50,6 +52,8 @@ interface RutaRow {
     peaje?: PeajeOption;
   }>;
 }
+
+type RutasListResponse = RutaRow[] | PaginatedResponse<RutaRow>;
 
 const toHoursTime = (value: unknown) => {
   if (value === null || value === undefined || value === '') return '';
@@ -92,7 +96,8 @@ const normalizeSentido = (value?: string | null): SentidoPeaje => {
     LucideSearch,
     LucideTrash2,
     LucideX,
-    AutoDismissAlertDirective
+    AutoDismissAlertDirective,
+    PaginationControlsComponent
   ],
   templateUrl: './rutas-page.component.html'
 })
@@ -104,6 +109,9 @@ export class RutasPageComponent implements OnDestroy {
   private readonly sub = new Subscription();
 
   readonly rows = signal<RutaRow[]>([]);
+  readonly pagination = signal<PaginationMeta | null>(null);
+  readonly page = signal(1);
+  readonly limit = signal(50);
   readonly peajesCatalogo = signal<PeajeOption[]>([]);
   readonly peajesRuta = signal<RutaPeajeItem[]>([]);
   readonly loading = signal(false);
@@ -117,6 +125,7 @@ export class RutasPageComponent implements OnDestroy {
   readonly peajeSearch = signal('');
   readonly peajeCatalogOpen = signal(false);
   readonly selectedPeajeId = signal('');
+  private searchTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly isSuperAdmin = this.auth.usuario()?.es_super_admin === true;
 
@@ -135,6 +144,7 @@ export class RutasPageComponent implements OnDestroy {
 
   ngOnDestroy() {
     this.sub.unsubscribe();
+    if (this.searchTimer) clearTimeout(this.searchTimer);
   }
 
   load() {
@@ -143,11 +153,11 @@ export class RutasPageComponent implements OnDestroy {
 
     this.sub.add(
       forkJoin({
-        rutas: this.api.get<RutaRow[]>('/rutas'),
+        rutas: this.api.get<RutasListResponse>('/rutas', this.listParams()),
         peajes: this.api.get<PeajeOption[]>('/peajes/catalogo', { activo: true })
       }).subscribe({
         next: ({ rutas, peajes }) => {
-          this.rows.set(rutas);
+          this.setRutasResponse(rutas);
           this.peajesCatalogo.set(peajes);
           this.loading.set(false);
         },
@@ -160,10 +170,33 @@ export class RutasPageComponent implements OnDestroy {
   }
 
   filteredRows() {
-    const term = this.search().trim().toLowerCase();
-    if (!term) return this.rows();
+    return this.rows();
+  }
 
-    return this.rows().filter((row) => JSON.stringify(row).toLowerCase().includes(term));
+  setSearch(value: string) {
+    this.search.set(value);
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+
+    this.searchTimer = setTimeout(() => {
+      this.page.set(1);
+      this.load();
+    }, 350);
+  }
+
+  changePage(page: number) {
+    const meta = this.pagination();
+    if (!meta || page < 1 || page > meta.total_pages || page === this.page()) return;
+
+    this.page.set(page);
+    this.load();
+  }
+
+  changeLimit(limit: number) {
+    if (limit === this.limit()) return;
+
+    this.limit.set(limit);
+    this.page.set(1);
+    this.load();
   }
 
   filteredPeajes() {
@@ -430,6 +463,29 @@ export class RutasPageComponent implements OnDestroy {
   }
 
   canEditRuta(row: RutaRow) {
-    return this.isSuperAdmin || row.propietario_id !== null;
+    return !this.isSuperAdmin && row.propietario_id !== null;
+  }
+
+  scopeLabel(row: RutaRow) {
+    return row.propietario_id === null ? 'Global' : 'Propio';
+  }
+
+  private setRutasResponse(response: RutasListResponse) {
+    if (isPaginatedResponse(response)) {
+      this.rows.set(response.data);
+      this.pagination.set(response.meta);
+      return;
+    }
+
+    this.rows.set(response);
+    this.pagination.set(null);
+  }
+
+  private listParams() {
+    return {
+      search: this.search().trim(),
+      page: this.page(),
+      limit: this.limit()
+    };
   }
 }

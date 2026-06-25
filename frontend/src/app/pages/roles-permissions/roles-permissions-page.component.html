@@ -1,0 +1,176 @@
+<div class="roles-page">
+  <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+    <div>
+      <h1 class="h3 mb-1">Roles y permisos</h1>
+      <p class="text-secondary mb-0">Consola para habilitar u ocultar opciones del menú por rol.</p>
+    </div>
+    <button type="button" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2" (click)="load()">
+      <svg lucideRefreshCw size="16"></svg>
+      Actualizar
+    </button>
+  </div>
+
+  @if (message()) {
+    <div class="alert alert-success" [appAutoDismissAlert]="message()">{{ message() }}</div>
+  }
+
+  @if (error()) {
+    <div class="alert alert-danger" [appAutoDismissAlert]="error()">{{ error() }}</div>
+  }
+
+  <div class="roles-layout">
+    <aside class="roles-list">
+      <div class="roles-list-header">
+        <strong>Roles</strong>
+        <button type="button" class="btn btn-primary btn-sm icon-text" (click)="newRole()">
+          <svg lucideUserPlus size="15"></svg>
+          Nuevo
+        </button>
+      </div>
+
+      @for (role of roles(); track role.id) {
+        <button
+          type="button"
+          class="role-item"
+          [class.active]="form().id === role.id"
+          (click)="editRole(role)"
+        >
+          <span>{{ role.nombre }}</span>
+          <small>
+            @if (role.permisos_configurados) {
+              {{ role.permisos.length }} / {{ totalPermissions }} permisos
+            } @else {
+              Permisos por defecto
+            }
+          </small>
+        </button>
+      } @empty {
+        <div class="empty-state">
+          @if (loading()) {
+            Cargando roles...
+          } @else {
+            Sin roles para mostrar.
+          }
+        </div>
+      }
+    </aside>
+
+    <section class="permissions-panel">
+      <div class="panel-heading">
+        <div>
+          <span class="panel-icon"><svg lucideShieldCheck size="18"></svg></span>
+          <strong>{{ form().id ? 'Editar rol' : 'Nuevo rol' }}</strong>
+        </div>
+        @if (form().id) {
+          <button
+            type="button"
+            class="btn btn-outline-danger btn-sm icon-text"
+            [disabled]="saving()"
+            (click)="deleteCurrent()"
+          >
+            <svg lucideTrash2 size="15"></svg>
+            Eliminar
+          </button>
+        }
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label" for="role-name">Nombre</label>
+          <input
+            id="role-name"
+            class="form-control"
+            type="text"
+            [ngModel]="form().nombre"
+            (ngModelChange)="updateField('nombre', $event)"
+          />
+        </div>
+        <div class="col-md-8">
+          <label class="form-label" for="role-description">Descripción</label>
+          <input
+            id="role-description"
+            class="form-control"
+            type="text"
+            [ngModel]="form().descripcion"
+            (ngModelChange)="updateField('descripcion', $event)"
+          />
+        </div>
+      </div>
+
+      <div class="form-check form-switch custom-switch">
+        <input
+          class="form-check-input"
+          id="custom-permissions"
+          type="checkbox"
+          [ngModel]="form().permisos_configurados"
+          (ngModelChange)="updateField('permisos_configurados', $event)"
+        />
+        <label class="form-check-label" for="custom-permissions">
+          Usar permisos personalizados
+        </label>
+      </div>
+
+      @if (!form().permisos_configurados) {
+        <div class="alert alert-info mb-0">
+          Este rol conserva el comportamiento clásico: las opciones se muestran según si el usuario es propietario,
+          intermediario o superadmin.
+        </div>
+      }
+
+      <div class="permissions-grid" [class.disabled]="!form().permisos_configurados">
+        @for (group of permissionGroups; track group[0]) {
+          <section class="permission-group">
+            <div class="permission-group-heading">
+              <strong>{{ group[0] }}</strong>
+              <label class="form-check">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  [disabled]="!form().permisos_configurados"
+                  [checked]="groupChecked(permissionKeys(group[1]))"
+                  (change)="toggleGroup(permissionKeys(group[1]), $any($event.target).checked)"
+                />
+                <span class="form-check-label">Todo</span>
+              </label>
+            </div>
+
+            @for (permission of group[1]; track permission.key) {
+              <label class="permission-check">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  [disabled]="!form().permisos_configurados"
+                  [checked]="isSelected(permission.key)"
+                  (change)="togglePermission(permission.key, $any($event.target).checked)"
+                />
+                <span>
+                  {{ permission.label }}
+                  @if (permission.requiresOwnFleet) {
+                    <small>Flota propia</small>
+                  }
+                  @if (permission.requiresIntermediary) {
+                    <small>Intermediario</small>
+                  }
+                  @if (permission.adminOnly) {
+                    <small>Admin</small>
+                  }
+                </span>
+              </label>
+            }
+          </section>
+        }
+      </div>
+
+      <div class="panel-actions">
+        <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" [disabled]="saving()" (click)="save()">
+          <svg lucideSave size="16"></svg>
+          @if (saving()) {
+            Guardando...
+          } @else {
+            Guardar rol
+          }
+        </button>
+      </div>
+    </section>
+  </div>
+</div>

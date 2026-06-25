@@ -1,9 +1,10 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import {
   LucideCalendarDays,
   LucideClipboardList,
   LucideDollarSign,
+  LucideHandshake,
   LucideLogOut,
   LucideTruck,
   LucideWrench
@@ -19,6 +20,7 @@ import { AuthService } from '../core/auth.service';
     LucideCalendarDays,
     LucideClipboardList,
     LucideDollarSign,
+    LucideHandshake,
     LucideLogOut,
     LucideTruck,
     LucideWrench
@@ -29,6 +31,20 @@ import { AuthService } from '../core/auth.service';
 export class MobileShellComponent {
   private readonly router = inject(Router);
   readonly auth = inject(AuthService);
+  readonly isPropietario = computed(() => this.auth.hasOwnFleet());
+  readonly isIntermediario = computed(() => this.auth.isIntermediary());
+
+  canOwnFleet(permission: string) {
+    return this.isPropietario() && this.auth.hasMenuPermission(permission);
+  }
+
+  canIntermediario(permission: string) {
+    return this.isIntermediario() && this.auth.hasMenuPermission(permission);
+  }
+
+  hasPermission(permission: string) {
+    return this.auth.hasMenuPermission(permission);
+  }
 
   logout() {
     this.auth.logout();

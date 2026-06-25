@@ -56,7 +56,8 @@ export const reporteViajesFiltersSchema = z.object({
   semanas: weekListSchema,
   vehiculo_ids: idListSchema,
   cliente_ids: idListSchema,
-  cobrado: booleanQuerySchema
+  cobrado: booleanQuerySchema,
+  search: optionalTrimmedString(120)
 });
 
 export const reporteUtilidadFiltersSchema = z.object({

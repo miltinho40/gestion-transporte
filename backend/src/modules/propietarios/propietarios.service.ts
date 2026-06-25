@@ -1,6 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
+import {
+  DEFAULT_TEMPORARY_PASSWORD,
+  hashDefaultTemporaryPassword
+} from '../../utils/default-password.js';
 import { parseBigIntId } from '../../utils/ids.js';
 import { createPasswordInvitation } from '../../utils/user-invitations.js';
 import { toPrismaEstadoSuscripcion } from './propietarios.mapper.js';
@@ -119,6 +123,10 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
     const usuarioExistente = await tx.usuario.findUnique({
       where: { email: admin.email }
     });
+    const debeAsignarClaveTemporal = !usuarioExistente?.password_hash;
+    const passwordHashTemporal = debeAsignarClaveTemporal
+      ? await hashDefaultTemporaryPassword()
+      : undefined;
     const usuario = usuarioExistente
       ? await tx.usuario.update({
           where: { id: usuarioExistente.id },
@@ -129,7 +137,8 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
               : usuarioExistente.fecha_nacimiento,
             email_verificado: usuarioExistente.password_hash
               ? usuarioExistente.email_verificado
-              : false,
+              : true,
+            password_hash: passwordHashTemporal,
             requiere_password: usuarioExistente.password_hash
               ? usuarioExistente.requiere_password
               : true,
@@ -140,12 +149,12 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
           data: {
             nombre: admin.nombre,
             email: admin.email,
-            password_hash: null,
+            password_hash: passwordHashTemporal,
             fecha_nacimiento: admin.fecha_nacimiento
               ? new Date(`${admin.fecha_nacimiento}T00:00:00.000Z`)
               : null,
             es_super_admin: false,
-            email_verificado: false,
+            email_verificado: true,
             requiere_password: true,
             activo: true
           }
@@ -178,7 +187,8 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
         email: usuario.email
       },
       admin_usuario_id: usuario.id,
-      debe_enviar_invitacion: !usuario.password_hash
+      debe_enviar_invitacion: false,
+      clave_temporal: debeAsignarClaveTemporal ? DEFAULT_TEMPORARY_PASSWORD : null
     };
   });
 
@@ -186,7 +196,8 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
     return {
       propietario: result.propietario,
       admin_usuario: result.admin_usuario,
-      invitacion: null
+      invitacion: null,
+      clave_temporal: result.clave_temporal
     };
   }
 
@@ -201,7 +212,8 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
   return {
     propietario: result.propietario,
     admin_usuario: result.admin_usuario,
-    invitacion
+    invitacion,
+    clave_temporal: result.clave_temporal
   };
 };
 

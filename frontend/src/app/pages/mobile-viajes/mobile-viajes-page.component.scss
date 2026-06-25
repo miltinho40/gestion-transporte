@@ -64,7 +64,7 @@ p {
 
 .filter-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 42px;
+  grid-template-columns: 1fr 42px;
   gap: 8px;
 }
 
@@ -123,8 +123,13 @@ p {
 
 .state-pill {
   flex: 0 0 auto;
-  color: #475467;
-  background: #f2f4f7;
+  color: #93370d;
+  background: #fef0c7;
+}
+
+.state-pill.ok {
+  color: #027a48;
+  background: #dcfae6;
 }
 
 .card-meta {
@@ -187,6 +192,13 @@ p {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.card-actions .icon-action {
+  width: 38px;
+  height: 34px;
+  justify-content: center;
+  padding: 0;
 }
 
 .empty-state {

@@ -1,7 +1,9 @@
 import { EstadoSuscripcionPropietario, EstadoVehiculo, Prisma } from '@prisma/client';
+import type { JwtPayload } from '../../config/jwt.js';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { resolveReadScopeFromUserOrPropietarioId } from '../../utils/ownership-scope.js';
 import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import { toPrismaEstadoVehiculo } from './vehiculos.mapper.js';
 import type {
@@ -21,12 +23,15 @@ const includeCategoria = {
 } satisfies Prisma.VehiculoInclude;
 
 const buildWhere = (
-  propietarioId: bigint,
+  scopeInput: JwtPayload | unknown,
   filters: ListVehiculosFilters
 ): Prisma.VehiculoWhereInput => {
-  const where: Prisma.VehiculoWhereInput = {
-    propietario_id: propietarioId
-  };
+  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
+  const where: Prisma.VehiculoWhereInput = scope.all
+    ? {}
+    : {
+        propietario_id: scope.propietarioId
+      };
 
   if (typeof filters.search === 'string' && filters.search.trim()) {
     const search = filters.search.trim();
@@ -154,11 +159,10 @@ const ensureCanCountVehicle = async (propietarioId: bigint, excludeVehiculoId?: 
 };
 
 export const listVehiculos = async (
-  propietarioIdInput: unknown,
+  scopeInput: JwtPayload | unknown,
   filters: ListVehiculosFilters
 ) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
-  const where = buildWhere(propietarioId, filters);
+  const where = buildWhere(scopeInput, filters);
   const orderBy = [
     { estado: 'asc' },
     { placa: 'asc' }
@@ -187,14 +191,14 @@ export const listVehiculos = async (
   return buildPaginatedResult(data, total, pagination);
 };
 
-export const getVehiculoById = async (propietarioIdInput: unknown, idInput: unknown) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+export const getVehiculoById = async (scopeInput: JwtPayload | unknown, idInput: unknown) => {
+  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
   const id = parseBigIntId(idInput);
 
   const vehiculo = await prisma.vehiculo.findFirst({
     where: {
       id,
-      propietario_id: propietarioId
+      ...(scope.all ? {} : { propietario_id: scope.propietarioId })
     },
     include: includeCategoria
   });

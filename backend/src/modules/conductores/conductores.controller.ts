@@ -13,12 +13,12 @@ import {
 } from './conductores.service.js';
 
 export const listConductoresController = asyncHandler(async (req: Request, res: Response) => {
-  const conductores = await listConductores(req.user!.propietario_id, req.query);
+  const conductores = await listConductores(req.user, req.query);
   res.json(serializeResponse(mapPaginatedResult(conductores, formatConductores)));
 });
 
 export const getConductorController = asyncHandler(async (req: Request, res: Response) => {
-  const conductor = await getConductorById(req.user!.propietario_id, req.params.id);
+  const conductor = await getConductorById(req.user, req.params.id);
   res.json(serializeResponse(formatConductor(conductor)));
 });
 

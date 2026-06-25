@@ -1,0 +1,472 @@
+﻿<div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+  <div>
+    <h1 class="h3 mb-1">Transporte de proveedores</h1>
+    <p class="text-secondary mb-0">Viajes tercerizados, cobros a clientes y pagos a proveedores.</p>
+  </div>
+  <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
+    <svg lucidePlus size="17"></svg>
+    Nuevo
+  </button>
+</div>
+
+@if (error() && !formOpen()) {
+  <div class="alert alert-danger" [appAutoDismissAlert]="error()">{{ error() }}</div>
+}
+
+@if (message()) {
+  <div class="alert alert-success" [appAutoDismissAlert]="message()">{{ message() }}</div>
+}
+
+<section class="provider-summary-grid mb-3">
+  <article>
+    <span>Viajes</span>
+    <strong>{{ summary().viajes }}</strong>
+  </article>
+  <article class="summary-green">
+    <span>A FACTURAR</span>
+    <strong>$ {{ money(summary().valor_a_facturar) }}</strong>
+  </article>
+  <article class="summary-red">
+    <span>Precio viaje</span>
+    <strong>$ {{ money(summary().precio_viaje) }}</strong>
+  </article>
+  <article class="summary-red">
+    <span>A pagar</span>
+    <strong>$ {{ money(summary().precio_pagar_proveedor) }}</strong>
+  </article>
+  <article class="summary-blue">
+    <span>Utilidad</span>
+    <strong>$ {{ money(summary().utilidad) }}</strong>
+  </article>
+</section>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white provider-search-row">
+    <div class="input-group input-group-sm">
+      <span class="input-group-text bg-white">
+        <svg lucideSearch size="14"></svg>
+      </span>
+      <input class="form-control" type="search" placeholder="Buscar" [formControl]="filters.controls.search" />
+    </div>
+  </div>
+
+  <div class="card-header bg-white border-top provider-filter-bar">
+    <app-multi-select-filter
+      label="Clientes"
+      emptyLabel="Todos"
+      selectedLabel="clientes"
+      searchPlaceholder="Buscar cliente"
+      [options]="clienteFilterOptions()"
+      [selectedValues]="selectedClientIds()"
+      [disabled]="loading()"
+      (selectedValuesChange)="setSelectedClients($event)"
+    />
+    <app-multi-select-filter
+      label="Proveedores"
+      emptyLabel="Todos"
+      selectedLabel="proveedores"
+      searchPlaceholder="Buscar proveedor"
+      [options]="proveedorFilterOptions()"
+      [selectedValues]="selectedProviderIds()"
+      [disabled]="loading()"
+      (selectedValuesChange)="setSelectedProviders($event)"
+    />
+    <input
+      class="form-control form-control-sm week-input"
+      type="search"
+      inputmode="numeric"
+      placeholder="Semana"
+      [formControl]="filters.controls.numero_semana"
+    />
+    <input
+      class="form-control form-control-sm year-input"
+      type="number"
+      placeholder="Año"
+      [formControl]="filters.controls.anio_semana"
+    />
+    <select class="form-select form-select-sm" [formControl]="filters.controls.cobrado">
+      <option value="">Cobro</option>
+      <option value="true">Cobrados</option>
+      <option value="false">No cobrados</option>
+    </select>
+    <select class="form-select form-select-sm" [formControl]="filters.controls.pagado_proveedor">
+      <option value="">Pago</option>
+      <option value="true">Pagados</option>
+      <option value="false">No pagados</option>
+    </select>
+    <button
+      type="button"
+      class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
+      (click)="load()"
+      [disabled]="loading()"
+    >
+      <svg lucideRefreshCw size="15"></svg>
+      Actualizar
+    </button>
+  </div>
+
+  <div class="card-header bg-white border-top provider-legend">
+    <span class="provider-legend-item"><i class="legend-dot legend-pending"></i>Pendiente de cobro</span>
+    <span class="provider-legend-item"><i class="legend-dot legend-balanced"></i>Cobrado y pagado</span>
+    <span class="provider-legend-item"><i class="legend-dot legend-risk"></i>Pagado sin cobrar</span>
+  </div>
+
+  <div class="card-header bg-white border-top d-flex flex-wrap align-items-center gap-2">
+    <button
+      type="button"
+      class="btn btn-outline-success btn-sm"
+      (click)="marcarSeleccionadosCobrados()"
+      [disabled]="!hasSelected() || loading()"
+    >
+      Marcar cobrados ({{ selectedCount() }})
+    </button>
+    <button
+      type="button"
+      class="btn btn-outline-primary btn-sm"
+      (click)="marcarSeleccionadosPagados()"
+      [disabled]="!hasSelected() || loading()"
+    >
+      Marcar pagados ({{ selectedCount() }})
+    </button>
+    <button
+      type="button"
+      class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
+      (click)="copySelectedLegend()"
+      [disabled]="!hasSelected()"
+    >
+      <svg lucideCopy size="15"></svg>
+      Copiar y enviar
+    </button>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0 provider-table">
+      <thead>
+        <tr>
+          <th class="select-column">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              aria-label="Seleccionar todos"
+              [checked]="allVisibleSelected()"
+              (change)="toggleAllVisible($any($event.target).checked)"
+            />
+          </th>
+          <th>Semana</th>
+          <th>Fecha</th>
+          <th>Cliente</th>
+          <th>Proveedor</th>
+          <th>Ruta</th>
+          <th>Guías</th>
+          <th>Precio viaje</th>
+          <th>A FACTURAR</th>
+          <th>Viáticos</th>
+          <th class="text-end actions-column">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track row.id) {
+          <tr
+            [class.provider-row-cobrado]="row.cobrado"
+            [class.provider-row-pagado]="row.pagado_proveedor"
+            [class.provider-row-pending-cobro]="!row.cobrado && !row.pagado_proveedor"
+            [class.provider-row-balanced]="row.cobrado && row.pagado_proveedor"
+            [class.provider-row-paid-uncollected]="!row.cobrado && row.pagado_proveedor"
+            [class.provider-row-cancelado]="row.estado === 'cancelado'"
+          >
+            <td>
+              <input
+                class="form-check-input"
+                type="checkbox"
+                aria-label="Seleccionar viaje"
+                [checked]="isSelected(row)"
+                (change)="toggleSelection(row, $any($event.target).checked)"
+              />
+            </td>
+            <td>{{ weekNumber(row.fecha_salida) }}</td>
+            <td>{{ dateOnly(row.fecha_llegada || row.fecha_salida) }}</td>
+            <td>{{ row.cliente.nombre }}</td>
+            <td>{{ row.proveedor.nombre }}</td>
+            <td>{{ rutaLabel(row) }}</td>
+            <td>
+              @if (guideEditTripId() === row.id) {
+                <div class="input-group input-group-sm guide-input">
+                  <input
+                    class="form-control"
+                    type="text"
+                    placeholder="Guías por coma o guion"
+                    [ngModel]="guideInput()"
+                    (ngModelChange)="guideInput.set($event)"
+                  />
+                  <button type="button" class="btn btn-outline-success" (click)="saveGuides(row)">
+                    <svg lucideCheck size="14"></svg>
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary" (click)="cancelGuideEdit()">x</button>
+                </div>
+              } @else {
+                <span [title]="row.numeros_guia_remision.join(', ')">{{ guiaPreview(row) }}</span>
+              }
+            </td>
+            <td>$ {{ money(row.precio_viaje) }}</td>
+            <td>$ {{ money(row.valor_a_facturar) }}</td>
+            <td>$ {{ money(row.viaticos) }}</td>
+            <td class="text-end actions-cell">
+              <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary" (click)="openDuplicate(row)" title="Duplicar">
+                  <svg lucideCopy size="15"></svg>
+                </button>
+                @if (row.cobrado && row.estado !== 'cancelado') {
+                  <button type="button" class="btn btn-outline-warning" (click)="revertirCobro(row)" title="Regresar a sin cobrar">
+                    <svg lucideRotateCcw size="15"></svg>
+                  </button>
+                }
+                @if (!row.cobrado && row.estado !== 'cancelado') {
+                  <button type="button" class="btn btn-outline-info" (click)="startGuideEdit(row)" title="Agregar guías">
+                    <svg lucidePlus size="15"></svg>
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary" (click)="openEdit(row)" title="Editar">
+                    <svg lucidePencil size="15"></svg>
+                  </button>
+                }
+                <button
+                  type="button"
+                  class="btn btn-outline-danger"
+                  (click)="delete(row)"
+                  [disabled]="deletingId() === row.id"
+                  [title]="row.estado === 'cancelado' ? 'Eliminar definitivamente' : 'Cancelar viaje'"
+                >
+                  <svg lucideTrash2 size="15"></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="11" class="text-center text-secondary py-4">
+              @if (loading()) {
+                Cargando viajes...
+              } @else {
+                Sin viajes de proveedores para mostrar.
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <app-pagination-controls
+    [meta]="pagination()"
+    [loading]="loading()"
+    (pageChange)="changePage($event)"
+    (limitChange)="changeLimit($event)"
+  />
+</div>
+
+@if (formOpen()) {
+  <div class="modal d-block" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow">
+        <form [formGroup]="form" (ngSubmit)="save()">
+          <div class="modal-header">
+            <div>
+              <h2 class="modal-title h5 mb-0">
+                @if (editingRow()) {
+                  Editar viaje de proveedor
+                } @else {
+                  Nuevo viaje de proveedor
+                }
+              </h2>
+              <span class="text-secondary small">Registra el proveedor, cliente, ruta y valores del viaje.</span>
+            </div>
+            <button type="button" class="btn-close" aria-label="Cerrar" (click)="closeForm()"></button>
+          </div>
+
+          <div class="modal-body">
+            @if (error()) {
+              <div class="alert alert-danger" [appAutoDismissAlert]="error()">{{ error() }}</div>
+            }
+
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label" for="cliente_id">Cliente</label>
+                <input
+                  id="cliente_id"
+                  class="form-control"
+                  type="search"
+                  list="proveedor-transporte-clientes"
+                  placeholder="Buscar cliente o RUC"
+                  [ngModel]="clienteInput()"
+                  [ngModelOptions]="{ standalone: true }"
+                  (ngModelChange)="setClienteInput($event)"
+                />
+                <datalist id="proveedor-transporte-clientes">
+                  @for (cliente of clientes(); track cliente.id) {
+                    <option [value]="clienteLabel(cliente)"></option>
+                  }
+                </datalist>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="proveedor_id">Proveedor</label>
+                <input
+                  id="proveedor_id"
+                  class="form-control"
+                  type="search"
+                  list="proveedor-transporte-proveedores"
+                  placeholder="Buscar proveedor o RUC"
+                  [ngModel]="proveedorInput()"
+                  [ngModelOptions]="{ standalone: true }"
+                  (ngModelChange)="setProveedorInput($event)"
+                />
+                <datalist id="proveedor-transporte-proveedores">
+                  @for (proveedor of proveedores(); track proveedor.id) {
+                    <option [value]="proveedorLabel(proveedor)"></option>
+                  }
+                </datalist>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="tarifa_ruta_id">Tarifa ruta</label>
+                <input
+                  id="tarifa_ruta_id"
+                  class="form-control"
+                  type="search"
+                  list="proveedor-transporte-tarifas"
+                  placeholder="Buscar ruta, carga o precio"
+                  [ngModel]="tarifaInput()"
+                  [ngModelOptions]="{ standalone: true }"
+                  (ngModelChange)="setTarifaInput($event)"
+                />
+                <datalist id="proveedor-transporte-tarifas">
+                  @for (tarifa of tarifasRuta(); track tarifa.id) {
+                    <option [value]="tarifaLabel(tarifa)"></option>
+                  }
+                </datalist>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="fecha_salida">Fecha salida</label>
+                <input id="fecha_salida" class="form-control" type="date" formControlName="fecha_salida" />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="fecha_llegada">Fecha llegada</label>
+                <input id="fecha_llegada" class="form-control" type="date" formControlName="fecha_llegada" />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="precio_viaje">Precio viaje</label>
+                <input
+                  id="precio_viaje"
+                  class="form-control"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  formControlName="precio_viaje"
+                  (change)="recalculateFinancials()"
+                />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="valor_a_facturar">Valor a facturar</label>
+                <input
+                  id="valor_a_facturar"
+                  class="form-control"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  formControlName="valor_a_facturar"
+                  (change)="recalculateProviderPayment()"
+                />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="precio_pagar_proveedor">Precio a pagar</label>
+                <input
+                  id="precio_pagar_proveedor"
+                  class="form-control"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  formControlName="precio_pagar_proveedor"
+                />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="viaticos">Viáticos</label>
+                <input id="viaticos" class="form-control" type="number" min="0" step="0.01" formControlName="viaticos" />
+              </div>
+              <div class="col-md-3 d-flex align-items-end">
+                <div class="form-check mb-2">
+                  <input id="cobrado" class="form-check-input" type="checkbox" formControlName="cobrado" />
+                  <label class="form-check-label" for="cobrado">Cobrado</label>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="fecha_cobro">Fecha cobro</label>
+                <input id="fecha_cobro" class="form-control" type="date" formControlName="fecha_cobro" />
+              </div>
+              <div class="col-md-3 d-flex align-items-end">
+                <div class="form-check mb-2">
+                  <input
+                    id="pagado_proveedor"
+                    class="form-check-input"
+                    type="checkbox"
+                    formControlName="pagado_proveedor"
+                  />
+                  <label class="form-check-label" for="pagado_proveedor">Pagado proveedor</label>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="fecha_pago_proveedor">Fecha pago</label>
+                <input
+                  id="fecha_pago_proveedor"
+                  class="form-control"
+                  type="date"
+                  formControlName="fecha_pago_proveedor"
+                />
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="estado">Estado</label>
+                <select id="estado" class="form-select" formControlName="estado">
+                  <option value="programado">Programado</option>
+                  <option value="en_curso">En curso</option>
+                  <option value="completado">Completado</option>
+                  <option value="cancelado">Cancelado</option>
+                </select>
+              </div>
+              <div class="col-md-8">
+                <label class="form-label" for="numeros_guia_remision">Guías de remisión</label>
+                <input
+                  id="numeros_guia_remision"
+                  class="form-control"
+                  type="text"
+                  placeholder="Separadas por coma o guion"
+                  formControlName="numeros_guia_remision"
+                />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="descripcion_carga">Detalle / carga</label>
+                <textarea id="descripcion_carga" class="form-control" rows="2" formControlName="descripcion_carga"></textarea>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="observaciones">Observaciones</label>
+                <textarea id="observaciones" class="form-control" rows="2" formControlName="observaciones"></textarea>
+              </div>
+              <div class="col-12">
+                <div class="provider-form-result">
+                  Utilidad calculada: <strong>$ {{ money(utilidadFormulario()) }}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeForm()">Cancelar</button>
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">
+              @if (saving()) {
+                Guardando...
+              } @else {
+                Guardar
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop fade show"></div>
+}

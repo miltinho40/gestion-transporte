@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
 import {
   requirePropietarioContext,
+  requirePropietarioOperativo,
   requireRoles,
   requireSuperAdmin
 } from '../../middlewares/roles.middleware.js';
@@ -29,12 +30,14 @@ configuracionesRouter.put(
 configuracionesRouter.get(
   '/',
   requirePropietarioContext,
+  requirePropietarioOperativo,
   requireRoles('admin'),
   listConfiguracionesPropietarioController
 );
 configuracionesRouter.put(
   '/:clave',
   requirePropietarioContext,
+  requirePropietarioOperativo,
   requireRoles('admin'),
   validateBody(configuracionUpdateSchema),
   updateConfiguracionPropietarioController

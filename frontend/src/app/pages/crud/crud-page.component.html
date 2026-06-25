@@ -1,10 +1,10 @@
-@if (config(); as cfg) {
+﻿@if (config(); as cfg) {
   <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
     <div>
       <h1 class="h3 mb-1">{{ cfg.title }}</h1>
       <p class="text-secondary mb-0">{{ cfg.description }}</p>
     </div>
-    @if (cfg.createEnabled !== false) {
+    @if (cfg.createEnabled !== false && !isReadOnly()) {
       <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
         <svg lucidePlus size="17"></svg>
         Nuevo
@@ -29,9 +29,9 @@
         <input
           class="form-control"
           type="search"
-          placeholder="Buscar en resultados"
+          placeholder="Buscar"
           [ngModel]="search()"
-          (ngModelChange)="search.set($event)"
+          (ngModelChange)="setSearch($event)"
         />
       </div>
       <button type="button" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2" (click)="load()">
@@ -81,6 +81,17 @@
                   @if (cfg.duplicateEnabled && canMutateRow(cfg, row)) {
                     <button type="button" class="btn btn-outline-secondary" (click)="openDuplicate(row)" title="Duplicar">
                       <svg lucideCopy size="15"></svg>
+                    </button>
+                  }
+                  @if (cfg.passwordResetEnabled) {
+                    <button
+                      type="button"
+                      class="btn btn-outline-secondary"
+                      (click)="resetPassword(row)"
+                      [disabled]="resettingPasswordId() === idOf(row)"
+                      title="Resetear clave"
+                    >
+                      <svg lucideKeyRound size="15"></svg>
                     </button>
                   }
                   @if (canMutateRow(cfg, row)) {

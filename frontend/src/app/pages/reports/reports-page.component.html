@@ -1,8 +1,16 @@
 <div class="d-flex justify-content-between align-items-start gap-3 mb-4">
   <div>
-    <h1 class="h3 mb-1">Reporte de viajes</h1>
-    <p class="text-secondary mb-0">Revisión anual de viajes, cobros y utilidad.</p>
+    <h1 class="h3 mb-1">Viajes</h1>
+    <p class="text-secondary mb-0">Registro, cobros, guias y utilidad de viajes.</p>
   </div>
+  <button
+    class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
+    type="button"
+    (click)="newTrip()"
+  >
+    <svg lucidePlus size="15"></svg>
+    Nuevo viaje
+  </button>
 </div>
 
 @if (error()) {
@@ -17,7 +25,7 @@
   <div class="card-header bg-white d-flex align-items-center justify-content-between gap-2">
     <div class="d-flex align-items-center gap-2 fw-semibold">
       <svg lucideFileSpreadsheet size="18"></svg>
-      Reporte de viajes
+      Viajes
     </div>
     <div class="d-flex gap-2">
       <button
@@ -41,51 +49,68 @@
     </div>
   </div>
   <div class="card-body">
-    <form [formGroup]="travelForm" class="reports-travel-filters reports-travel-filters-annual">
-      <div class="reports-filter-year">
-        <label class="form-label">Año</label>
-        <input class="form-control form-control-sm" type="number" formControlName="anio" />
+    <form [formGroup]="travelForm">
+      <div class="mb-3">
+        <label class="form-label">Buscar</label>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text bg-white">
+            <svg lucideSearch size="14"></svg>
+          </span>
+          <input
+            class="form-control"
+            type="search"
+            placeholder="Buscar por cliente, placa, ruta, conductor o guía"
+            formControlName="search"
+          />
+        </div>
       </div>
 
-      <app-multi-select-filter
-        label="Vehículos"
-        emptyLabel="Todos los vehículos"
-        selectedLabel="vehículo(s)"
-        searchPlaceholder="Buscar placa"
-        [options]="vehiculoFilterOptions()"
-        [selectedValues]="selectedVehicleIds()"
-        [disabled]="loadingCatalogs()"
-        (selectedValuesChange)="setSelectedVehicles($event)"
-      />
+      <div class="reports-travel-filters reports-travel-filters-annual">
+        <div class="reports-filter-year">
+          <label class="form-label">Año</label>
+          <input class="form-control form-control-sm" type="number" formControlName="anio" />
+        </div>
 
-      <app-multi-select-filter
-        label="Semanas"
-        emptyLabel="Todo el año"
-        selectedLabel="semana(s)"
-        searchPlaceholder="Buscar semana"
-        [options]="weekFilterOptions()"
-        [selectedValues]="selectedWeeks()"
-        (selectedValuesChange)="setSelectedWeeks($event)"
-      />
+        <app-multi-select-filter
+          label="Vehículos"
+          emptyLabel="Todos los vehículos"
+          selectedLabel="vehículo(s)"
+          searchPlaceholder="Buscar placa"
+          [options]="vehiculoFilterOptions()"
+          [selectedValues]="selectedVehicleIds()"
+          [disabled]="loadingCatalogs()"
+          (selectedValuesChange)="setSelectedVehicles($event)"
+        />
 
-      <app-multi-select-filter
-        label="Clientes"
-        emptyLabel="Todos los clientes"
-        selectedLabel="cliente(s)"
-        searchPlaceholder="Buscar cliente"
-        [options]="clienteFilterOptions()"
-        [selectedValues]="selectedClientIds()"
-        [disabled]="loadingCatalogs()"
-        (selectedValuesChange)="setSelectedClients($event)"
-      />
+        <app-multi-select-filter
+          label="Semanas"
+          emptyLabel="Todo el año"
+          selectedLabel="semana(s)"
+          searchPlaceholder="Buscar semana"
+          [options]="weekFilterOptions()"
+          [selectedValues]="selectedWeeks()"
+          (selectedValuesChange)="setSelectedWeeks($event)"
+        />
 
-      <div>
-        <label class="form-label">Cobro</label>
-        <select class="form-select form-select-sm" formControlName="cobrado">
-          <option value="">Todos</option>
-          <option value="true">Cobrados</option>
-          <option value="false">No cobrados</option>
-        </select>
+        <app-multi-select-filter
+          label="Clientes"
+          emptyLabel="Todos los clientes"
+          selectedLabel="cliente(s)"
+          searchPlaceholder="Buscar cliente"
+          [options]="clienteFilterOptions()"
+          [selectedValues]="selectedClientIds()"
+          [disabled]="loadingCatalogs()"
+          (selectedValuesChange)="setSelectedClients($event)"
+        />
+
+        <div>
+          <label class="form-label">Cobro</label>
+          <select class="form-select form-select-sm" formControlName="cobrado">
+            <option value="">Todos</option>
+            <option value="true">Cobrados</option>
+            <option value="false">No cobrados</option>
+          </select>
+        </div>
       </div>
     </form>
   </div>
@@ -110,7 +135,7 @@
           <strong>$ {{ money(summary().precio_viaje) }}</strong>
         </div>
         <div class="reports-summary-card reports-summary-green">
-          <span>Valor a facturar</span>
+          <span>A FACTURAR</span>
           <strong>$ {{ money(summary().valor_facturar) }}</strong>
         </div>
         <div class="reports-summary-card reports-summary-danger">
@@ -162,7 +187,6 @@
                   (change)="toggleAllVisible($any($event.target).checked)"
                 />
               </th>
-              <th>Mes</th>
               <th>Semana</th>
               <th>Fecha</th>
               <th>Vehículo</th>
@@ -170,14 +194,14 @@
               <th>Ruta</th>
               <th>Guías</th>
               <th>Precio viaje</th>
-              <th>Valor a facturar</th>
+              <th>A FACTURAR</th>
               <th>Viáticos</th>
               <th>Utilidad viaje</th>
               <th class="reports-actions-col"></th>
             </tr>
           </thead>
           <tbody>
-            @for (row of report.items; track row.id) {
+            @for (row of paginatedTravelItems(); track row.id) {
               <tr
                 [class.reports-row-week-green]="isWeekGreen(row)"
                 [class.reports-row-cobrado]="row.cobrado"
@@ -191,7 +215,6 @@
                     (change)="toggleTripSelection(row, $any($event.target).checked)"
                   />
                 </td>
-                <td>{{ row.mes_label }}</td>
                 <td>{{ row.semana_label }}</td>
                 <td>{{ dateOnly(row.fecha) }}</td>
                 <td>{{ row.vehiculo.placa }}</td>
@@ -229,17 +252,37 @@
                       </button>
                     </div>
                   } @else {
-                    @if (!row.cobrado) {
-                      <div class="reports-row-actions">
+                    <div class="reports-row-actions">
+                      <button
+                        class="btn btn-outline-secondary btn-sm weekly-activity-icon-btn"
+                        type="button"
+                        title="Duplicar viaje"
+                        aria-label="Duplicar viaje"
+                        (click)="duplicateTrip(row)"
+                      >
+                        <svg lucideCopy size="14"></svg>
+                      </button>
+                      <button
+                        class="btn btn-outline-primary btn-sm weekly-activity-icon-btn"
+                        type="button"
+                        title="Editar viaje"
+                        aria-label="Editar viaje"
+                        (click)="editTrip(row)"
+                      >
+                        <svg lucidePencil size="14"></svg>
+                      </button>
+                      @if (row.cobrado) {
                         <button
-                          class="btn btn-outline-primary btn-sm weekly-activity-icon-btn"
+                          class="btn btn-outline-warning btn-sm weekly-activity-icon-btn"
                           type="button"
-                          title="Editar viaje"
-                          aria-label="Editar viaje"
-                          (click)="editTrip(row)"
+                          title="Regresar a sin cobrar"
+                          aria-label="Regresar a sin cobrar"
+                          (click)="revertCobro(row)"
                         >
-                          <svg lucidePencil size="14"></svg>
+                          <svg lucideRotateCcw size="14"></svg>
                         </button>
+                      }
+                      @if (!row.cobrado) {
                         <button
                           class="btn btn-outline-secondary btn-sm weekly-activity-icon-btn"
                           type="button"
@@ -249,16 +292,25 @@
                         >
                           <svg lucidePlus size="14"></svg>
                         </button>
-                      </div>
-                    }
+                      }
+                      <button
+                        class="btn btn-outline-danger btn-sm weekly-activity-icon-btn"
+                        type="button"
+                        title="Eliminar viaje"
+                        aria-label="Eliminar viaje"
+                        (click)="deleteTrip(row)"
+                      >
+                        <svg lucideTrash2 size="14"></svg>
+                      </button>
+                    </div>
                   }
                 </td>
               </tr>
             } @empty {
               <tr>
-                <td colspan="13" class="text-center text-secondary py-4">
+                <td colspan="12" class="text-center text-secondary py-4">
                   @if (loadingTravelReport()) {
-                    Cargando reporte...
+                    Cargando viajes...
                   } @else {
                     Sin viajes para los filtros seleccionados.
                   }
@@ -268,6 +320,13 @@
           </tbody>
         </table>
       </div>
+
+      <app-pagination-controls
+        [meta]="travelPagination()"
+        [loading]="loadingTravelReport()"
+        (pageChange)="changeTravelPage($event)"
+        (limitChange)="changeTravelLimit($event)"
+      />
     </div>
   }
 </div>

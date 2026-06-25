@@ -54,6 +54,8 @@ const viajeBaseSchema = z.object({
   cobrado: z.boolean().optional(),
   retorno: z.boolean().optional(),
   fecha_cobro: dateOnlySchema.optional().nullable(),
+  soporte_cobro: optionalTrimmedString(80),
+  sin_factura_cobro: z.boolean().optional(),
   estado: z.enum(viajeEstadoValues).optional(),
   observaciones: optionalTrimmedString(1000)
 });
@@ -87,10 +89,16 @@ export const viajeEstadoSchema = z.object({
   estado: z.enum(viajeEstadoValues)
 });
 
-export const viajeCobroSchema = z.object({
-  cobrado: z.boolean(),
-  fecha_cobro: dateOnlySchema.optional().nullable()
-});
+export const viajeCobroSchema = z
+  .object({
+    cobrado: z.boolean(),
+    fecha_cobro: dateOnlySchema.optional().nullable(),
+    soporte_cobro: optionalTrimmedString(80),
+    sin_factura_cobro: z.boolean().optional()
+  })
+  .refine((value) => !value.cobrado || value.sin_factura_cobro || Boolean(value.soporte_cobro), {
+    message: 'Ingresa el numero de factura/soporte o marca que no se emitio factura'
+  });
 
 export const viajeGuiasSchema = z.object({
   numeros_guia_remision: guiaRemisionSchema.refine((value) => value.length > 0, {

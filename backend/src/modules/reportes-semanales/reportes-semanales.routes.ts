@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
-import { requirePropietarioContext, requireRoles } from '../../middlewares/roles.middleware.js';
+import {
+  requirePropietarioContext,
+  requirePropietarioOperativo,
+  requireRoles
+} from '../../middlewares/roles.middleware.js';
 import {
   exportReporteIngresosEgresosSemanalController,
   exportReporteViajesConductorSemanalController,
@@ -14,7 +18,7 @@ export const reportesSemanalesRouter = Router();
 
 const canRead = requireRoles('admin', 'operador', 'supervisor', 'consulta');
 
-reportesSemanalesRouter.use(authMiddleware, requirePropietarioContext);
+reportesSemanalesRouter.use(authMiddleware, requirePropietarioContext, requirePropietarioOperativo);
 
 reportesSemanalesRouter.get(
   '/viajes-conductor/export',

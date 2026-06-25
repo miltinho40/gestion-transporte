@@ -61,7 +61,12 @@ const buildAuthResponse = (usuario: UsuarioConAccesos, acceso?: AccesoPropietari
     usuario_id: usuario.id.toString(),
     propietario_id: acceso?.propietario_id.toString(),
     rol: acceso?.rol.nombre,
-    es_super_admin: usuario.es_super_admin
+    permisos: acceso?.rol.permisos,
+    permisos_configurados: acceso?.rol.permisos_configurados,
+    es_super_admin: usuario.es_super_admin,
+    requiere_password: usuario.requiere_password,
+    es_propietario: usuario.es_super_admin || acceso?.es_propietario,
+    es_intermediario: usuario.es_super_admin || acceso?.es_intermediario
   });
 
   return {
@@ -72,14 +77,19 @@ const buildAuthResponse = (usuario: UsuarioConAccesos, acceso?: AccesoPropietari
       id: usuario.id.toString(),
       nombre: usuario.nombre,
       email: usuario.email,
-      es_super_admin: usuario.es_super_admin
+      es_super_admin: usuario.es_super_admin,
+      requiere_password: usuario.requiere_password
     },
     contexto: acceso
       ? {
           propietario_id: acceso.propietario_id.toString(),
           propietario_nombre: acceso.propietario.nombre,
           rol_id: acceso.rol_id.toString(),
-          rol: acceso.rol.nombre
+          rol: acceso.rol.nombre,
+          permisos: acceso.rol.permisos,
+          permisos_configurados: acceso.rol.permisos_configurados,
+          es_propietario: acceso.es_propietario,
+          es_intermediario: acceso.es_intermediario
         }
       : null,
     propietarios: usuario.usuarios_propietarios.map((item) => ({
@@ -88,8 +98,12 @@ const buildAuthResponse = (usuario: UsuarioConAccesos, acceso?: AccesoPropietari
       ruc_cedula: item.propietario.ruc_cedula,
       rol: {
         id: item.rol.id.toString(),
-        nombre: item.rol.nombre
-      }
+        nombre: item.rol.nombre,
+        permisos: item.rol.permisos,
+        permisos_configurados: item.rol.permisos_configurados
+      },
+      es_propietario: item.es_propietario,
+      es_intermediario: item.es_intermediario
     }))
   };
 };

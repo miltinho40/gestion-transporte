@@ -17,21 +17,35 @@
   </main>
 
   <nav class="mobile-nav" aria-label="Navegación móvil">
-    <a routerLink="/movil/viajes" routerLinkActive="active">
-      <svg lucideClipboardList size="20"></svg>
-      <span>Viajes</span>
-    </a>
-    <a routerLink="/movil/mantenimientos" routerLinkActive="active">
-      <svg lucideWrench size="20"></svg>
-      <span>Mant.</span>
-    </a>
-    <a routerLink="/movil/cierre-semanal" routerLinkActive="active">
-      <svg lucideCalendarDays size="20"></svg>
-      <span>Cierre</span>
-    </a>
-    <a routerLink="/movil/precios" routerLinkActive="active">
-      <svg lucideDollarSign size="20"></svg>
-      <span>Precios</span>
-    </a>
+    @if (canOwnFleet('viajes')) {
+      <a routerLink="/movil/viajes" routerLinkActive="active">
+        <svg lucideClipboardList size="20"></svg>
+        <span>Viajes</span>
+      </a>
+    }
+    @if (canIntermediario('proveedor_viajes')) {
+      <a routerLink="/movil/viajes-proveedores" routerLinkActive="active">
+        <svg lucideHandshake size="20"></svg>
+        <span>Prov.</span>
+      </a>
+    }
+    @if (canOwnFleet('mantenimientos')) {
+      <a routerLink="/movil/mantenimientos" routerLinkActive="active">
+        <svg lucideWrench size="20"></svg>
+        <span>Mant.</span>
+      </a>
+    }
+    @if (canOwnFleet('cierre_semanal')) {
+      <a routerLink="/movil/cierre-semanal" routerLinkActive="active">
+        <svg lucideCalendarDays size="20"></svg>
+        <span>Cierre</span>
+      </a>
+    }
+    @if (hasPermission('tarifas_ruta')) {
+      <a routerLink="/movil/precios" routerLinkActive="active">
+        <svg lucideDollarSign size="20"></svg>
+        <span>Precios</span>
+      </a>
+    }
   </nav>
 </div>

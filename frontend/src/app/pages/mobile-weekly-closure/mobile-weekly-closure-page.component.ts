@@ -13,6 +13,7 @@ import {
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
+import { DialogService } from '../../shared/dialog.service';
 
 type EstadoViaje = 'programado' | 'en_curso' | 'completado' | 'cancelado';
 type EstadoMantenimiento = 'programado' | 'realizado' | 'cancelado' | 'vencido';
@@ -143,6 +144,7 @@ export class MobileWeeklyClosurePageComponent implements OnDestroy {
   private readonly fb = inject(FormBuilder);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly dialog = inject(DialogService);
   private messageTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly vehiculos = signal<VehiculoOption[]>([]);
@@ -351,10 +353,12 @@ export class MobileWeeklyClosurePageComponent implements OnDestroy {
       sortTime: this.dateSortValue(mantenimiento.fecha_mantenimiento)
     }));
 
-    return [...viajes, ...mantenimientos].sort((left, right) => {
+    const sortByDate = (left: ActividadSemanalItem, right: ActividadSemanalItem) => {
       if (left.sortTime !== right.sortTime) return left.sortTime - right.sortTime;
       return left.titulo.localeCompare(right.titulo);
-    });
+    };
+
+    return [...viajes.sort(sortByDate), ...mantenimientos.sort(sortByDate)];
   }
 
   editarActividad(item: ActividadSemanalItem) {
@@ -429,8 +433,19 @@ export class MobileWeeklyClosurePageComponent implements OnDestroy {
       });
   }
 
-  marcarCobradoActividad(item: ActividadSemanalItem) {
+  async marcarCobradoActividad(item: ActividadSemanalItem) {
     if (item.sourceType !== 'viaje' || item.cobrado) return;
+
+    const support = await this.dialog.supportPrompt({
+      title: 'Marcar viaje como cobrado',
+      text: 'Registra el soporte del cobro para este viaje.',
+      dateLabel: 'Fecha de cobro',
+      supportLabel: 'Numero de factura / soporte',
+      noInvoiceLabel: 'No se emitio factura',
+      confirmText: 'Marcar cobrado',
+      defaultDate: todayInputDate()
+    });
+    if (!support) return;
 
     this.markingCobroId.set(item.sourceId);
     this.error.set(null);
@@ -439,7 +454,9 @@ export class MobileWeeklyClosurePageComponent implements OnDestroy {
     this.api
       .patch(`/viajes/${item.sourceId}/cobro`, {
         cobrado: true,
-        fecha_cobro: todayInputDate()
+        fecha_cobro: support.fecha,
+        soporte_cobro: support.soporte,
+        sin_factura_cobro: support.sin_factura
       })
       .subscribe({
         next: () => {

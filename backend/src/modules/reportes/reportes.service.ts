@@ -378,7 +378,8 @@ export const getReporteViajes = async (propietarioIdInput: unknown, input: unkno
         semanas: filters.semanas ?? [],
         vehiculo_ids: filters.vehiculo_ids ?? [],
         cliente_ids: filters.cliente_ids ?? [],
-        cobrado: filters.cobrado ?? null
+        cobrado: filters.cobrado ?? null,
+        search: filters.search ?? null
       },
       semanas: [],
       resumen: {
@@ -399,6 +400,25 @@ export const getReporteViajes = async (propietarioIdInput: unknown, input: unkno
   const fechaFin = lastWeek.fecha_fin;
   const vehiculoIds = filters.vehiculo_ids?.map((id) => parseBigIntId(id, 'vehiculo_id'));
   const clienteIds = filters.cliente_ids?.map((id) => parseBigIntId(id, 'cliente_id'));
+  const search = filters.search?.trim();
+  const searchWhere: Prisma.ViajeWhereInput | undefined = search
+    ? {
+        OR: [
+          { descripcion_carga: { contains: search, mode: 'insensitive' } },
+          { observaciones: { contains: search, mode: 'insensitive' } },
+          { cliente: { nombre: { contains: search, mode: 'insensitive' } } },
+          { cliente: { ruc_cedula: { contains: search, mode: 'insensitive' } } },
+          { vehiculo: { placa: { contains: search, mode: 'insensitive' } } },
+          { vehiculo: { marca: { contains: search, mode: 'insensitive' } } },
+          { vehiculo: { modelo: { contains: search, mode: 'insensitive' } } },
+          { conductor: { nombre: { contains: search, mode: 'insensitive' } } },
+          { conductor: { cedula: { contains: search, mode: 'insensitive' } } },
+          { tarifa_ruta: { ruta: { origen: { contains: search, mode: 'insensitive' } } } },
+          { tarifa_ruta: { ruta: { destino: { contains: search, mode: 'insensitive' } } } },
+          { numeros_guia_remision: { has: search } }
+        ]
+      }
+    : undefined;
   const viajes = await prisma.viaje.findMany({
     where: {
       propietario_id: propietarioId,
@@ -406,6 +426,7 @@ export const getReporteViajes = async (propietarioIdInput: unknown, input: unkno
       cobrado: filters.cobrado,
       vehiculo_id: vehiculoIds?.length ? { in: vehiculoIds } : undefined,
       cliente_id: clienteIds?.length ? { in: clienteIds } : undefined,
+      AND: searchWhere ? [searchWhere] : undefined,
       OR: [
         {
           fecha_llegada: {
@@ -423,7 +444,7 @@ export const getReporteViajes = async (propietarioIdInput: unknown, input: unkno
       ]
     },
     include: viajeInclude,
-    orderBy: [{ fecha_llegada: 'asc' }, { fecha_salida: 'asc' }, { vehiculo_id: 'asc' }, { id: 'asc' }]
+    orderBy: [{ fecha_llegada: 'desc' }, { fecha_salida: 'desc' }, { vehiculo_id: 'asc' }, { id: 'desc' }]
   });
   const semanasMap = new Map(semanas.map((semana) => [weekKey(semana.anio, semana.numero_semana), semana]));
   const items = viajes
@@ -434,7 +455,17 @@ export const getReporteViajes = async (propietarioIdInput: unknown, input: unkno
 
       return semana ? formatReporteViaje(viaje, semana) : null;
     })
-    .filter((item): item is NonNullable<typeof item> => item !== null);
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .sort((left, right) => {
+      if (right.semana_anio !== left.semana_anio) return right.semana_anio - left.semana_anio;
+      if (right.numero_semana !== left.numero_semana) return right.numero_semana - left.numero_semana;
+
+      const rightDate = new Date(right.fecha).getTime();
+      const leftDate = new Date(left.fecha).getTime();
+      if (rightDate !== leftDate) return rightDate - leftDate;
+
+      return String(right.id).localeCompare(String(left.id), undefined, { numeric: true });
+    });
   const resumenTotales = createReporteViajesTotales();
   const vehiculos = new Set<string>();
   const clientes = new Set<string>();
@@ -520,7 +551,8 @@ export const getReporteViajes = async (propietarioIdInput: unknown, input: unkno
       semanas: filters.semanas ?? [],
       vehiculo_ids: filters.vehiculo_ids ?? [],
       cliente_ids: filters.cliente_ids ?? [],
-      cobrado: filters.cobrado ?? null
+      cobrado: filters.cobrado ?? null,
+      search: filters.search ?? null
     },
     semanas: semanas.map((semana) => ({
       anio: semana.anio,
@@ -553,7 +585,7 @@ export const buildReporteViajesExportTable = (
     { label: 'Vehiculos', value: reporte.resumen.cantidad_vehiculos },
     { label: 'Clientes', value: reporte.resumen.cantidad_clientes },
     { label: 'Precio viaje', value: reporte.resumen.totales.precio_viaje },
-    { label: 'Valor a facturar', value: reporte.resumen.totales.valor_facturar },
+    { label: 'A FACTURAR', value: reporte.resumen.totales.valor_facturar },
     { label: 'Utilidad viajes', value: reporte.resumen.totales.utilidad_viajes },
     { label: 'Mantenimientos', value: reporte.resumen.totales.mantenimientos },
     { label: 'Utilidad neta', value: reporte.resumen.totales.utilidad }
@@ -568,7 +600,7 @@ export const buildReporteViajesExportTable = (
     { key: 'conductor', header: 'Conductor', width: 22 },
     { key: 'guias', header: 'Guias', width: 18 },
     { key: 'precio_viaje', header: 'Precio viaje', width: 14 },
-    { key: 'valor_facturar', header: 'Valor a facturar', width: 16 },
+    { key: 'valor_facturar', header: 'A FACTURAR', width: 16 },
     { key: 'viaticos', header: 'Viaticos', width: 14 },
     { key: 'utilidad', header: 'Utilidad viaje', width: 14 },
     { key: 'estado', header: 'Estado', width: 12 }

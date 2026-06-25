@@ -12,12 +12,12 @@ import {
 } from './tarifas-ruta.service.js';
 
 export const listTarifasRutaController = asyncHandler(async (req: Request, res: Response) => {
-  const tarifas = await listTarifasRuta(req.user!.propietario_id, req.query);
+  const tarifas = await listTarifasRuta(req.user, req.query);
   res.json(serializeResponse(tarifas));
 });
 
 export const getTarifaRutaController = asyncHandler(async (req: Request, res: Response) => {
-  const tarifa = await getTarifaRutaById(req.user!.propietario_id, req.params.id);
+  const tarifa = await getTarifaRutaById(req.user, req.params.id);
   res.json(serializeResponse(tarifa));
 });
 

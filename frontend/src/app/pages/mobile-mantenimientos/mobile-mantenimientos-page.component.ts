@@ -11,7 +11,9 @@ import {
 import { Subscription, forkJoin } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
+import { isPaginatedResponse, PaginatedResponse, PaginationMeta } from '../../core/pagination';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
+import { PaginationControlsComponent } from '../../shared/pagination-controls.component';
 import {
   EstadoMantenimiento,
   MantenimientoRow,
@@ -21,6 +23,8 @@ import {
   estadoMantenimientoLabel,
   numberValue
 } from './mobile-mantenimientos.types';
+
+type MantenimientosListResponse = MantenimientoRow[] | PaginatedResponse<MantenimientoRow>;
 
 const searchText = (...values: unknown[]) =>
   values
@@ -38,7 +42,8 @@ const searchText = (...values: unknown[]) =>
     LucidePlus,
     LucideRefreshCw,
     LucideSearch,
-    AutoDismissAlertDirective
+    AutoDismissAlertDirective,
+    PaginationControlsComponent
   ],
   templateUrl: './mobile-mantenimientos-page.component.html',
   styleUrl: './mobile-mantenimientos-page.component.scss'
@@ -56,6 +61,10 @@ export class MobileMantenimientosPageComponent implements OnDestroy {
   readonly estado = signal('');
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
+  readonly pagination = signal<PaginationMeta | null>(null);
+  readonly page = signal(1);
+  readonly limit = signal(10);
+  private filterTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.load();
@@ -63,6 +72,7 @@ export class MobileMantenimientosPageComponent implements OnDestroy {
 
   ngOnDestroy() {
     this.sub.unsubscribe();
+    if (this.filterTimer) clearTimeout(this.filterTimer);
   }
 
   load() {
@@ -71,12 +81,23 @@ export class MobileMantenimientosPageComponent implements OnDestroy {
 
     this.sub.add(
       forkJoin({
-        mantenimientos: this.api.get<MantenimientoRow[]>('/mantenimientos'),
+        mantenimientos: this.api.get<MantenimientosListResponse>('/mantenimientos', {
+          search: this.search().trim(),
+          estado: this.estado(),
+          page: this.page(),
+          limit: this.limit()
+        }),
         vehiculos: this.api.get<VehiculoOption[]>('/vehiculos'),
         tipos: this.api.get<TipoMantenimientoOption[]>('/tipos-mantenimiento', { activo: true })
       }).subscribe({
         next: ({ mantenimientos, vehiculos, tipos }) => {
-          this.rows.set(mantenimientos);
+          if (isPaginatedResponse(mantenimientos)) {
+            this.rows.set(mantenimientos.data);
+            this.pagination.set(mantenimientos.meta);
+          } else {
+            this.rows.set(mantenimientos);
+            this.pagination.set(null);
+          }
           this.vehiculos.set(vehiculos);
           this.tipos.set(tipos);
           this.loading.set(false);
@@ -90,17 +111,39 @@ export class MobileMantenimientosPageComponent implements OnDestroy {
   }
 
   filteredRows() {
-    const term = this.search().trim().toLowerCase();
-    const estado = this.estado();
-
     return this.rows()
-      .filter((row) => !estado || row.estado === estado)
-      .filter((row) => !term || this.rowSearchText(row).includes(term))
       .sort(
         (left, right) =>
           dateSortValue(right.fecha_mantenimiento) -
             dateSortValue(left.fecha_mantenimiento) || Number(right.id) - Number(left.id)
       );
+  }
+
+  totalCount() {
+    return this.pagination()?.total ?? this.rows().length;
+  }
+
+  setSearch(value: string) {
+    this.search.set(value);
+    this.scheduleFilteredLoad();
+  }
+
+  setEstado(value: string) {
+    this.estado.set(value);
+    this.scheduleFilteredLoad();
+  }
+
+  changePage(page: number) {
+    const meta = this.pagination();
+    if (!meta || page < 1 || page > meta.total_pages || page === this.page()) return;
+    this.page.set(page);
+    this.load();
+  }
+
+  changeLimit(limit: number) {
+    this.limit.set(Number(limit));
+    this.page.set(1);
+    this.load();
   }
 
   edit(row: MantenimientoRow) {
@@ -150,5 +193,11 @@ export class MobileMantenimientosPageComponent implements OnDestroy {
       row.descripcion,
       row.repuestos?.map((item) => item.nombre_repuesto).join(' ')
     );
+  }
+
+  private scheduleFilteredLoad() {
+    this.page.set(1);
+    if (this.filterTimer) clearTimeout(this.filterTimer);
+    this.filterTimer = setTimeout(() => this.load(), 350);
   }
 }

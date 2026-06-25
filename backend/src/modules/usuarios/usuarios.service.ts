@@ -1,7 +1,11 @@
 import { Prisma } from '@prisma/client';
-import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
+import {
+  DEFAULT_TEMPORARY_PASSWORD,
+  hashDefaultTemporaryPassword,
+  hashPassword
+} from '../../utils/default-password.js';
 import { parseBigIntId } from '../../utils/ids.js';
 import type {
   UsuarioCreateInput,
@@ -22,6 +26,7 @@ const usuarioSelect = {
   email: true,
   fecha_nacimiento: true,
   es_super_admin: true,
+  requiere_password: true,
   activo: true,
   created_at: true,
   updated_at: true,
@@ -113,19 +118,27 @@ export const getUsuarioById = async (idInput: unknown) => {
 export const createUsuario = async (input: UsuarioCreateInput) => {
   await ensureEmailAvailable(input.email);
 
-  const password_hash = await bcrypt.hash(input.password, 10);
+  const claveTemporal = input.password ?? DEFAULT_TEMPORARY_PASSWORD;
+  const password_hash = await hashPassword(claveTemporal);
 
-  return prisma.usuario.create({
+  const usuario = await prisma.usuario.create({
     data: {
       nombre: input.nombre,
       email: input.email,
       password_hash,
       fecha_nacimiento: toDateOnly(input.fecha_nacimiento),
       es_super_admin: input.es_super_admin ?? false,
+      email_verificado: true,
+      requiere_password: true,
       activo: input.activo ?? true
     },
     select: usuarioSelect
   });
+
+  return {
+    ...usuario,
+    clave_temporal: claveTemporal
+  };
 };
 
 export const updateUsuario = async (idInput: unknown, input: UsuarioUpdateInput) => {
@@ -165,13 +178,39 @@ export const updatePasswordUsuario = async (idInput: unknown, input: UsuarioPass
   const id = parseBigIntId(idInput);
   await getUsuarioById(id);
 
-  const password_hash = await bcrypt.hash(input.password, 10);
+  const password_hash = await hashPassword(input.password);
 
   return prisma.usuario.update({
     where: { id },
-    data: { password_hash },
+    data: {
+      password_hash,
+      email_verificado: true,
+      requiere_password: true
+    },
     select: usuarioSelect
   });
+};
+
+export const resetPasswordUsuario = async (idInput: unknown) => {
+  const id = parseBigIntId(idInput);
+  await getUsuarioById(id);
+
+  const password_hash = await hashDefaultTemporaryPassword();
+
+  const usuario = await prisma.usuario.update({
+    where: { id },
+    data: {
+      password_hash,
+      email_verificado: true,
+      requiere_password: true
+    },
+    select: usuarioSelect
+  });
+
+  return {
+    ...usuario,
+    clave_temporal: DEFAULT_TEMPORARY_PASSWORD
+  };
 };
 
 export const deactivateUsuario = async (idInput: unknown) => {

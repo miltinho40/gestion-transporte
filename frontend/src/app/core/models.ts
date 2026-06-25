@@ -5,7 +5,11 @@ export interface PropietarioAcceso {
   rol: {
     id: string;
     nombre: string;
+    permisos?: string[];
+    permisos_configurados?: boolean;
   };
+  es_propietario?: boolean;
+  es_intermediario?: boolean;
 }
 
 export interface AuthUser {
@@ -13,6 +17,7 @@ export interface AuthUser {
   nombre: string;
   email: string;
   es_super_admin: boolean;
+  requiere_password?: boolean;
 }
 
 export interface AuthContext {
@@ -20,6 +25,10 @@ export interface AuthContext {
   propietario_nombre: string;
   rol_id: string;
   rol: string;
+  permisos?: string[];
+  permisos_configurados?: boolean;
+  es_propietario?: boolean;
+  es_intermediario?: boolean;
 }
 
 export interface LoginResponse {
@@ -84,5 +93,7 @@ export interface CrudRouteData {
   createEnabled?: boolean;
   deleteEnabled?: boolean;
   duplicateEnabled?: boolean;
+  passwordResetEnabled?: boolean;
   readonlyGlobalRows?: boolean;
+  superAdminReadOnly?: boolean;
 }

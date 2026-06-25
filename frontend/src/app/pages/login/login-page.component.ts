@@ -44,7 +44,16 @@ export class LoginPageComponent {
         this.loading.set(false);
 
         if (response.contexto) {
-          void this.router.navigate([this.isMobileViewport() ? '/movil/viajes' : '/app/dashboard']);
+          if (response.usuario.requiere_password) {
+            void this.router.navigate(['/app/cambiar-clave'], {
+              queryParams: {
+                obligatorio: '1'
+              }
+            });
+            return;
+          }
+
+          void this.router.navigate([this.startRoute()]);
           return;
         }
 
@@ -65,5 +74,13 @@ export class LoginPageComponent {
 
   private isMobileViewport() {
     return window.matchMedia('(max-width: 768px)').matches;
+  }
+
+  private startRoute() {
+    if (!this.isMobileViewport()) return '/app/dashboard';
+    if (this.auth.hasOwnFleet()) return '/movil/viajes';
+    if (this.auth.isIntermediary()) return '/movil/viajes-proveedores';
+
+    return '/app/dashboard';
   }
 }

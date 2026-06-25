@@ -96,6 +96,8 @@ interface ViajeRow {
   cobrado: boolean;
   retorno: boolean;
   fecha_cobro?: string | null;
+  soporte_cobro?: string | null;
+  sin_factura_cobro?: boolean;
   estado: EstadoViaje;
   observaciones?: string | null;
 }
@@ -242,6 +244,8 @@ export class ViajesPageComponent implements OnDestroy {
   private readonly router = inject(Router);
   private readonly sub = new Subscription();
   private pendingEditId: string | null = null;
+  private pendingDuplicateId: string | null = null;
+  private pendingCreate = false;
   private filterTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly rows = signal<ViajeRow[]>([]);
@@ -320,8 +324,12 @@ export class ViajesPageComponent implements OnDestroy {
   constructor() {
     this.sub.add(
       this.route.queryParamMap.subscribe((params) => {
+        this.pendingCreate = params.has('new');
         this.pendingEditId = params.get('edit') ?? params.get('editId');
+        this.pendingDuplicateId = params.get('duplicate') ?? params.get('duplicateId');
+        this.openPendingCreate();
         this.openPendingEdit();
+        this.openPendingDuplicate();
       })
     );
     this.sub.add(
@@ -366,7 +374,9 @@ export class ViajesPageComponent implements OnDestroy {
           this.tarifasRuta.set(tarifasRuta);
           this.tiposGasto.set(tiposGasto);
           this.syncCatalogInputs();
+          this.openPendingCreate();
           this.openPendingEdit();
+          this.openPendingDuplicate();
           this.loading.set(false);
         },
         error: (err) => {
@@ -817,7 +827,7 @@ export class ViajesPageComponent implements OnDestroy {
     }
 
     const row = this.editingRow();
-    const returnUrl = row ? this.editReturnUrl() : null;
+    const returnUrl = this.editReturnUrl();
     const payload = this.buildPayload();
     const request = row
       ? this.api.put<ViajeRow>(`/viajes/${row.id}`, payload)
@@ -857,13 +867,13 @@ export class ViajesPageComponent implements OnDestroy {
   async marcarCobrado(row: ViajeRow) {
     if (row.cobrado || row.estado === 'cancelado') return;
 
-    const confirmed = await this.dialog.confirm({
+    const support = await this.dialog.supportPrompt({
       title: 'Marcar viaje como cobrado',
       text: `Se registrará la fecha de cobro de hoy para el viaje de ${row.cliente?.nombre ?? 'este cliente'}.`,
       confirmText: 'Sí, marcar cobrado'
     });
 
-    if (!confirmed) return;
+    if (!support) return;
 
     this.markingCobroId.set(row.id);
     this.error.set(null);
@@ -873,7 +883,9 @@ export class ViajesPageComponent implements OnDestroy {
       this.api
         .patch<ViajeRow>(`/viajes/${row.id}/cobro`, {
           cobrado: true,
-          fecha_cobro: todayInputDate()
+          fecha_cobro: support.fecha,
+          soporte_cobro: support.soporte,
+          sin_factura_cobro: support.sin_factura
         })
         .subscribe({
           next: () => {
@@ -1164,10 +1176,46 @@ export class ViajesPageComponent implements OnDestroy {
     this.clearEditQuery();
   }
 
+  private openPendingCreate() {
+    if (!this.pendingCreate) return;
+    this.pendingCreate = false;
+    this.openCreate();
+    this.clearEditQuery();
+  }
+
+  private openPendingDuplicate() {
+    if (!this.pendingDuplicateId) return;
+
+    const row = this.rows().find((item) => String(item.id) === this.pendingDuplicateId);
+    if (!row) {
+      const id = this.pendingDuplicateId;
+      this.sub.add(
+        this.api.get<ViajeRow>(`/viajes/${id}`).subscribe({
+          next: (response) => {
+            if (this.pendingDuplicateId !== id) return;
+            this.pendingDuplicateId = null;
+            this.openDuplicate(response);
+            this.clearEditQuery();
+          },
+          error: () => {
+            this.error.set('No se encontró el viaje solicitado.');
+            this.pendingDuplicateId = null;
+            this.clearEditQuery();
+          }
+        })
+      );
+      return;
+    }
+
+    this.pendingDuplicateId = null;
+    this.openDuplicate(row);
+    this.clearEditQuery();
+  }
+
   private clearEditQuery() {
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { edit: null, editId: null },
+      queryParams: { new: null, edit: null, editId: null, duplicate: null, duplicateId: null },
       queryParamsHandling: 'merge',
       replaceUrl: true
     });

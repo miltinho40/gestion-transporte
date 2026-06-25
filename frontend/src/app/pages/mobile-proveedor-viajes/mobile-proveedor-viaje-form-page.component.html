@@ -1,0 +1,192 @@
+<section class="mobile-proveedor-viaje-form">
+  <header class="form-header">
+    <button type="button" class="icon-button" aria-label="Volver" (click)="goBack()">
+      <svg lucideArrowLeft size="20"></svg>
+    </button>
+    <div>
+      <h1>{{ editing ? 'Editar viaje proveedor' : duplicating ? 'Duplicar viaje proveedor' : 'Nuevo viaje proveedor' }}</h1>
+      <p>Registro rápido para viajes de terceros.</p>
+    </div>
+  </header>
+
+  @if (error()) {
+    <div class="alert alert-danger py-2" [appAutoDismissAlert]="error()">{{ error() }}</div>
+  }
+
+  <form [formGroup]="form" (ngSubmit)="save()" class="form-stack">
+    <section class="form-section">
+      <h2>Datos</h2>
+
+      <label class="mobile-field">
+        <span>Cliente</span>
+        <input
+          class="form-control"
+          type="search"
+          list="mobile-proveedor-clientes"
+          autocomplete="off"
+          [ngModel]="catalogInputValue('cliente_id')"
+          [ngModelOptions]="{ standalone: true }"
+          (ngModelChange)="setCatalogInput('cliente_id', $event)"
+        />
+      </label>
+      <datalist id="mobile-proveedor-clientes">
+        @for (option of catalogOptions('cliente_id'); track option.value) {
+          <option [value]="option.label"></option>
+        }
+      </datalist>
+
+      <label class="mobile-field">
+        <span>Proveedor</span>
+        <input
+          class="form-control"
+          type="search"
+          list="mobile-proveedor-proveedores"
+          autocomplete="off"
+          [ngModel]="catalogInputValue('proveedor_id')"
+          [ngModelOptions]="{ standalone: true }"
+          (ngModelChange)="setCatalogInput('proveedor_id', $event)"
+        />
+      </label>
+      <datalist id="mobile-proveedor-proveedores">
+        @for (option of catalogOptions('proveedor_id'); track option.value) {
+          <option [value]="option.label"></option>
+        }
+      </datalist>
+
+      <label class="mobile-field">
+        <span>Tarifa ruta</span>
+        <input
+          class="form-control"
+          type="search"
+          list="mobile-proveedor-tarifas"
+          autocomplete="off"
+          [ngModel]="catalogInputValue('tarifa_ruta_id')"
+          [ngModelOptions]="{ standalone: true }"
+          (ngModelChange)="setCatalogInput('tarifa_ruta_id', $event)"
+        />
+      </label>
+      <datalist id="mobile-proveedor-tarifas">
+        @for (option of catalogOptions('tarifa_ruta_id'); track option.value) {
+          <option [value]="option.label"></option>
+        }
+      </datalist>
+
+      <div class="two-columns">
+        <label class="mobile-field">
+          <span>Salida</span>
+          <input class="form-control" type="date" formControlName="fecha_salida" (change)="onFechaSalidaChange()" />
+        </label>
+        <label class="mobile-field">
+          <span>Entrega</span>
+          <input class="form-control" type="date" formControlName="fecha_llegada" />
+        </label>
+      </div>
+    </section>
+
+    <section class="form-section">
+      <h2>Valores</h2>
+
+      <div class="three-columns">
+        <label class="mobile-field">
+          <span>Precio viaje</span>
+          <input
+            class="form-control"
+            type="number"
+            min="0"
+            step="0.01"
+            formControlName="precio_viaje"
+            (change)="onPrecioViajeChanged()"
+          />
+        </label>
+        <label class="mobile-field">
+          <span>A facturar</span>
+          <input
+            class="form-control"
+            type="number"
+            min="0"
+            step="0.01"
+            formControlName="valor_a_facturar"
+            (change)="onValorFacturarChanged()"
+          />
+        </label>
+        <label class="mobile-field">
+          <span>Viáticos</span>
+          <input class="form-control" type="number" min="0" step="0.01" formControlName="viaticos" />
+        </label>
+      </div>
+
+      <label class="mobile-field">
+        <span>Precio a pagar</span>
+        <input class="form-control" type="number" min="0" step="0.01" formControlName="precio_pagar_proveedor" />
+      </label>
+
+      <div class="price-preview">
+        <span>Utilidad</span>
+        <strong>$ {{ money(utilidadFormulario()) }}</strong>
+      </div>
+    </section>
+
+    <section class="form-section">
+      <h2>Guías y detalle</h2>
+
+      <label class="mobile-field">
+        <span>Guías de remisión</span>
+        <textarea
+          class="form-control"
+          rows="2"
+          placeholder="Separadas por coma o guion"
+          formControlName="numeros_guia_remision"
+        ></textarea>
+      </label>
+
+      <label class="mobile-field">
+        <span>Detalle carga</span>
+        <textarea class="form-control" rows="2" formControlName="descripcion_carga"></textarea>
+      </label>
+    </section>
+
+    <section class="form-section">
+      <h2>Cobro y pago</h2>
+
+      <label class="switch-row">
+        <span>Cobrado</span>
+        <input class="form-check-input" type="checkbox" formControlName="cobrado" />
+      </label>
+
+      @if (form.controls.cobrado.value) {
+        <label class="mobile-field">
+          <span>Fecha cobro</span>
+          <input class="form-control" type="date" formControlName="fecha_cobro" />
+        </label>
+      }
+
+      <label class="switch-row">
+        <span>Pagado proveedor</span>
+        <input class="form-check-input" type="checkbox" formControlName="pagado_proveedor" />
+      </label>
+
+      @if (form.controls.pagado_proveedor.value) {
+        <label class="mobile-field">
+          <span>Fecha pago</span>
+          <input class="form-control" type="date" formControlName="fecha_pago_proveedor" />
+        </label>
+      }
+
+      <label class="mobile-field">
+        <span>Observaciones</span>
+        <textarea class="form-control" rows="2" formControlName="observaciones"></textarea>
+      </label>
+    </section>
+
+    <div class="save-bar">
+      <button type="submit" class="btn btn-primary" [disabled]="saving() || loading()">
+        <svg lucideSave size="18"></svg>
+        @if (saving()) {
+          Guardando...
+        } @else {
+          Guardar viaje
+        }
+      </button>
+    </div>
+  </form>
+</section>

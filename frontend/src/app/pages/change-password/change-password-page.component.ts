@@ -1,5 +1,6 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
 import { LucideKeyRound, LucideSave } from '@lucide/angular';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
@@ -19,11 +20,13 @@ export class ChangePasswordPageComponent {
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
   private readonly fb = inject(FormBuilder);
+  private readonly router = inject(Router);
 
   readonly loading = signal(false);
   readonly message = signal<string | null>(null);
   readonly error = signal<string | null>(null);
   readonly userName = this.auth.usuario()?.nombre ?? 'Usuario';
+  readonly forced = computed(() => this.auth.requiresPasswordChange());
 
   readonly form = this.fb.nonNullable.group({
     current_password: ['', Validators.required],
@@ -55,16 +58,36 @@ export class ChangePasswordPageComponent {
     }
 
     this.loading.set(true);
+    const shouldRedirect = this.forced();
     this.api.patch<ChangePasswordResponse>('/auth/password', payload).subscribe({
       next: (response) => {
         this.loading.set(false);
+        this.auth.markPasswordChanged();
         this.message.set(response.message);
         this.form.reset();
+
+        if (shouldRedirect) {
+          window.setTimeout(() => {
+            void this.router.navigate([this.startRoute()]);
+          }, 700);
+        }
       },
       error: (err) => {
         this.loading.set(false);
         this.error.set(err?.error?.message ?? 'No se pudo cambiar la clave.');
       }
     });
+  }
+
+  private isMobileViewport() {
+    return window.matchMedia('(max-width: 768px)').matches;
+  }
+
+  private startRoute() {
+    if (!this.isMobileViewport()) return '/app/dashboard';
+    if (this.auth.hasOwnFleet()) return '/movil/viajes';
+    if (this.auth.isIntermediary()) return '/movil/viajes-proveedores';
+
+    return '/app/dashboard';
   }
 }

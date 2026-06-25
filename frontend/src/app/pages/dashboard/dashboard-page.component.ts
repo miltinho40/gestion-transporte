@@ -84,6 +84,7 @@ export class DashboardPageComponent {
       viaje: 'Viaje'
     };
     const key = String(value ?? '');
+    if (key === 'viaje_proveedor') return 'Viaje proveedor';
     return labels[key] ?? key;
   }
 
@@ -104,6 +105,16 @@ export class DashboardPageComponent {
       marcar_no_cobrado: 'Marcó no cobrado'
     };
     const key = String(value ?? '');
+    if (key === 'marcar_pagado_proveedor') return 'Marco pagado proveedor';
     return labels[key] ?? key;
+  }
+
+  displayIp(value: unknown) {
+    const text = String(value ?? '').trim();
+    if (!text) return '';
+    if (text.startsWith('::ffff:')) return text.slice(7);
+    if (text.startsWith('169.254.')) return 'Interna';
+    if (text === '::1' || text === '127.0.0.1') return 'Local';
+    return text;
   }
 }

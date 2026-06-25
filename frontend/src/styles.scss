@@ -873,8 +873,8 @@ body {
 }
 
 .reports-actions-col {
-  width: 72px;
-  min-width: 72px;
+  width: 150px;
+  min-width: 150px;
   text-align: center;
 }
 
@@ -901,8 +901,8 @@ body {
 }
 
 .table > tbody > tr.reports-row-cobrado > td {
-  color: #184a72;
-  font-weight: 400;
+  color: inherit;
+  font-weight: 700;
 }
 
 .utility-filter-bar {

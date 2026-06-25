@@ -24,12 +24,12 @@
         type="search"
         placeholder="Buscar ruta, carga, capacidad..."
         [ngModel]="search()"
-        (ngModelChange)="search.set($event)"
+        (ngModelChange)="setSearch($event)"
       />
     </div>
 
     <div class="filter-row">
-      <select class="form-select form-select-sm" [ngModel]="activa()" (ngModelChange)="activa.set($event)">
+      <select class="form-select form-select-sm" [ngModel]="activa()" (ngModelChange)="setActiva($event)">
         <option value="">Todas</option>
         <option value="true">Activas</option>
         <option value="false">Inactivas</option>
@@ -62,24 +62,26 @@
             <span>Toneladas</span>
             <strong>{{ row.toneladas ?? '-' }}</strong>
           </div>
-          <div>
-            <span>Desde</span>
-            <strong>{{ dateOnly(row.vigente_desde) }}</strong>
-          </div>
-          <div>
-            <span>Hasta</span>
-            <strong>{{ dateOnly(row.vigente_hasta) }}</strong>
-          </div>
         </div>
 
         <div class="card-actions">
-          <button type="button" class="btn btn-outline-secondary btn-sm" (click)="duplicate(row)">
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm icon-action"
+            (click)="duplicate(row)"
+            title="Duplicar"
+            aria-label="Duplicar"
+          >
             <svg lucideCopy size="16"></svg>
-            Duplicar
           </button>
-          <button type="button" class="btn btn-outline-primary btn-sm" (click)="edit(row)">
+          <button
+            type="button"
+            class="btn btn-outline-primary btn-sm icon-action"
+            (click)="edit(row)"
+            title="Editar"
+            aria-label="Editar"
+          >
             <svg lucidePencil size="16"></svg>
-            Editar
           </button>
         </div>
       </article>
@@ -93,4 +95,12 @@
       </div>
     }
   </div>
+
+  <app-pagination-controls
+    [meta]="pagination()"
+    [loading]="loading()"
+    [pageSizeOptions]="[10, 25, 50]"
+    (pageChange)="changePage($event)"
+    (limitChange)="changeLimit($event)"
+  />
 </section>

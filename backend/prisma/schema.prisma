@@ -111,16 +111,20 @@ model Propietario {
   cierres_semanales         CierreSemanal[]
   invitaciones_usuario      InvitacionUsuario[]
   auditoria_eventos         AuditoriaEvento[]
+  proveedores               Proveedor[]
+  viajes_proveedor          ViajeProveedor[]
 
   @@map("propietarios")
 }
 
 model Rol {
-  id          BigInt   @id @default(autoincrement())
-  nombre      String   @unique @db.VarChar(50)
-  descripcion String?  @db.VarChar(255)
-  created_at  DateTime @default(now()) @db.Timestamptz(6)
-  updated_at  DateTime @updatedAt @db.Timestamptz(6)
+  id                    BigInt   @id @default(autoincrement())
+  nombre                String   @unique @db.VarChar(50)
+  descripcion           String?  @db.VarChar(255)
+  permisos              String[] @default([])
+  permisos_configurados Boolean  @default(false)
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime @updatedAt @db.Timestamptz(6)
 
   usuarios_propietarios UsuarioPropietario[]
 
@@ -195,13 +199,15 @@ model InvitacionUsuario {
 }
 
 model UsuarioPropietario {
-  id             BigInt   @id @default(autoincrement())
-  usuario_id     BigInt
-  propietario_id BigInt
-  rol_id         BigInt
-  activo         Boolean  @default(true)
-  created_at     DateTime @default(now()) @db.Timestamptz(6)
-  updated_at     DateTime @updatedAt @db.Timestamptz(6)
+  id               BigInt   @id @default(autoincrement())
+  usuario_id       BigInt
+  propietario_id   BigInt
+  rol_id           BigInt
+  es_propietario   Boolean  @default(true)
+  es_intermediario Boolean  @default(false)
+  activo           Boolean  @default(true)
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime @updatedAt @db.Timestamptz(6)
 
   usuario     Usuario     @relation(fields: [usuario_id], references: [id])
   propietario Propietario @relation(fields: [propietario_id], references: [id])
@@ -227,13 +233,36 @@ model Cliente {
   created_at          DateTime @default(now()) @db.Timestamptz(6)
   updated_at          DateTime @updatedAt @db.Timestamptz(6)
 
-  propietario Propietario @relation(fields: [propietario_id], references: [id])
-  viajes      Viaje[]
+  propietario      Propietario      @relation(fields: [propietario_id], references: [id])
+  viajes           Viaje[]
+  viajes_proveedor ViajeProveedor[]
 
   @@unique([propietario_id, ruc_cedula])
   @@index([propietario_id])
   @@index([propietario_id, activo, nombre], map: "idx_clientes_prop_activo_nombre")
   @@map("clientes")
+}
+
+model Proveedor {
+  id                  BigInt   @id @default(autoincrement())
+  propietario_id      BigInt
+  ruc_cedula          String   @db.VarChar(20)
+  nombre              String   @db.VarChar(150)
+  telefono            String?  @db.VarChar(30)
+  email               String?  @db.VarChar(150)
+  observacion         String?  @db.VarChar(255)
+  porcentaje_utilidad Decimal  @default(0) @db.Decimal(5, 2)
+  activo              Boolean  @default(true)
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario      Propietario      @relation(fields: [propietario_id], references: [id])
+  viajes_proveedor ViajeProveedor[]
+
+  @@unique([propietario_id, ruc_cedula])
+  @@index([propietario_id])
+  @@index([propietario_id, activo, nombre], map: "idx_proveedores_prop_activo_nombre")
+  @@map("proveedores")
 }
 
 model Conductor {
@@ -363,10 +392,11 @@ model TarifaRuta {
   created_at     DateTime  @default(now()) @db.Timestamptz(6)
   updated_at     DateTime  @updatedAt @db.Timestamptz(6)
 
-  propietario Propietario @relation(fields: [propietario_id], references: [id])
-  ruta        Ruta        @relation(fields: [ruta_id], references: [id])
-  tipo_carga  TipoCarga   @relation(fields: [tipo_carga_id], references: [id])
-  viajes      Viaje[]
+  propietario      Propietario      @relation(fields: [propietario_id], references: [id])
+  ruta             Ruta             @relation(fields: [ruta_id], references: [id])
+  tipo_carga       TipoCarga        @relation(fields: [tipo_carga_id], references: [id])
+  viajes           Viaje[]
+  viajes_proveedor ViajeProveedor[]
 
   @@index([propietario_id, ruta_id, tipo_carga_id])
   @@index([propietario_id, activa, ruta_id, tipo_carga_id], map: "idx_tarifas_ruta_prop_activa_ruta_carga")
@@ -455,6 +485,8 @@ model Viaje {
   cobrado                      Boolean     @default(false)
   retorno                      Boolean     @default(false)
   fecha_cobro                  DateTime?   @db.Date
+  soporte_cobro                String?     @db.VarChar(80)
+  sin_factura_cobro            Boolean?
   estado                       EstadoViaje @default(PROGRAMADO)
   observaciones                String?
   created_at                   DateTime    @default(now()) @db.Timestamptz(6)
@@ -480,6 +512,49 @@ model Viaje {
   @@index([propietario_id, cobrado, fecha_salida])
   @@index([tarifa_ruta_id])
   @@map("viajes")
+}
+
+model ViajeProveedor {
+  id                     BigInt      @id @default(autoincrement())
+  propietario_id         BigInt
+  cliente_id             BigInt
+  proveedor_id           BigInt
+  tarifa_ruta_id         BigInt
+  fecha_salida           DateTime    @default(dbgenerated("CURRENT_DATE")) @db.Date
+  fecha_llegada          DateTime?   @db.Date
+  descripcion_carga      String?
+  numeros_guia_remision  String[]    @default([])
+  precio_viaje           Decimal     @default(0) @db.Decimal(12, 2)
+  valor_a_facturar       Decimal     @default(0) @db.Decimal(12, 2)
+  precio_pagar_proveedor Decimal     @default(0) @db.Decimal(12, 2)
+  viaticos               Decimal     @default(0) @db.Decimal(12, 2)
+  utilidad               Decimal     @default(0) @db.Decimal(12, 2)
+  cobrado                Boolean     @default(false)
+  fecha_cobro            DateTime?   @db.Date
+  soporte_cobro          String?     @db.VarChar(80)
+  sin_factura_cobro      Boolean     @default(false)
+  pagado_proveedor       Boolean     @default(false)
+  fecha_pago_proveedor   DateTime?   @db.Date
+  soporte_pago_proveedor String?     @db.VarChar(80)
+  proveedor_sin_factura  Boolean     @default(false)
+  estado                 EstadoViaje @default(PROGRAMADO)
+  observaciones          String?
+  created_at             DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime    @updatedAt @db.Timestamptz(6)
+
+  propietario Propietario @relation(fields: [propietario_id], references: [id])
+  cliente     Cliente     @relation(fields: [cliente_id], references: [id])
+  proveedor   Proveedor   @relation(fields: [proveedor_id], references: [id])
+  tarifa_ruta TarifaRuta  @relation(fields: [tarifa_ruta_id], references: [id])
+
+  @@index([propietario_id, fecha_llegada])
+  @@index([propietario_id, fecha_salida])
+  @@index([propietario_id, cliente_id, fecha_llegada], map: "idx_viajes_prov_prop_cliente_llegada")
+  @@index([propietario_id, proveedor_id, fecha_llegada], map: "idx_viajes_prov_prop_proveedor_llegada")
+  @@index([propietario_id, cobrado, fecha_llegada], map: "idx_viajes_prov_prop_cobro_llegada")
+  @@index([propietario_id, pagado_proveedor, fecha_llegada], map: "idx_viajes_prov_prop_pago_llegada")
+  @@index([tarifa_ruta_id])
+  @@map("viajes_proveedor")
 }
 
 model GastoSemanalVehiculo {

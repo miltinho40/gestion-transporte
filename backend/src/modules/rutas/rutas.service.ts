@@ -8,6 +8,7 @@ import {
   resolveReadScope,
   resolveWriteOwnerId
 } from '../../utils/ownership-scope.js';
+import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import type { RutaCreateInput, RutaEstadoInput, RutaUpdateInput } from './rutas.schema.js';
 
 interface ListFilters {
@@ -153,11 +154,36 @@ const syncRutaPeajes = async (
 };
 
 export const listRutas = async (user: JwtPayload | undefined, filters: ListFilters) => {
-  return prisma.ruta.findMany({
-    where: buildWhere(user, filters),
-    include: buildIncludeRelations(user),
-    orderBy: [{ activa: 'desc' }, { propietario_id: 'asc' }, { origen: 'asc' }, { destino: 'asc' }]
-  });
+  const where = buildWhere(user, filters);
+  const include = buildIncludeRelations(user);
+  const orderBy = [
+    { activa: 'desc' },
+    { propietario_id: 'asc' },
+    { origen: 'asc' },
+    { destino: 'asc' }
+  ] satisfies Prisma.RutaOrderByWithRelationInput[];
+  const pagination = parsePagination(filters as Record<string, unknown>);
+
+  if (!pagination) {
+    return prisma.ruta.findMany({
+      where,
+      include,
+      orderBy
+    });
+  }
+
+  const [data, total] = await prisma.$transaction([
+    prisma.ruta.findMany({
+      where,
+      include,
+      orderBy,
+      skip: pagination.skip,
+      take: pagination.limit
+    }),
+    prisma.ruta.count({ where })
+  ]);
+
+  return buildPaginatedResult(data, total, pagination);
 };
 
 export const getRutaById = async (user: JwtPayload | undefined, idInput: unknown) => {

@@ -298,7 +298,7 @@ export const listActividadReciente = async (propietarioIdInput: unknown) => {
       }
     },
     orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-    take: 12
+    take: 5
   });
 
   return eventos.map((evento) => ({
@@ -315,8 +315,16 @@ export const listActividadReciente = async (propietarioIdInput: unknown) => {
           email: evento.usuario.email
         }
       : null,
-    ip: evento.ip
+    ip: normalizeAuditIp(evento.ip)
   }));
+};
+
+const normalizeAuditIp = (value: string | null) => {
+  if (!value) return null;
+  const ip = value.startsWith('::ffff:') ? value.slice(7) : value;
+  if (ip.startsWith('169.254.')) return 'Interna';
+  if (ip === '::1' || ip === '127.0.0.1') return 'Local';
+  return ip;
 };
 
 export const listAlertas = async (propietarioIdInput: unknown) => {

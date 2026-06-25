@@ -13,18 +13,20 @@ import {
 import { Subscription, forkJoin } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
+import { isPaginatedResponse, PaginatedResponse, PaginationMeta } from '../../core/pagination';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 import { DialogService } from '../../shared/dialog.service';
+import { PaginationControlsComponent } from '../../shared/pagination-controls.component';
 import {
   ClienteOption,
-  EstadoViaje,
   VehiculoOption,
   ViajeRow,
   dateSortValue,
-  estadoLabel,
   isoWeekInfo,
   numberValue
 } from './mobile-viajes.types';
+
+type ViajesListResponse = ViajeRow[] | PaginatedResponse<ViajeRow>;
 
 const searchText = (...values: unknown[]) =>
   values
@@ -52,7 +54,8 @@ const todayInputDate = () => {
     LucidePlus,
     LucideRefreshCw,
     LucideSearch,
-    AutoDismissAlertDirective
+    AutoDismissAlertDirective,
+    PaginationControlsComponent
   ],
   templateUrl: './mobile-viajes-page.component.html',
   styleUrl: './mobile-viajes-page.component.scss'
@@ -70,12 +73,15 @@ export class MobileViajesPageComponent implements OnDestroy {
   readonly markingCobroId = signal<string | null>(null);
   readonly savingGuidesId = signal<string | null>(null);
   readonly search = signal('');
-  readonly estado = signal('');
   readonly cobrado = signal('');
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly guideRow = signal<ViajeRow | null>(null);
   readonly guideInput = signal('');
+  readonly pagination = signal<PaginationMeta | null>(null);
+  readonly page = signal(1);
+  readonly limit = signal(10);
+  private filterTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.load();
@@ -83,6 +89,7 @@ export class MobileViajesPageComponent implements OnDestroy {
 
   ngOnDestroy() {
     this.sub.unsubscribe();
+    if (this.filterTimer) clearTimeout(this.filterTimer);
   }
 
   load() {
@@ -91,12 +98,23 @@ export class MobileViajesPageComponent implements OnDestroy {
 
     this.sub.add(
       forkJoin({
-        viajes: this.api.get<ViajeRow[]>('/viajes'),
+        viajes: this.api.get<ViajesListResponse>('/viajes', {
+          search: this.search().trim(),
+          cobrado: this.cobrado(),
+          page: this.page(),
+          limit: this.limit()
+        }),
         clientes: this.api.get<ClienteOption[]>('/clientes', { activo: true }),
         vehiculos: this.api.get<VehiculoOption[]>('/vehiculos')
       }).subscribe({
         next: ({ viajes, clientes, vehiculos }) => {
-          this.rows.set(viajes);
+          if (isPaginatedResponse(viajes)) {
+            this.rows.set(viajes.data);
+            this.pagination.set(viajes.meta);
+          } else {
+            this.rows.set(viajes);
+            this.pagination.set(null);
+          }
           this.clientes.set(clientes);
           this.vehiculos.set(vehiculos);
           this.loading.set(false);
@@ -110,14 +128,7 @@ export class MobileViajesPageComponent implements OnDestroy {
   }
 
   filteredRows() {
-    const term = this.search().trim().toLowerCase();
-    const estado = this.estado();
-    const cobrado = this.cobrado();
-
     return this.rows()
-      .filter((row) => !estado || row.estado === estado)
-      .filter((row) => cobrado === '' || String(row.cobrado) === cobrado)
-      .filter((row) => !term || this.rowSearchText(row).includes(term))
       .sort((left, right) => {
         const rightDate = right.fecha_llegada || right.fecha_salida;
         const leftDate = left.fecha_llegada || left.fecha_salida;
@@ -125,16 +136,43 @@ export class MobileViajesPageComponent implements OnDestroy {
       });
   }
 
+  totalCount() {
+    return this.pagination()?.total ?? this.rows().length;
+  }
+
+  setSearch(value: string) {
+    this.search.set(value);
+    this.scheduleFilteredLoad();
+  }
+
+  setCobrado(value: string) {
+    this.cobrado.set(value);
+    this.scheduleFilteredLoad();
+  }
+
+  changePage(page: number) {
+    const meta = this.pagination();
+    if (!meta || page < 1 || page > meta.total_pages || page === this.page()) return;
+    this.page.set(page);
+    this.load();
+  }
+
+  changeLimit(limit: number) {
+    this.limit.set(Number(limit));
+    this.page.set(1);
+    this.load();
+  }
+
   async marcarCobrado(row: ViajeRow) {
     if (row.cobrado || row.estado === 'cancelado') return;
 
-    const confirmed = await this.dialog.confirm({
+    const support = await this.dialog.supportPrompt({
       title: 'Marcar viaje como cobrado',
       text: `Se registrara la fecha de cobro de hoy para ${row.cliente?.nombre ?? 'este viaje'}.`,
       confirmText: 'Marcar cobrado'
     });
 
-    if (!confirmed) return;
+    if (!support) return;
 
     this.markingCobroId.set(row.id);
     this.error.set(null);
@@ -144,7 +182,9 @@ export class MobileViajesPageComponent implements OnDestroy {
       this.api
         .patch<ViajeRow>(`/viajes/${row.id}/cobro`, {
           cobrado: true,
-          fecha_cobro: todayInputDate()
+          fecha_cobro: support.fecha,
+          soporte_cobro: support.soporte,
+          sin_factura_cobro: support.sin_factura
         })
         .subscribe({
           next: () => {
@@ -224,10 +264,6 @@ export class MobileViajesPageComponent implements OnDestroy {
     return formatDateOnly(value);
   }
 
-  estadoLabel(estado: EstadoViaje) {
-    return estadoLabel(estado);
-  }
-
   rutaLabel(row: ViajeRow) {
     const tarifa = row.tarifa_ruta;
     if (!tarifa) return '-';
@@ -265,5 +301,11 @@ export class MobileViajesPageComponent implements OnDestroy {
       row.numeros_guia_remision?.join(' '),
       row.descripcion_carga
     );
+  }
+
+  private scheduleFilteredLoad() {
+    this.page.set(1);
+    if (this.filterTimer) clearTimeout(this.filterTimer);
+    this.filterTimer = setTimeout(() => this.load(), 350);
   }
 }

@@ -446,6 +446,27 @@ const resolveCobro = (
   return toDateOnly(fechaCobroInput) ?? currentFechaCobro ?? todayDateOnly();
 };
 
+const resolveCobroSupport = (
+  cobrado: boolean,
+  soporteInput?: string | null,
+  sinFacturaInput?: boolean,
+  current?: { soporte_cobro?: string | null; sin_factura_cobro?: boolean | null }
+) => {
+  if (!cobrado) {
+    return {
+      soporte_cobro: null,
+      sin_factura_cobro: false
+    };
+  }
+
+  const sinFactura = sinFacturaInput ?? current?.sin_factura_cobro ?? false;
+
+  return {
+    soporte_cobro: sinFactura ? null : soporteInput ?? current?.soporte_cobro ?? null,
+    sin_factura_cobro: sinFactura
+  };
+};
+
 export const listViajes = async (
   propietarioIdInput: unknown,
   filters: ListViajesFilters
@@ -667,6 +688,7 @@ export const createViaje = async (
       cobrado,
       retorno: input.retorno ?? false,
       fecha_cobro: resolveCobro(cobrado, input.fecha_cobro),
+      ...resolveCobroSupport(cobrado, input.soporte_cobro, input.sin_factura_cobro),
       estado: toPrismaEstadoViaje(input.estado) ?? EstadoViaje.PROGRAMADO,
       observaciones: input.observaciones
     },
@@ -760,6 +782,12 @@ export const updateViaje = async (
       ? await calculateCostoRealWithGastos(id, viaticos)
       : undefined;
   const cobrado = Object.hasOwn(input, 'cobrado') ? input.cobrado! : current.cobrado;
+  const cobroSupport =
+    Object.hasOwn(input, 'cobrado') ||
+    Object.hasOwn(input, 'soporte_cobro') ||
+    Object.hasOwn(input, 'sin_factura_cobro')
+      ? resolveCobroSupport(cobrado, input.soporte_cobro, input.sin_factura_cobro, current)
+      : undefined;
 
   const viaje = await prisma.viaje.update({
     where: { id },
@@ -798,6 +826,8 @@ export const updateViaje = async (
         Object.hasOwn(input, 'cobrado') || Object.hasOwn(input, 'fecha_cobro')
           ? resolveCobro(cobrado, input.fecha_cobro, current.fecha_cobro)
           : undefined,
+      soporte_cobro: cobroSupport?.soporte_cobro,
+      sin_factura_cobro: cobroSupport?.sin_factura_cobro,
       estado: toPrismaEstadoViaje(input.estado),
       observaciones: Object.hasOwn(input, 'observaciones') ? input.observaciones : undefined
     },
@@ -865,7 +895,8 @@ export const updateCobroViaje = async (
     where: { id },
     data: {
       cobrado: input.cobrado,
-      fecha_cobro: resolveCobro(input.cobrado, input.fecha_cobro, current.fecha_cobro)
+      fecha_cobro: resolveCobro(input.cobrado, input.fecha_cobro, current.fecha_cobro),
+      ...resolveCobroSupport(input.cobrado, input.soporte_cobro, input.sin_factura_cobro, current)
     },
     include: includeRelations
   });
@@ -877,8 +908,18 @@ export const updateCobroViaje = async (
     entidadId: viaje.id,
     accion: input.cobrado ? 'marcar_cobrado' : 'marcar_no_cobrado',
     resumen: input.cobrado ? 'Viaje marcado como cobrado' : 'Viaje marcado como no cobrado',
-    antes: { cobrado: current.cobrado, fecha_cobro: current.fecha_cobro },
-    despues: { cobrado: viaje.cobrado, fecha_cobro: viaje.fecha_cobro }
+    antes: {
+      cobrado: current.cobrado,
+      fecha_cobro: current.fecha_cobro,
+      soporte_cobro: current.soporte_cobro,
+      sin_factura_cobro: current.sin_factura_cobro
+    },
+    despues: {
+      cobrado: viaje.cobrado,
+      fecha_cobro: viaje.fecha_cobro,
+      soporte_cobro: viaje.soporte_cobro,
+      sin_factura_cobro: viaje.sin_factura_cobro
+    }
   });
 
   return viaje;

@@ -1,7 +1,9 @@
 import { Prisma } from '@prisma/client';
+import type { JwtPayload } from '../../config/jwt.js';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { resolveReadScopeFromUserOrPropietarioId } from '../../utils/ownership-scope.js';
 import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import type {
   ClienteCreateInput,
@@ -15,12 +17,15 @@ interface ListClientesFilters {
 }
 
 const buildWhere = (
-  propietarioId: bigint,
+  scopeInput: JwtPayload | unknown,
   filters: ListClientesFilters
 ): Prisma.ClienteWhereInput => {
-  const where: Prisma.ClienteWhereInput = {
-    propietario_id: propietarioId
-  };
+  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
+  const where: Prisma.ClienteWhereInput = scope.all
+    ? {}
+    : {
+        propietario_id: scope.propietarioId
+      };
 
   if (typeof filters.search === 'string' && filters.search.trim()) {
     const search = filters.search.trim();
@@ -61,9 +66,11 @@ const ensureRucAvailable = async (
   }
 };
 
-export const listClientes = async (propietarioIdInput: unknown, filters: ListClientesFilters) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
-  const where = buildWhere(propietarioId, filters);
+export const listClientes = async (
+  scopeInput: JwtPayload | unknown,
+  filters: ListClientesFilters
+) => {
+  const where = buildWhere(scopeInput, filters);
   const orderBy = [
     { activo: 'desc' },
     { nombre: 'asc' }
@@ -90,14 +97,14 @@ export const listClientes = async (propietarioIdInput: unknown, filters: ListCli
   return buildPaginatedResult(data, total, pagination);
 };
 
-export const getClienteById = async (propietarioIdInput: unknown, idInput: unknown) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+export const getClienteById = async (scopeInput: JwtPayload | unknown, idInput: unknown) => {
+  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
   const id = parseBigIntId(idInput);
 
   const cliente = await prisma.cliente.findFirst({
     where: {
       id,
-      propietario_id: propietarioId
+      ...(scope.all ? {} : { propietario_id: scope.propietarioId })
     }
   });
 
@@ -184,14 +191,22 @@ export const deactivateCliente = async (propietarioIdInput: unknown, idInput: un
     });
   }
 
-  const viajes = await prisma.viaje.count({
-    where: {
-      propietario_id: propietarioId,
-      cliente_id: id
-    }
-  });
+  const [viajes, viajesProveedor] = await Promise.all([
+    prisma.viaje.count({
+      where: {
+        propietario_id: propietarioId,
+        cliente_id: id
+      }
+    }),
+    prisma.viajeProveedor.count({
+      where: {
+        propietario_id: propietarioId,
+        cliente_id: id
+      }
+    })
+  ]);
 
-  if (viajes > 0) {
+  if (viajes > 0 || viajesProveedor > 0) {
     throw new AppError('El cliente ya esta usado en algunos viajes', 409);
   }
 

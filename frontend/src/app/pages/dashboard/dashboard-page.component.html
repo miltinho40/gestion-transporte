@@ -112,9 +112,9 @@
   }
 
   <div class="card border-0 shadow-sm mb-4">
-    <div class="card-header bg-white fw-semibold">Actividad reciente</div>
+    <div class="card-header bg-white fw-semibold">Auditoria: ultimos 5 cambios</div>
     <div class="list-group list-group-flush">
-      @for (item of alertas.actividad_reciente.slice(0, 10); track $index) {
+      @for (item of alertas.actividad_reciente.slice(0, 5); track $index) {
         @let row = asRecord(item);
         <div class="list-group-item">
           <div class="d-flex justify-content-between align-items-start gap-3">
@@ -135,7 +135,7 @@
             <div class="text-end small text-secondary flex-shrink-0">
               <div>{{ dateTime(row['fecha']) }}</div>
               @if (row['ip']) {
-                <div>{{ row['ip'] }}</div>
+                <div>{{ displayIp(row['ip']) }}</div>
               }
             </div>
           </div>

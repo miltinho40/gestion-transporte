@@ -30,7 +30,8 @@ export const authMiddleware = async (req: Request, _res: Response, next: NextFun
     select: {
       id: true,
       activo: true,
-      es_super_admin: true
+      es_super_admin: true,
+      requiere_password: true
     }
   });
 
@@ -38,10 +39,18 @@ export const authMiddleware = async (req: Request, _res: Response, next: NextFun
     throw new AppError('Usuario no disponible', 401);
   }
 
+  const isPasswordSetupRoute =
+    req.baseUrl.endsWith('/auth') && (req.path === '/me' || req.path === '/password');
+
+  if (usuario.requiere_password && !isPasswordSetupRoute) {
+    throw new AppError('Debes cambiar la clave temporal antes de continuar', 403);
+  }
+
   if (!propietarioId) {
     req.user = {
       usuario_id: usuario.id.toString(),
-      es_super_admin: usuario.es_super_admin
+      es_super_admin: usuario.es_super_admin,
+      requiere_password: usuario.requiere_password
     };
     next();
     return;
@@ -79,7 +88,13 @@ export const authMiddleware = async (req: Request, _res: Response, next: NextFun
     usuario_id: usuario.id.toString(),
     propietario_id: propietario.id.toString(),
     rol: acceso?.rol.nombre ?? payload.rol,
-    es_super_admin: usuario.es_super_admin
+    permisos: acceso?.rol.permisos ?? payload.permisos,
+    permisos_configurados: acceso?.rol.permisos_configurados ?? payload.permisos_configurados,
+    es_super_admin: usuario.es_super_admin,
+    requiere_password: usuario.requiere_password,
+    es_propietario: usuario.es_super_admin || acceso?.es_propietario || payload.es_propietario,
+    es_intermediario:
+      usuario.es_super_admin || acceso?.es_intermediario || payload.es_intermediario
   };
 
   next();

@@ -5,6 +5,7 @@ import { LucideCalculator, LucideCheck, LucideCopy, LucidePencil, LucideRefreshC
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
+import { DialogService } from '../../shared/dialog.service';
 
 type EstadoViaje = 'programado' | 'en_curso' | 'completado' | 'cancelado';
 type EstadoMantenimiento = 'programado' | 'realizado' | 'cancelado' | 'vencido';
@@ -147,6 +148,7 @@ export class WeeklyClosurePageComponent implements OnDestroy {
   private readonly fb = inject(FormBuilder);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly dialog = inject(DialogService);
   private messageTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly loading = signal(false);
@@ -550,8 +552,19 @@ export class WeeklyClosurePageComponent implements OnDestroy {
     }
   }
 
-  marcarCobradoActividad(item: ActividadSemanalItem) {
+  async marcarCobradoActividad(item: ActividadSemanalItem) {
     if (item.sourceType !== 'viaje' || item.cobrado) return;
+
+    const support = await this.dialog.supportPrompt({
+      title: 'Marcar viaje como cobrado',
+      text: 'Registra el soporte del cobro para este viaje.',
+      dateLabel: 'Fecha de cobro',
+      supportLabel: 'Numero de factura / soporte',
+      noInvoiceLabel: 'No se emitio factura',
+      confirmText: 'Marcar cobrado',
+      defaultDate: todayInputDate()
+    });
+    if (!support) return;
 
     this.markingCobroId.set(item.sourceId);
     this.error.set(null);
@@ -560,7 +573,9 @@ export class WeeklyClosurePageComponent implements OnDestroy {
     this.api
       .patch(`/viajes/${item.sourceId}/cobro`, {
         cobrado: true,
-        fecha_cobro: todayInputDate()
+        fecha_cobro: support.fecha,
+        soporte_cobro: support.soporte,
+        sin_factura_cobro: support.sin_factura
       })
       .subscribe({
         next: () => {

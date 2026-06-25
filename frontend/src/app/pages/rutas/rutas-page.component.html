@@ -1,12 +1,14 @@
 <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
   <div>
-    <h1 class="h3 mb-1">Rutas</h1>
+    <h1 class="h3 mb-1">Destinos</h1>
     <p class="text-secondary mb-0">Origen, destino, distancia y peajes del recorrido.</p>
   </div>
-  <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
-    <svg lucidePlus size="17"></svg>
-    Nueva
-  </button>
+  @if (!isSuperAdmin) {
+    <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
+      <svg lucidePlus size="17"></svg>
+      Nueva
+    </button>
+  }
 </div>
 
 @if (error() && !formOpen()) {
@@ -28,7 +30,7 @@
         type="search"
         placeholder="Buscar rutas"
         [ngModel]="search()"
-        (ngModelChange)="search.set($event)"
+        (ngModelChange)="setSearch($event)"
       />
     </div>
     <button type="button" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2" (click)="load()">
@@ -46,6 +48,7 @@
           <th>Distancia km</th>
           <th>Duración</th>
           <th>Peajes</th>
+          <th>Alcance</th>
           <th>Activa</th>
           <th class="text-end actions-column">Acciones</th>
         </tr>
@@ -59,6 +62,15 @@
             <td>{{ duration(row) }}</td>
             <td>{{ peajesLabel(row) }}</td>
             <td>
+              <span
+                class="badge"
+                [class.badge-soft]="row.propietario_id === null"
+                [class.text-bg-light]="row.propietario_id !== null"
+              >
+                {{ scopeLabel(row) }}
+              </span>
+            </td>
+            <td>
               @if (row.activa) {
                 <span class="badge badge-soft">Sí</span>
               } @else {
@@ -67,33 +79,29 @@
             </td>
             <td class="text-end">
               <div class="btn-group btn-group-sm">
-                <button type="button" class="btn btn-outline-secondary" (click)="openDuplicate(row)" title="Duplicar">
-                  <svg lucideCopy size="15"></svg>
-                </button>
-                <button
-                  type="button"
-                  class="btn btn-outline-secondary"
-                  (click)="openEdit(row)"
-                  [disabled]="!canEditRuta(row)"
-                  [title]="canEditRuta(row) ? 'Editar' : 'Solo el superadmin puede modificar rutas globales'"
-                >
-                  <svg lucidePencil size="15"></svg>
-                </button>
-                <button
-                  type="button"
-                  class="btn btn-outline-danger"
-                  (click)="delete(row)"
-                  [disabled]="deletingId() === row.id || !canEditRuta(row)"
-                  [title]="canEditRuta(row) ? 'Eliminar o desactivar' : 'Solo el superadmin puede modificar rutas globales'"
-                >
-                  <svg lucideTrash2 size="15"></svg>
-                </button>
+                @if (canEditRuta(row)) {
+                  <button type="button" class="btn btn-outline-secondary" (click)="openDuplicate(row)" title="Duplicar">
+                    <svg lucideCopy size="15"></svg>
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary" (click)="openEdit(row)" title="Editar">
+                    <svg lucidePencil size="15"></svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-outline-danger"
+                    (click)="delete(row)"
+                    [disabled]="deletingId() === row.id"
+                    title="Eliminar o desactivar"
+                  >
+                    <svg lucideTrash2 size="15"></svg>
+                  </button>
+                }
               </div>
             </td>
           </tr>
         } @empty {
           <tr>
-            <td colspan="7" class="text-center text-secondary py-4">
+            <td colspan="8" class="text-center text-secondary py-4">
               @if (loading()) {
                 Cargando rutas...
               } @else {
@@ -105,6 +113,13 @@
       </tbody>
     </table>
   </div>
+
+  <app-pagination-controls
+    [meta]="pagination()"
+    [loading]="loading()"
+    (pageChange)="changePage($event)"
+    (limitChange)="changeLimit($event)"
+  />
 </div>
 
 @if (formOpen()) {

@@ -1,7 +1,9 @@
 import { EstadoConductor, Prisma } from '@prisma/client';
+import type { JwtPayload } from '../../config/jwt.js';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { resolveReadScopeFromUserOrPropietarioId } from '../../utils/ownership-scope.js';
 import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import { toPrismaEstadoConductor } from './conductores.mapper.js';
 import type {
@@ -25,12 +27,15 @@ const toDateOnly = (value?: string | null) => {
 };
 
 const buildWhere = (
-  propietarioId: bigint,
+  scopeInput: JwtPayload | unknown,
   filters: ListConductoresFilters
 ): Prisma.ConductorWhereInput => {
-  const where: Prisma.ConductorWhereInput = {
-    propietario_id: propietarioId
-  };
+  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
+  const where: Prisma.ConductorWhereInput = scope.all
+    ? {}
+    : {
+        propietario_id: scope.propietarioId
+      };
 
   if (typeof filters.search === 'string' && filters.search.trim()) {
     const search = filters.search.trim();
@@ -98,11 +103,10 @@ const ensureLicenciaAvailable = async (
 };
 
 export const listConductores = async (
-  propietarioIdInput: unknown,
+  scopeInput: JwtPayload | unknown,
   filters: ListConductoresFilters
 ) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
-  const where = buildWhere(propietarioId, filters);
+  const where = buildWhere(scopeInput, filters);
   const orderBy = [
     { estado: 'asc' },
     { nombre: 'asc' }
@@ -129,14 +133,14 @@ export const listConductores = async (
   return buildPaginatedResult(data, total, pagination);
 };
 
-export const getConductorById = async (propietarioIdInput: unknown, idInput: unknown) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+export const getConductorById = async (scopeInput: JwtPayload | unknown, idInput: unknown) => {
+  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
   const id = parseBigIntId(idInput);
 
   const conductor = await prisma.conductor.findFirst({
     where: {
       id,
-      propietario_id: propietarioId
+      ...(scope.all ? {} : { propietario_id: scope.propietarioId })
     }
   });
 

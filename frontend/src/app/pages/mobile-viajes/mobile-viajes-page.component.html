@@ -2,7 +2,7 @@
   <header class="mobile-page-heading">
     <div>
       <h1>Viajes</h1>
-      <p>{{ filteredRows().length }} registros</p>
+      <p>{{ totalCount() }} registros</p>
     </div>
     <a class="btn btn-primary add-button" routerLink="/movil/viajes/nuevo" aria-label="Nuevo viaje">
       <svg lucidePlus size="20"></svg>
@@ -22,22 +22,14 @@
       <svg lucideSearch size="17"></svg>
       <input
         type="search"
-        placeholder="Buscar cliente, guía, ruta..."
+        placeholder="Buscar cliente, guia, ruta..."
         [ngModel]="search()"
-        (ngModelChange)="search.set($event)"
+        (ngModelChange)="setSearch($event)"
       />
     </div>
 
     <div class="filter-row">
-      <select class="form-select form-select-sm" [ngModel]="estado()" (ngModelChange)="estado.set($event)">
-        <option value="">Todos</option>
-        <option value="programado">Programado</option>
-        <option value="en_curso">En curso</option>
-        <option value="completado">Completado</option>
-        <option value="cancelado">Cancelado</option>
-      </select>
-
-      <select class="form-select form-select-sm" [ngModel]="cobrado()" (ngModelChange)="cobrado.set($event)">
+      <select class="form-select form-select-sm" [ngModel]="cobrado()" (ngModelChange)="setCobrado($event)">
         <option value="">Cobro</option>
         <option value="true">Cobrados</option>
         <option value="false">No cobrados</option>
@@ -58,7 +50,7 @@
             <h2>{{ rutaLabel(row) }}</h2>
             <p>{{ row.cliente?.nombre ?? '-' }}</p>
           </div>
-          <span class="state-pill">{{ estadoLabel(row.estado) }}</span>
+          <span class="state-pill" [class.ok]="row.cobrado">{{ row.cobrado ? 'Cobrado' : 'Por cobrar' }}</span>
         </div>
 
         <div class="card-meta">
@@ -88,27 +80,43 @@
 
         <div class="card-actions">
           @if (!row.cobrado && row.estado !== 'cancelado') {
-            <button type="button" class="btn btn-outline-secondary btn-sm" (click)="openGuides(row)">
+            <button
+              type="button"
+              class="btn btn-outline-secondary btn-sm icon-action"
+              (click)="openGuides(row)"
+              title="Guías"
+              aria-label="Guías"
+            >
               <svg lucideClipboardList size="16"></svg>
-              Guías
             </button>
             <button
               type="button"
-              class="btn btn-outline-success btn-sm"
+              class="btn btn-outline-success btn-sm icon-action"
               (click)="marcarCobrado(row)"
               [disabled]="markingCobroId() === row.id"
+              title="Cobrar"
+              aria-label="Cobrar"
             >
               <svg lucideCheck size="16"></svg>
-              Cobrar
             </button>
           }
-          <button type="button" class="btn btn-outline-secondary btn-sm" (click)="duplicate(row)">
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm icon-action"
+            (click)="duplicate(row)"
+            title="Duplicar"
+            aria-label="Duplicar"
+          >
             <svg lucideCopy size="16"></svg>
-            Duplicar
           </button>
-          <button type="button" class="btn btn-outline-primary btn-sm" (click)="edit(row)">
+          <button
+            type="button"
+            class="btn btn-outline-primary btn-sm icon-action"
+            (click)="edit(row)"
+            title="Editar"
+            aria-label="Editar"
+          >
             <svg lucidePencil size="16"></svg>
-            Editar
           </button>
         </div>
       </article>
@@ -122,6 +130,14 @@
       </div>
     }
   </div>
+
+  <app-pagination-controls
+    [meta]="pagination()"
+    [loading]="loading()"
+    [pageSizeOptions]="[10, 25, 50]"
+    (pageChange)="changePage($event)"
+    (limitChange)="changeLimit($event)"
+  />
 
   @if (guideRow()) {
     <div class="mobile-modal-backdrop" (click)="closeGuides()"></div>

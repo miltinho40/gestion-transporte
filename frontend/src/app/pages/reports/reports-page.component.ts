@@ -2,16 +2,28 @@ import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { LucideCheck, LucideCopy, LucideDownload, LucideFileSpreadsheet, LucidePencil, LucidePlus } from '@lucide/angular';
+import {
+  LucideCheck,
+  LucideCopy,
+  LucideDownload,
+  LucideFileSpreadsheet,
+  LucidePencil,
+  LucidePlus,
+  LucideRotateCcw,
+  LucideSearch,
+  LucideTrash2
+} from '@lucide/angular';
 import { debounceTime, forkJoin } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
+import type { PaginationMeta } from '../../core/pagination';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 import { DialogService } from '../../shared/dialog.service';
 import {
   MultiSelectFilterComponent,
   type MultiSelectFilterValue
 } from '../../shared/multi-select-filter.component';
+import { PaginationControlsComponent } from '../../shared/pagination-controls.component';
 
 type ExportFormat = 'xlsx' | 'pdf';
 
@@ -87,16 +99,6 @@ interface ReporteViajeItem {
 
 const weekOptions = Array.from({ length: 53 }, (_, index) => index + 1);
 
-const toDateInputValue = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-
-  return `${year}-${month}-${day}`;
-};
-
-const todayInputDate = () => toDateInputValue(new Date());
-
 @Component({
   selector: 'app-reports-page',
   imports: [
@@ -108,8 +110,12 @@ const todayInputDate = () => toDateInputValue(new Date());
     LucideFileSpreadsheet,
     LucidePencil,
     LucidePlus,
+    LucideRotateCcw,
+    LucideSearch,
+    LucideTrash2,
     AutoDismissAlertDirective,
-    MultiSelectFilterComponent
+    MultiSelectFilterComponent,
+    PaginationControlsComponent
   ],
   templateUrl: './reports-page.component.html'
 })
@@ -132,12 +138,15 @@ export class ReportsPageComponent {
   readonly selectedVehicleIds = signal<string[]>([]);
   readonly selectedClientIds = signal<string[]>([]);
   readonly selectedTripIds = signal<string[]>([]);
+  readonly travelPage = signal(1);
+  readonly travelLimit = signal(50);
   readonly guideEditTripId = signal<string | null>(null);
   readonly guideInput = signal('');
   readonly weekOptions = weekOptions;
   private autoLoadTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly travelForm = this.fb.nonNullable.group({
+    search: [''],
     anio: [new Date().getFullYear()],
     cobrado: ['']
   });
@@ -164,6 +173,29 @@ export class ReportsPageComponent {
       valor_facturar: valorFacturar,
       viaticos,
       utilidad_viajes: valorFacturar - viaticos
+    };
+  });
+  readonly paginatedTravelItems = computed(() => {
+    const items = this.travelReport()?.items ?? [];
+    const start = (this.travelPage() - 1) * this.travelLimit();
+
+    return items.slice(start, start + this.travelLimit());
+  });
+  readonly travelPagination = computed<PaginationMeta | null>(() => {
+    const total = this.travelReport()?.items.length ?? 0;
+    if (!this.travelReport()) return null;
+
+    const limit = this.travelLimit();
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const page = Math.min(this.travelPage(), totalPages);
+
+    return {
+      page,
+      limit,
+      total,
+      total_pages: totalPages,
+      has_next: page < totalPages,
+      has_previous: page > 1
     };
   });
   readonly vehiculoFilterOptions = computed(() =>
@@ -234,6 +266,7 @@ export class ReportsPageComponent {
       next: (report) => {
         this.travelReport.set(report);
         this.selectedTripIds.set([]);
+        this.travelPage.set(1);
         this.loadingTravelReport.set(false);
       },
       error: (err) => {
@@ -259,17 +292,34 @@ export class ReportsPageComponent {
       .filter((value) => Number.isInteger(value) && value >= 1 && value <= 53);
 
     this.selectedWeeks.set([...new Set(weeks)].sort((left, right) => left - right));
+    this.travelPage.set(1);
     this.scheduleLoadTravelReport();
   }
 
   setSelectedVehicles(values: MultiSelectFilterValue[]) {
     this.selectedVehicleIds.set(values.map((value) => String(value)));
+    this.travelPage.set(1);
     this.scheduleLoadTravelReport();
   }
 
   setSelectedClients(values: MultiSelectFilterValue[]) {
     this.selectedClientIds.set(values.map((value) => String(value)));
+    this.travelPage.set(1);
     this.scheduleLoadTravelReport();
+  }
+
+  changeTravelPage(page: number) {
+    const meta = this.travelPagination();
+    if (!meta || page < 1 || page > meta.total_pages || page === this.travelPage()) return;
+
+    this.travelPage.set(page);
+  }
+
+  changeTravelLimit(limit: number) {
+    if (limit === this.travelLimit()) return;
+
+    this.travelLimit.set(limit);
+    this.travelPage.set(1);
   }
 
   money(value: unknown) {
@@ -319,7 +369,7 @@ export class ReportsPageComponent {
   }
 
   allVisibleSelected() {
-    const rows = this.travelReport()?.items ?? [];
+    const rows = this.paginatedTravelItems();
     return rows.length > 0 && rows.every((row) => this.isSelected(row));
   }
 
@@ -337,7 +387,7 @@ export class ReportsPageComponent {
   }
 
   toggleAllVisible(checked: boolean) {
-    const ids = (this.travelReport()?.items ?? []).map((row) => row.id);
+    const ids = this.paginatedTravelItems().map((row) => row.id);
     this.selectedTripIds.set(checked ? ids : []);
   }
 
@@ -376,13 +426,13 @@ export class ReportsPageComponent {
       return;
     }
 
-    const confirmed = await this.dialog.confirm({
+    const support = await this.dialog.supportPrompt({
       title: 'Marcar viajes como cobrados',
       text: `Se marcarán ${rows.length} ${rows.length === 1 ? 'viaje' : 'viajes'} como cobrados con la fecha de hoy.`,
       confirmText: 'Sí, marcar cobrados'
     });
 
-    if (!confirmed) return;
+    if (!support) return;
 
     this.loadingTravelReport.set(true);
     this.error.set(null);
@@ -392,7 +442,9 @@ export class ReportsPageComponent {
       rows.map((row) =>
         this.api.patch(`/viajes/${row.id}/cobro`, {
           cobrado: true,
-          fecha_cobro: todayInputDate()
+          fecha_cobro: support.fecha,
+          soporte_cobro: support.soporte,
+          sin_factura_cobro: support.sin_factura
         })
       )
     ).subscribe({
@@ -404,6 +456,32 @@ export class ReportsPageComponent {
       },
       error: (err) => {
         this.error.set(err?.error?.message ?? 'No se pudieron marcar los viajes como cobrados.');
+        this.loadingTravelReport.set(false);
+      }
+    });
+  }
+
+  async revertCobro(row: ReporteViajeItem) {
+    if (!row.cobrado || row.estado === 'cancelado') return;
+
+    const confirmed = await this.dialog.confirm({
+      title: 'Regresar viaje a sin cobrar',
+      text: `Se quitará el cobro registrado para el viaje de ${row.cliente?.nombre ?? 'este cliente'}.`,
+      confirmText: 'Sí, regresar'
+    });
+    if (!confirmed) return;
+
+    this.loadingTravelReport.set(true);
+    this.error.set(null);
+    this.message.set(null);
+
+    this.api.patch(`/viajes/${row.id}/cobro`, { cobrado: false }).subscribe({
+      next: () => {
+        this.message.set('Viaje regresado a sin cobrar.');
+        this.loadTravelReport();
+      },
+      error: (err) => {
+        this.error.set(err?.error?.message ?? 'No se pudo regresar el viaje a sin cobrar.');
         this.loadingTravelReport.set(false);
       }
     });
@@ -466,12 +544,57 @@ export class ReportsPageComponent {
     });
   }
 
+  newTrip() {
+    const returnUrl = this.router.url.startsWith('/app/') ? this.router.url : '/app/reportes';
+    void this.router.navigate(['/app/viajes'], {
+      queryParams: { new: '1', returnUrl }
+    });
+  }
+
+  duplicateTrip(row: ReporteViajeItem) {
+    const returnUrl = this.router.url.startsWith('/app/') ? this.router.url : '/app/reportes';
+    void this.router.navigate(['/app/viajes'], {
+      queryParams: {
+        duplicate: row.id,
+        returnUrl
+      }
+    });
+  }
+
+  async deleteTrip(row: ReporteViajeItem) {
+    const confirmed = await this.dialog.confirm({
+      title: row.estado === 'cancelado' ? 'Eliminar viaje definitivamente' : 'Cancelar viaje',
+      text:
+        row.estado === 'cancelado'
+          ? 'El viaje ya está cancelado. Se eliminará de la tabla.'
+          : 'El viaje quedará con estado cancelado.',
+      confirmText: row.estado === 'cancelado' ? 'Eliminar' : 'Cancelar viaje'
+    });
+    if (!confirmed) return;
+
+    this.loadingTravelReport.set(true);
+    this.error.set(null);
+    this.message.set(null);
+
+    this.api.delete(`/viajes/${row.id}`).subscribe({
+      next: () => {
+        this.message.set(row.estado === 'cancelado' ? 'Viaje eliminado.' : 'Viaje cancelado.');
+        this.loadTravelReport();
+      },
+      error: (err) => {
+        this.error.set(err?.error?.message ?? 'No se pudo procesar el viaje.');
+        this.loadingTravelReport.set(false);
+      }
+    });
+  }
+
   private scheduleLoadTravelReport() {
     if (this.autoLoadTimer) {
       clearTimeout(this.autoLoadTimer);
     }
 
     this.autoLoadTimer = setTimeout(() => {
+      this.travelPage.set(1);
       this.loadTravelReport();
     }, 350);
   }
@@ -482,7 +605,8 @@ export class ReportsPageComponent {
       semanas: this.selectedWeeks().join(','),
       vehiculo_ids: this.selectedVehicleIds().join(','),
       cliente_ids: this.selectedClientIds().join(','),
-      cobrado: this.travelForm.controls.cobrado.value
+      cobrado: this.travelForm.controls.cobrado.value,
+      search: this.travelForm.controls.search.value.trim()
     };
   }
 

@@ -88,6 +88,8 @@ export interface ViajeRow {
   cobrado: boolean;
   retorno: boolean;
   fecha_cobro?: string | null;
+  soporte_cobro?: string | null;
+  sin_factura_cobro?: boolean;
   estado: EstadoViaje;
   observaciones?: string | null;
 }
