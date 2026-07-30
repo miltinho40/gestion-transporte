@@ -9,6 +9,12 @@
     </div>
 
     <nav class="nav-list">
+      @if (hasPermission('asistente')) {
+        <a routerLink="/app/asistente" routerLinkActive="active">
+          <svg lucideSparkles size="17"></svg>
+          Asistente
+        </a>
+      }
       @if (hasPermission('dashboard')) {
         <a routerLink="/app/dashboard" routerLinkActive="active">
           <svg lucideBell size="17"></svg>

@@ -5,7 +5,7 @@ import { AppError } from '../../utils/app-error.js';
 import type { AuditContext } from '../../utils/audit.js';
 import { recordAuditEvent } from '../../utils/audit.js';
 import { parseBigIntId } from '../../utils/ids.js';
-import { resolveReadScopeFromUserOrPropietarioId } from '../../utils/ownership-scope.js';
+import { resolveReadScopeWithOwnOverride } from '../../utils/ownership-scope.js';
 import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import type {
   TarifaRutaCreateInput,
@@ -18,11 +18,18 @@ interface ListFilters {
   ruta_id?: unknown;
   tipo_carga_id?: unknown;
   activa?: unknown;
+  solo_propios?: unknown;
 }
 
 const includeRelations = {
   ruta: true,
-  tipo_carga: true
+  tipo_carga: true,
+  propietario: {
+    select: {
+      id: true,
+      nombre: true
+    }
+  }
 } satisfies Prisma.TarifaRutaInclude;
 
 const toDateOnly = (value?: string | null) => {
@@ -39,7 +46,10 @@ const buildWhere = (
   scopeInput: JwtPayload | unknown,
   filters: ListFilters
 ): Prisma.TarifaRutaWhereInput => {
-  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
+  const scope = resolveReadScopeWithOwnOverride(
+    scopeInput,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
   const where: Prisma.TarifaRutaWhereInput = scope.all
     ? {}
     : {
@@ -165,7 +175,7 @@ export const getTarifaRutaById = async (
   scopeInput: JwtPayload | unknown,
   idInput: unknown
 ) => {
-  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
+  const scope = resolveReadScopeWithOwnOverride(scopeInput, false);
   const id = parseBigIntId(idInput);
 
   const tarifa = await prisma.tarifaRuta.findFirst({

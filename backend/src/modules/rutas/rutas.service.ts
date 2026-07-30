@@ -6,6 +6,7 @@ import { parseBigIntId } from '../../utils/ids.js';
 import {
   assertCanWriteScopedRecord,
   resolveReadScope,
+  resolveReadScopeWithOwnOverride,
   resolveWriteOwnerId
 } from '../../utils/ownership-scope.js';
 import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
@@ -14,10 +15,14 @@ import type { RutaCreateInput, RutaEstadoInput, RutaUpdateInput } from './rutas.
 interface ListFilters {
   search?: unknown;
   activa?: unknown;
+  solo_propios?: unknown;
 }
 
 const buildWhere = (user: JwtPayload | undefined, filters: ListFilters): Prisma.RutaWhereInput => {
-  const scope = resolveReadScope(user);
+  const scope = resolveReadScopeWithOwnOverride(
+    user,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
   const where: Prisma.RutaWhereInput = {};
 
   if (!scope.all) {
@@ -42,8 +47,11 @@ const buildWhere = (user: JwtPayload | undefined, filters: ListFilters): Prisma.
   return where;
 };
 
-const buildIncludeRelations = (user: JwtPayload | undefined): Prisma.RutaInclude => {
-  const scope = resolveReadScope(user);
+const buildIncludeRelations = (
+  user: JwtPayload | undefined,
+  ownRequested = false
+): Prisma.RutaInclude => {
+  const scope = resolveReadScopeWithOwnOverride(user, ownRequested);
   const rutaPeajeWhere: Prisma.RutaPeajeWhereInput = scope.all
     ? {}
     : {
@@ -54,6 +62,12 @@ const buildIncludeRelations = (user: JwtPayload | undefined): Prisma.RutaInclude
       };
 
   return {
+    propietario: {
+      select: {
+        id: true,
+        nombre: true
+      }
+    },
     rutas_peajes: {
       where: rutaPeajeWhere,
       include: {
@@ -155,7 +169,10 @@ const syncRutaPeajes = async (
 
 export const listRutas = async (user: JwtPayload | undefined, filters: ListFilters) => {
   const where = buildWhere(user, filters);
-  const include = buildIncludeRelations(user);
+  const include = buildIncludeRelations(
+    user,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
   const orderBy = [
     { activa: 'desc' },
     { propietario_id: 'asc' },

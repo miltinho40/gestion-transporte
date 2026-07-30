@@ -6,13 +6,19 @@ import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import { hashInvitationToken } from '../../utils/user-invitations.js';
 import type { AcceptInvitationInput, ChangePasswordInput, LoginInput } from './auth.schema.js';
+import {
+  createUserSession,
+  revokeUserSession,
+  rotateUserSession
+} from './auth.session.js';
 
 const PASSWORD_HASH_ROUNDS = 12;
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const LOGIN_LOCK_MS = 15 * 60 * 1000;
 
 interface LoginContext {
-  clientIp?: string;
+  clientIp?: string | null;
+  userAgent?: string | null;
 }
 
 interface FailedLoginState {
@@ -56,9 +62,14 @@ const getUsuarioConAccesos = async (usuarioId: bigint) => {
 type UsuarioConAccesos = NonNullable<Awaited<ReturnType<typeof getUsuarioConAccesos>>>;
 type AccesoPropietario = UsuarioConAccesos['usuarios_propietarios'][number];
 
-const buildAuthResponse = (usuario: UsuarioConAccesos, acceso?: AccesoPropietario) => {
+const buildAuthResponse = (
+  usuario: UsuarioConAccesos,
+  acceso: AccesoPropietario | undefined,
+  sessionId: string
+) => {
   const token = signToken({
     usuario_id: usuario.id.toString(),
+    sesion_id: sessionId,
     propietario_id: acceso?.propietario_id.toString(),
     rol: acceso?.rol.nombre,
     permisos: acceso?.rol.permisos,
@@ -209,10 +220,55 @@ export const login = async (input: LoginInput, context?: LoginContext) => {
   const acceso = resolveAcceso(usuario, input.propietario_id);
   clearFailedLogin(attemptKey);
 
-  return buildAuthResponse(usuario, acceso);
+  const { session, token: refreshToken } = await createUserSession({
+    usuarioId: usuario.id,
+    propietarioId: acceso?.propietario_id,
+    ip: context?.clientIp,
+    userAgent: context?.userAgent
+  });
+
+  return {
+    ...buildAuthResponse(usuario, acceso, session.id),
+    refresh_token: refreshToken
+  };
 };
 
-export const getMe = async (usuarioId: string, propietarioId?: string) => {
+export const refreshSession = async (
+  refreshToken: string,
+  context?: LoginContext
+) => {
+  const rotated = await rotateUserSession(refreshToken, {
+    ip: context?.clientIp,
+    userAgent: context?.userAgent
+  });
+  const usuario = await getUsuarioConAccesos(rotated.session.usuario_id);
+  if (!usuario?.activo) {
+    await revokeUserSession(rotated.token);
+    throw new AppError('Usuario no disponible', 401);
+  }
+
+  let acceso: AccesoPropietario | undefined;
+  if (rotated.session.propietario_id) {
+    acceso = resolveAcceso(
+      usuario,
+      rotated.session.propietario_id.toString()
+    );
+  } else if (!usuario.es_super_admin) {
+    await revokeUserSession(rotated.token);
+    throw new AppError('La sesión no tiene un propietario válido', 401);
+  }
+
+  return {
+    ...buildAuthResponse(usuario, acceso, rotated.session.id),
+    refresh_token: rotated.token
+  };
+};
+
+export const getMe = async (
+  usuarioId: string,
+  propietarioId: string | undefined,
+  sessionId: string
+) => {
   const usuario = await getUsuarioConAccesos(parseId(usuarioId));
 
   if (!usuario?.activo) {
@@ -221,10 +277,14 @@ export const getMe = async (usuarioId: string, propietarioId?: string) => {
 
   const acceso = propietarioId ? resolveAcceso(usuario, propietarioId) : undefined;
 
-  return buildAuthResponse(usuario, acceso);
+  return buildAuthResponse(usuario, acceso, sessionId);
 };
 
-export const changePassword = async (usuarioId: string, input: ChangePasswordInput) => {
+export const changePassword = async (
+  usuarioId: string,
+  input: ChangePasswordInput,
+  currentSessionId?: string
+) => {
   const usuario = await prisma.usuario.findUnique({
     where: { id: parseId(usuarioId) },
     select: {
@@ -250,12 +310,22 @@ export const changePassword = async (usuarioId: string, input: ChangePasswordInp
 
   const passwordHash = await bcrypt.hash(input.new_password, PASSWORD_HASH_ROUNDS);
 
-  await prisma.usuario.update({
-    where: { id: usuario.id },
-    data: {
-      password_hash: passwordHash,
-      requiere_password: false
-    }
+  await prisma.$transaction(async (tx) => {
+    await tx.usuario.update({
+      where: { id: usuario.id },
+      data: {
+        password_hash: passwordHash,
+        requiere_password: false
+      }
+    });
+    await tx.sesionUsuario.updateMany({
+      where: {
+        usuario_id: usuario.id,
+        revocada_en: null,
+        ...(currentSessionId ? { id: { not: currentSessionId } } : {})
+      },
+      data: { revocada_en: new Date() }
+    });
   });
 
   return {

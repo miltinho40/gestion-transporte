@@ -6,6 +6,7 @@ import { parseBigIntId } from '../../utils/ids.js';
 import {
   assertCanWriteScopedRecord,
   resolveReadScope,
+  resolveReadScopeWithOwnOverride,
   resolveWriteOwnerId
 } from '../../utils/ownership-scope.js';
 import type {
@@ -18,13 +19,17 @@ interface ListFilters {
   search?: unknown;
   activo?: unknown;
   es_periodico?: unknown;
+  solo_propios?: unknown;
 }
 
 const buildWhere = (
   user: JwtPayload | undefined,
   filters: ListFilters
 ): Prisma.TipoMantenimientoWhereInput => {
-  const scope = resolveReadScope(user);
+  const scope = resolveReadScopeWithOwnOverride(
+    user,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
   const where: Prisma.TipoMantenimientoWhereInput = {};
 
   if (!scope.all) {
@@ -74,6 +79,14 @@ export const listTiposMantenimiento = async (
 ) => {
   return prisma.tipoMantenimiento.findMany({
     where: buildWhere(user, filters),
+    include: {
+      propietario: {
+        select: {
+          id: true,
+          nombre: true
+        }
+      }
+    },
     orderBy: [{ activo: 'desc' }, { propietario_id: 'asc' }, { nombre: 'asc' }]
   });
 };

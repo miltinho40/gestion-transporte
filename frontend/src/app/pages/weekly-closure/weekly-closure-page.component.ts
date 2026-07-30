@@ -1,7 +1,14 @@
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { LucideCalculator, LucideCheck, LucideCopy, LucidePencil, LucideRefreshCw } from '@lucide/angular';
+import {
+  LucideCalculator,
+  LucideCheck,
+  LucideCopy,
+  LucidePencil,
+  LucideRefreshCw,
+  LucideSparkles
+} from '@lucide/angular';
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
@@ -61,6 +68,27 @@ interface CierreSemanal {
     diferencias: unknown[];
     total_diferencias: number;
   };
+  asistente_cierre?: AsistenteCierre;
+}
+
+interface AsistenteCierre {
+  disponible: boolean;
+  riesgo: 'bajo' | 'medio' | 'alto';
+  puntaje: number;
+  total_alertas: number;
+  resumen: string;
+  alertas: AsistenteCierreAlerta[];
+}
+
+interface AsistenteCierreAlerta {
+  id: string;
+  tipo: string;
+  severidad: 'info' | 'advertencia' | 'critica';
+  titulo: string;
+  mensaje: string;
+  accion_sugerida: string;
+  source_type?: 'viaje' | 'mantenimiento' | 'cierre' | null;
+  source_id?: string | null;
 }
 
 interface ViajeCierre {
@@ -139,6 +167,7 @@ const todayInputDate = () => {
     LucideCopy,
     LucidePencil,
     LucideRefreshCw,
+    LucideSparkles,
     AutoDismissAlertDirective
   ],
   templateUrl: './weekly-closure-page.component.html'
@@ -197,7 +226,7 @@ export class WeeklyClosurePageComponent implements OnDestroy {
     this.loadingVehiculos.set(true);
     this.error.set(null);
 
-    this.api.get<VehiculoOption[]>('/vehiculos').subscribe({
+    this.api.get<VehiculoOption[]>('/vehiculos', { solo_propios: true }).subscribe({
       next: (vehiculos) => {
         this.vehiculos.set(vehiculos);
         if (!this.form.controls.vehiculo_id.value && vehiculos[0]) {
@@ -346,6 +375,50 @@ export class WeeklyClosurePageComponent implements OnDestroy {
 
   cierreRequiereRevision(cierre: CierreSemanal | null) {
     return Boolean(cierre?.revision_cierre?.requiere_revision);
+  }
+
+  asistenteCierre(cierre: CierreSemanal | null) {
+    return cierre?.asistente_cierre ?? null;
+  }
+
+  assistantRiskLabel(riesgo: AsistenteCierre['riesgo']) {
+    const labels: Record<AsistenteCierre['riesgo'], string> = {
+      bajo: 'Bajo',
+      medio: 'Medio',
+      alto: 'Alto'
+    };
+
+    return labels[riesgo] ?? riesgo;
+  }
+
+  assistantRiskClass(riesgo: AsistenteCierre['riesgo']) {
+    const classes: Record<AsistenteCierre['riesgo'], string> = {
+      bajo: 'weekly-assistant-risk-low',
+      medio: 'weekly-assistant-risk-medium',
+      alto: 'weekly-assistant-risk-high'
+    };
+
+    return classes[riesgo] ?? classes.bajo;
+  }
+
+  assistantSeverityLabel(severidad: AsistenteCierreAlerta['severidad']) {
+    const labels: Record<AsistenteCierreAlerta['severidad'], string> = {
+      info: 'Info',
+      advertencia: 'Advertencia',
+      critica: 'Crítica'
+    };
+
+    return labels[severidad] ?? severidad;
+  }
+
+  assistantSeverityClass(severidad: AsistenteCierreAlerta['severidad']) {
+    const classes: Record<AsistenteCierreAlerta['severidad'], string> = {
+      info: 'text-bg-light',
+      advertencia: 'badge-soft-warning',
+      critica: 'text-bg-danger'
+    };
+
+    return classes[severidad] ?? classes.info;
   }
 
   generatedNoticeKey(cierre: CierreSemanal) {
@@ -529,6 +602,20 @@ export class WeeklyClosurePageComponent implements OnDestroy {
     void this.router.navigate([route], {
       queryParams: {
         edit: item.sourceId,
+        returnUrl: this.cierreReturnUrl()
+      }
+    });
+  }
+
+  editarAlertaAsistente(alerta: AsistenteCierreAlerta) {
+    if (!alerta.source_id || (alerta.source_type !== 'viaje' && alerta.source_type !== 'mantenimiento')) {
+      return;
+    }
+
+    const route = alerta.source_type === 'viaje' ? '/app/viajes' : '/app/mantenimientos';
+    void this.router.navigate([route], {
+      queryParams: {
+        edit: alerta.source_id,
         returnUrl: this.cierreReturnUrl()
       }
     });

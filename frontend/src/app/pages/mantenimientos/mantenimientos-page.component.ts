@@ -134,6 +134,7 @@ export class MantenimientosPageComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sub = new Subscription();
+  private pendingCreate = false;
   private pendingEditId: string | null = null;
   private filterTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -183,7 +184,9 @@ export class MantenimientosPageComponent implements OnDestroy {
   constructor() {
     this.sub.add(
       this.route.queryParamMap.subscribe((params) => {
+        this.pendingCreate = params.has('new');
         this.pendingEditId = params.get('edit') ?? params.get('editId');
+        this.openPendingCreate();
         this.openPendingEdit();
       })
     );
@@ -212,6 +215,7 @@ export class MantenimientosPageComponent implements OnDestroy {
           this.vehiculos.set(vehiculos);
           this.tiposMantenimiento.set(tipos);
           this.syncCatalogInputs();
+          this.openPendingCreate();
           this.openPendingEdit();
           this.loading.set(false);
         },
@@ -239,6 +243,7 @@ export class MantenimientosPageComponent implements OnDestroy {
       estado: 'realizado',
       actualizar_kilometraje_vehiculo: true
     });
+    this.applyCreatePrefill();
     this.repuestos.set([]);
     this.resetRepuestoForm();
     this.syncCatalogInputs();
@@ -698,10 +703,57 @@ export class MantenimientosPageComponent implements OnDestroy {
     this.clearEditQuery();
   }
 
+  private openPendingCreate() {
+    if (!this.pendingCreate) return;
+    this.pendingCreate = false;
+    this.openCreate();
+    this.clearEditQuery();
+  }
+
+  private applyCreatePrefill() {
+    const params = this.route.snapshot.queryParamMap;
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    const numberPattern = /^\d+(\.\d+)?$/;
+    const patch: Partial<ReturnType<typeof this.form.getRawValue>> = {};
+
+    const vehiculoId = params.get('vehiculo_id');
+    const tipoId = params.get('tipo_mantenimiento_id');
+    const fecha = params.get('fecha_mantenimiento');
+    const costo = params.get('costo_total');
+
+    if (vehiculoId) patch.vehiculo_id = vehiculoId;
+    if (tipoId) patch.tipo_mantenimiento_id = tipoId;
+    if (fecha && datePattern.test(fecha)) patch.fecha_mantenimiento = fecha;
+    if (costo && numberPattern.test(costo)) patch.costo_total = Number(costo);
+
+    if (!Object.keys(patch).length) return;
+
+    this.form.patchValue(patch, { emitEvent: false });
+    if (patch.vehiculo_id) {
+      const vehiculo = this.vehiculos().find((item) => String(item.id) === String(patch.vehiculo_id));
+      if (vehiculo) {
+        this.form.controls.kilometraje_actual_vehiculo.setValue(numberValue(vehiculo.kilometraje_actual), {
+          emitEvent: false
+        });
+      }
+    }
+    this.syncCatalogInputs();
+    this.recalculateTotals();
+    this.recalculateProximoMantenimiento();
+  }
+
   private clearEditQuery() {
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { edit: null, editId: null },
+      queryParams: {
+        new: null,
+        edit: null,
+        editId: null,
+        vehiculo_id: null,
+        tipo_mantenimiento_id: null,
+        fecha_mantenimiento: null,
+        costo_total: null
+      },
       queryParamsHandling: 'merge',
       replaceUrl: true
     });

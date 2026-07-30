@@ -2,6 +2,7 @@ import type { Request } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 import { parseBigIntId } from './ids.js';
+import { clientIpFromRequest } from './request-ip.js';
 
 export interface AuditContext {
   propietarioId?: unknown;
@@ -39,7 +40,7 @@ const normalizeJson = (value: unknown): Prisma.InputJsonValue | undefined => {
 export const auditContextFromRequest = (req: Request): AuditContext => ({
   propietarioId: req.user?.propietario_id,
   usuarioId: req.user?.usuario_id,
-  ip: req.ip,
+  ip: clientIpFromRequest(req),
   userAgent: req.get('user-agent') ?? null
 });
 

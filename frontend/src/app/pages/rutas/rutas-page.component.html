@@ -3,12 +3,10 @@
     <h1 class="h3 mb-1">Destinos</h1>
     <p class="text-secondary mb-0">Origen, destino, distancia y peajes del recorrido.</p>
   </div>
-  @if (!isSuperAdmin) {
-    <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
-      <svg lucidePlus size="17"></svg>
-      Nueva
-    </button>
-  }
+  <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
+    <svg lucidePlus size="17"></svg>
+    Nueva
+  </button>
 </div>
 
 @if (error() && !formOpen()) {
@@ -49,6 +47,9 @@
           <th>Duración</th>
           <th>Peajes</th>
           <th>Alcance</th>
+          @if (isSuperAdmin) {
+            <th>Propietario</th>
+          }
           <th>Activa</th>
           <th class="text-end actions-column">Acciones</th>
         </tr>
@@ -70,6 +71,9 @@
                 {{ scopeLabel(row) }}
               </span>
             </td>
+            @if (isSuperAdmin) {
+              <td>{{ ownerLabel(row) }}</td>
+            }
             <td>
               @if (row.activa) {
                 <span class="badge badge-soft">Sí</span>
@@ -101,7 +105,7 @@
           </tr>
         } @empty {
           <tr>
-            <td colspan="8" class="text-center text-secondary py-4">
+            <td [attr.colspan]="isSuperAdmin ? 9 : 8" class="text-center text-secondary py-4">
               @if (loading()) {
                 Cargando rutas...
               } @else {

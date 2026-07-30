@@ -21,21 +21,41 @@ export const authMiddleware = async (req: Request, _res: Response, next: NextFun
   })();
 
   const usuarioId = parseBigIntId(payload.usuario_id, 'usuario_id');
+  if (
+    !payload.sesion_id ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      payload.sesion_id
+    )
+  ) {
+    throw new AppError('Sesión no válida. Inicia sesión nuevamente', 401);
+  }
   const propietarioId = payload.propietario_id
     ? parseBigIntId(payload.propietario_id, 'propietario_id')
     : undefined;
 
-  const usuario = await prisma.usuario.findUnique({
-    where: { id: usuarioId },
-    select: {
-      id: true,
-      activo: true,
-      es_super_admin: true,
-      requiere_password: true
-    }
-  });
+  const [usuario, session] = await Promise.all([
+    prisma.usuario.findUnique({
+      where: { id: usuarioId },
+      select: {
+        id: true,
+        activo: true,
+        es_super_admin: true,
+        requiere_password: true
+      }
+    }),
+    prisma.sesionUsuario.findFirst({
+      where: {
+        id: payload.sesion_id,
+        usuario_id: usuarioId,
+        propietario_id: propietarioId ?? null,
+        revocada_en: null,
+        expira_en: { gt: new Date() }
+      },
+      select: { id: true }
+    })
+  ]);
 
-  if (!usuario?.activo) {
+  if (!usuario?.activo || !session) {
     throw new AppError('Usuario no disponible', 401);
   }
 
@@ -49,6 +69,7 @@ export const authMiddleware = async (req: Request, _res: Response, next: NextFun
   if (!propietarioId) {
     req.user = {
       usuario_id: usuario.id.toString(),
+      sesion_id: session.id,
       es_super_admin: usuario.es_super_admin,
       requiere_password: usuario.requiere_password
     };
@@ -86,6 +107,7 @@ export const authMiddleware = async (req: Request, _res: Response, next: NextFun
 
   req.user = {
     usuario_id: usuario.id.toString(),
+    sesion_id: session.id,
     propietario_id: propietario.id.toString(),
     rol: acceso?.rol.nombre ?? payload.rol,
     permisos: acceso?.rol.permisos ?? payload.permisos,

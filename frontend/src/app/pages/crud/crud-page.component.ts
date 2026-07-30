@@ -1,6 +1,6 @@
 ﻿import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   LucideCopy,
   LucideKeyRound,
@@ -91,6 +91,7 @@ export class CrudPageComponent implements OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly dialog = inject(DialogService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly sub = new Subscription();
   private formSyncSub = new Subscription();
 
@@ -130,7 +131,11 @@ export class CrudPageComponent implements OnDestroy {
         this.buildForm(config);
         this.loadCatalogs(config);
         this.load();
+        this.openPendingCreate();
       })
+    );
+    this.sub.add(
+      this.route.queryParamMap.subscribe(() => this.openPendingCreate())
     );
   }
 
@@ -180,12 +185,17 @@ export class CrudPageComponent implements OnDestroy {
     return Boolean(config?.superAdminReadOnly && this.auth.isSuperAdmin());
   }
 
+  visibleColumns(columns: ApiListColumn[]) {
+    return columns.filter((column) => !column.superAdminOnly || this.auth.isSuperAdmin());
+  }
+
   openCreate() {
     const config = this.config();
     if (!config) return;
 
     this.editingRow.set(null);
     this.buildForm(config);
+    this.applyCreatePrefill(config);
     this.syncCatalogInputs(config.fields);
     this.formOpen.set(true);
     this.message.set(null);
@@ -217,12 +227,16 @@ export class CrudPageComponent implements OnDestroy {
   }
 
   closeForm() {
+    const returnUrl = this.returnUrl();
     this.formOpen.set(false);
     this.editingRow.set(null);
     this.catalogInput.set({});
     this.activeCatalogField.set(null);
     this.error.set(null);
     this.saving.set(false);
+    if (returnUrl) {
+      void this.router.navigateByUrl(returnUrl);
+    }
   }
 
   save() {
@@ -245,10 +259,15 @@ export class CrudPageComponent implements OnDestroy {
 
     request.subscribe({
       next: (response) => {
+        const returnUrl = this.returnUrl();
         this.saving.set(false);
         this.formOpen.set(false);
         this.editingRow.set(null);
         this.message.set(this.successMessage(row, response));
+        if (returnUrl) {
+          void this.router.navigateByUrl(returnUrl);
+          return;
+        }
         this.load();
       },
       error: (err) => {
@@ -464,7 +483,16 @@ export class CrudPageComponent implements OnDestroy {
 
   canMutateRow(config: CrudRouteData, row: Row) {
     if (this.isReadOnly()) return false;
-    if (!config.readonlyGlobalRows || this.auth.usuario()?.es_super_admin) return true;
+
+    if (this.auth.isSuperAdmin()) {
+      const rowOwnerId = row['propietario_id'];
+      if (rowOwnerId === null || rowOwnerId === undefined) return true;
+
+      const activeOwnerId = this.auth.contexto()?.propietario_id;
+      return Boolean(activeOwnerId && String(rowOwnerId) === String(activeOwnerId));
+    }
+
+    if (!config.readonlyGlobalRows) return true;
     return row['global'] !== true && row['propietario_id'] !== null;
   }
 
@@ -700,5 +728,41 @@ export class CrudPageComponent implements OnDestroy {
       syncValue(source.value);
       this.formSyncSub.add(source.valueChanges.subscribe(syncValue));
     }
+  }
+
+  private openPendingCreate() {
+    if (!this.route.snapshot.queryParamMap.has('new') || !this.config() || this.formOpen()) return;
+
+    this.openCreate();
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { new: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
+  }
+
+  private applyCreatePrefill(config: CrudRouteData) {
+    if (!this.route.snapshot.queryParamMap.has('new')) return;
+
+    const patch: Record<string, FormValue> = {};
+    for (const field of this.usableFields(config.fields)) {
+      const value = this.route.snapshot.queryParamMap.get(field.name);
+      if (value === null) continue;
+
+      patch[field.name] =
+        field.type === 'number'
+          ? Number(value)
+          : field.type === 'checkbox'
+            ? value === 'true'
+            : value;
+    }
+
+    this.form.patchValue(patch, { emitEvent: false });
+  }
+
+  private returnUrl() {
+    const value = this.route.snapshot.queryParamMap.get('returnUrl');
+    return value?.startsWith('/app/') || value?.startsWith('/movil/') ? value : null;
   }
 }

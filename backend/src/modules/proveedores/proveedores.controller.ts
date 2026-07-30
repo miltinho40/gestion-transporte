@@ -11,12 +11,12 @@ import {
 } from './proveedores.service.js';
 
 export const listProveedoresController = asyncHandler(async (req: Request, res: Response) => {
-  const proveedores = await listProveedores(req.user!.propietario_id, req.query);
+  const proveedores = await listProveedores(req.user, req.query);
   res.json(serializeResponse(proveedores));
 });
 
 export const getProveedorController = asyncHandler(async (req: Request, res: Response) => {
-  const proveedor = await getProveedorById(req.user!.propietario_id, req.params.id);
+  const proveedor = await getProveedorById(req.user, req.params.id);
   res.json(serializeResponse(proveedor));
 });
 

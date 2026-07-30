@@ -249,9 +249,15 @@ export class ProveedorTransportePageComponent {
 
   loadCatalogs() {
     forkJoin({
-      clientes: this.api.get<ClienteOption[]>('/clientes', { activo: true }),
-      proveedores: this.api.get<ProveedorOption[]>('/proveedores', { activo: true }),
-      tarifasRuta: this.api.get<TarifaRutaOption[]>('/tarifas-ruta', { activa: true })
+      clientes: this.api.get<ClienteOption[]>('/clientes', { activo: true, solo_propios: true }),
+      proveedores: this.api.get<ProveedorOption[]>('/proveedores', {
+        activo: true,
+        solo_propios: true
+      }),
+      tarifasRuta: this.api.get<TarifaRutaOption[]>('/tarifas-ruta', {
+        activa: true,
+        solo_propios: true
+      })
     }).subscribe({
       next: ({ clientes, proveedores, tarifasRuta }) => {
         this.clientes.set(clientes);

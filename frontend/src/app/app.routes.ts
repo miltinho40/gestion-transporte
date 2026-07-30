@@ -8,6 +8,8 @@ const loadAcceptInvitationPage = () =>
   import('./pages/accept-invitation/accept-invitation-page.component').then(
     (m) => m.AcceptInvitationPageComponent
   );
+const loadAsistentePage = () =>
+  import('./pages/asistente/asistente-page.component').then((m) => m.AsistentePageComponent);
 const loadChangePasswordPage = () =>
   import('./pages/change-password/change-password-page.component').then(
     (m) => m.ChangePasswordPageComponent
@@ -72,6 +74,10 @@ export const routes: Routes = [
     canActivate: [authGuard],
     canActivateChild: [authGuard],
     children: [
+      {
+        path: 'asistente',
+        loadComponent: loadAsistentePage
+      },
       {
         path: 'viajes',
         canActivate: [propietarioGuard],
@@ -170,6 +176,7 @@ export const routes: Routes = [
     canActivate: [authGuard],
     canActivateChild: [authGuard],
     children: [
+      { path: 'asistente', loadComponent: loadAsistentePage },
       { path: 'dashboard', loadComponent: loadDashboardPage },
       { path: 'cambiar-clave', loadComponent: loadChangePasswordPage },
       {
@@ -543,9 +550,9 @@ export const routes: Routes = [
           description: 'Clientes activos, comisión y datos de contacto.',
           endpoint: '/clientes',
           displayField: 'nombre',
-          superAdminReadOnly: true,
           columns: [
             { label: 'Nombre', path: 'nombre' },
+            { label: 'Propietario', path: 'propietario.nombre', superAdminOnly: true },
             { label: 'RUC/Cédula', path: 'ruc_cedula' },
             { label: 'Teléfono', path: 'telefono' },
             { label: 'Comisión %', path: 'porcentaje_comision' },
@@ -580,9 +587,9 @@ export const routes: Routes = [
           description: 'Conductores, licencias, teléfono obligatorio y sueldo semanal.',
           endpoint: '/conductores',
           displayField: 'nombre',
-          superAdminReadOnly: true,
           columns: [
             { label: 'Nombre', path: 'nombre' },
+            { label: 'Propietario', path: 'propietario.nombre', superAdminOnly: true },
             { label: 'Cédula', path: 'cedula' },
             { label: 'Teléfono', path: 'telefono' },
             { label: 'Sueldo semanal', path: 'sueldo_semanal', type: 'money' },
@@ -642,9 +649,9 @@ export const routes: Routes = [
           description: 'Flota, capacidad, tonelaje, rendimiento y kilometraje actual.',
           endpoint: '/vehiculos',
           displayField: 'placa',
-          superAdminReadOnly: true,
           columns: [
             { label: 'Placa', path: 'placa' },
+            { label: 'Propietario', path: 'propietario.nombre', superAdminOnly: true },
             { label: 'Marca', path: 'marca' },
             { label: 'Modelo', path: 'modelo' },
             { label: 'Categoría de peaje', path: 'categoria_peaje.nombre' },
@@ -833,7 +840,7 @@ export const routes: Routes = [
                 valuePath: 'id',
                 labelPath: 'precio',
                 labelPaths: ['ruta.origen', 'ruta.destino', 'tipo_carga.nombre', 'capacidad', 'precio'],
-                params: { activa: true }
+                params: { activa: true, solo_propios: true }
               }
             },
             {
@@ -942,6 +949,7 @@ export const routes: Routes = [
           duplicateEnabled: true,
           columns: [
             { label: 'Nombre', path: 'nombre' },
+            { label: 'Propietario', path: 'propietario.nombre', superAdminOnly: true },
             { label: 'RUC/Cédula', path: 'ruc_cedula' },
             { label: 'Teléfono', path: 'telefono' },
             { label: 'Correo', path: 'email' },
@@ -986,9 +994,9 @@ export const routes: Routes = [
           endpoint: '/tipos-mantenimiento',
           displayField: 'nombre',
           readonlyGlobalRows: true,
-          superAdminReadOnly: true,
           columns: [
             { label: 'Nombre', path: 'nombre' },
+            { label: 'Propietario', path: 'propietario.nombre', superAdminOnly: true },
             { label: 'Periódico', path: 'es_periodico', type: 'boolean' },
             { label: 'Intervalo km', path: 'intervalo_km' },
             { label: 'Intervalo días', path: 'intervalo_dias' },
@@ -1079,11 +1087,10 @@ export const routes: Routes = [
           endpoint: '/tipos-carga',
           displayField: 'nombre',
           readonlyGlobalRows: true,
-          superAdminReadOnly: true,
           columns: [
             { label: 'Nombre', path: 'nombre' },
             { label: 'Origen', path: 'origen', type: 'badge' },
-            { label: 'Propietario', path: 'propietario_nombre' },
+            { label: 'Propietario', path: 'propietario_nombre', superAdminOnly: true },
             { label: 'Descripción', path: 'descripcion' },
             { label: 'Activo', path: 'activo', type: 'boolean' }
           ],
@@ -1196,10 +1203,10 @@ export const routes: Routes = [
           endpoint: '/tarifas-ruta',
           displayField: 'ruta.destino',
           duplicateEnabled: true,
-          superAdminReadOnly: true,
           columns: [
             { label: 'Origen', path: 'ruta.origen' },
             { label: 'Destino', path: 'ruta.destino' },
+            { label: 'Propietario', path: 'propietario.nombre', superAdminOnly: true },
             { label: 'Tipo de carga', path: 'tipo_carga.nombre' },
             { label: 'Capacidad', path: 'capacidad' },
             { label: 'Toneladas', path: 'toneladas' },
@@ -1219,7 +1226,7 @@ export const routes: Routes = [
                 valuePath: 'id',
                 labelPath: 'destino',
                 labelPaths: ['origen', 'destino'],
-                params: { activa: true }
+                params: { activa: true, solo_propios: true }
               }
             },
             {
@@ -1232,7 +1239,7 @@ export const routes: Routes = [
                 endpoint: '/tipos-carga',
                 valuePath: 'id',
                 labelPath: 'nombre',
-                params: { activo: true }
+                params: { activo: true, solo_propios: true }
               }
             },
             { name: 'capacidad', label: 'Capacidad cartones', type: 'text', colClass: 'col-md-3' },

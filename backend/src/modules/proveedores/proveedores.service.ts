@@ -1,7 +1,9 @@
 import { Prisma } from '@prisma/client';
+import type { JwtPayload } from '../../config/jwt.js';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { resolveReadScopeWithOwnOverride } from '../../utils/ownership-scope.js';
 import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import type {
   ProveedorCreateInput,
@@ -12,15 +14,31 @@ import type {
 interface ListProveedoresFilters {
   search?: unknown;
   activo?: unknown;
+  solo_propios?: unknown;
 }
 
+const includePropietario = {
+  propietario: {
+    select: {
+      id: true,
+      nombre: true
+    }
+  }
+} satisfies Prisma.ProveedorInclude;
+
 const buildWhere = (
-  propietarioId: bigint,
+  scopeInput: JwtPayload | unknown,
   filters: ListProveedoresFilters
 ): Prisma.ProveedorWhereInput => {
-  const where: Prisma.ProveedorWhereInput = {
-    propietario_id: propietarioId
-  };
+  const scope = resolveReadScopeWithOwnOverride(
+    scopeInput,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
+  const where: Prisma.ProveedorWhereInput = scope.all
+    ? {}
+    : {
+        propietario_id: scope.propietarioId
+      };
 
   if (typeof filters.search === 'string' && filters.search.trim()) {
     const search = filters.search.trim();
@@ -58,11 +76,10 @@ const ensureRucAvailable = async (
 };
 
 export const listProveedores = async (
-  propietarioIdInput: unknown,
+  scopeInput: JwtPayload | unknown,
   filters: ListProveedoresFilters
 ) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
-  const where = buildWhere(propietarioId, filters);
+  const where = buildWhere(scopeInput, filters);
   const orderBy = [
     { activo: 'desc' },
     { nombre: 'asc' }
@@ -70,12 +87,17 @@ export const listProveedores = async (
   const pagination = parsePagination(filters as Record<string, unknown>);
 
   if (!pagination) {
-    return prisma.proveedor.findMany({ where, orderBy });
+    return prisma.proveedor.findMany({
+      where,
+      include: includePropietario,
+      orderBy
+    });
   }
 
   const [data, total] = await prisma.$transaction([
     prisma.proveedor.findMany({
       where,
+      include: includePropietario,
       orderBy,
       skip: pagination.skip,
       take: pagination.limit
@@ -86,15 +108,16 @@ export const listProveedores = async (
   return buildPaginatedResult(data, total, pagination);
 };
 
-export const getProveedorById = async (propietarioIdInput: unknown, idInput: unknown) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+export const getProveedorById = async (scopeInput: JwtPayload | unknown, idInput: unknown) => {
+  const scope = resolveReadScopeWithOwnOverride(scopeInput, false);
   const id = parseBigIntId(idInput);
 
   const proveedor = await prisma.proveedor.findFirst({
     where: {
       id,
-      propietario_id: propietarioId
-    }
+      ...(scope.all ? {} : { propietario_id: scope.propietarioId })
+    },
+    include: includePropietario
   });
 
   if (!proveedor) {

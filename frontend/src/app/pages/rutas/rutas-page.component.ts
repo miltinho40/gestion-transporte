@@ -40,6 +40,10 @@ interface RutaPeajeItem {
 interface RutaRow {
   id: string;
   propietario_id?: string | null;
+  propietario?: {
+    id: string;
+    nombre: string;
+  } | null;
   origen: string;
   destino: string;
   distancia_km: string | number;
@@ -463,11 +467,16 @@ export class RutasPageComponent implements OnDestroy {
   }
 
   canEditRuta(row: RutaRow) {
-    return !this.isSuperAdmin && row.propietario_id !== null;
+    if (row.propietario_id === null) return this.isSuperAdmin;
+    return String(row.propietario_id) === String(this.auth.contexto()?.propietario_id ?? '');
   }
 
   scopeLabel(row: RutaRow) {
     return row.propietario_id === null ? 'Global' : 'Propio';
+  }
+
+  ownerLabel(row: RutaRow) {
+    return row.propietario?.nombre ?? (row.propietario_id === null ? 'Global' : '-');
   }
 
   private setRutasResponse(response: RutasListResponse) {

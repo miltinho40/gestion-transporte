@@ -11,6 +11,7 @@ import {
   LucideMap,
   LucideRoute,
   LucideShieldCheck,
+  LucideSparkles,
   LucideTruck,
   LucideUsers,
   LucideWrench
@@ -33,6 +34,7 @@ import { AuthService } from '../core/auth.service';
     LucideMap,
     LucideRoute,
     LucideShieldCheck,
+    LucideSparkles,
     LucideTruck,
     LucideUsers,
     LucideWrench

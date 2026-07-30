@@ -1,7 +1,7 @@
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router } from '@angular/router';
 import {
   LucideCheck,
   LucideCopy,
@@ -123,6 +123,7 @@ export class ReportsPageComponent {
   private readonly api = inject(ApiService);
   private readonly dialog = inject(DialogService);
   private readonly fb = inject(FormBuilder);
+  private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -144,11 +145,12 @@ export class ReportsPageComponent {
   readonly guideInput = signal('');
   readonly weekOptions = weekOptions;
   private autoLoadTimer: ReturnType<typeof setTimeout> | null = null;
+  private syncingFiltersFromUrl = false;
 
   readonly travelForm = this.fb.nonNullable.group({
     search: [''],
     anio: [new Date().getFullYear()],
-    cobrado: ['']
+    cobrado: ['false']
   });
 
   readonly summaryRows = computed(() => {
@@ -224,11 +226,15 @@ export class ReportsPageComponent {
   );
 
   constructor() {
+    this.applyFiltersFromQueryParams(this.route.snapshot.queryParamMap);
     this.loadCatalogs();
     this.loadTravelReport();
     this.travelForm.valueChanges
       .pipe(debounceTime(350), takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.scheduleLoadTravelReport());
+      .subscribe(() => {
+        this.syncFiltersToQueryParams();
+        this.scheduleLoadTravelReport();
+      });
     this.destroyRef.onDestroy(() => {
       if (this.autoLoadTimer) {
         clearTimeout(this.autoLoadTimer);
@@ -240,8 +246,8 @@ export class ReportsPageComponent {
     this.loadingCatalogs.set(true);
 
     forkJoin({
-      vehiculos: this.api.get<VehiculoOption[]>('/vehiculos'),
-      clientes: this.api.get<ClienteOption[]>('/clientes')
+      vehiculos: this.api.get<VehiculoOption[]>('/vehiculos', { solo_propios: true }),
+      clientes: this.api.get<ClienteOption[]>('/clientes', { solo_propios: true })
     }).subscribe({
       next: ({ vehiculos, clientes }) => {
         this.vehiculos.set(vehiculos);
@@ -293,18 +299,21 @@ export class ReportsPageComponent {
 
     this.selectedWeeks.set([...new Set(weeks)].sort((left, right) => left - right));
     this.travelPage.set(1);
+    this.syncFiltersToQueryParams();
     this.scheduleLoadTravelReport();
   }
 
   setSelectedVehicles(values: MultiSelectFilterValue[]) {
     this.selectedVehicleIds.set(values.map((value) => String(value)));
     this.travelPage.set(1);
+    this.syncFiltersToQueryParams();
     this.scheduleLoadTravelReport();
   }
 
   setSelectedClients(values: MultiSelectFilterValue[]) {
     this.selectedClientIds.set(values.map((value) => String(value)));
     this.travelPage.set(1);
+    this.syncFiltersToQueryParams();
     this.scheduleLoadTravelReport();
   }
 
@@ -313,6 +322,7 @@ export class ReportsPageComponent {
     if (!meta || page < 1 || page > meta.total_pages || page === this.travelPage()) return;
 
     this.travelPage.set(page);
+    this.syncFiltersToQueryParams();
   }
 
   changeTravelLimit(limit: number) {
@@ -320,6 +330,7 @@ export class ReportsPageComponent {
 
     this.travelLimit.set(limit);
     this.travelPage.set(1);
+    this.syncFiltersToQueryParams();
   }
 
   money(value: unknown) {
@@ -534,7 +545,7 @@ export class ReportsPageComponent {
   }
 
   editTrip(row: ReporteViajeItem) {
-    const returnUrl = this.router.url.startsWith('/app/') ? this.router.url : '/app/reportes';
+    const returnUrl = this.reportReturnUrl();
 
     void this.router.navigate(['/app/viajes'], {
       queryParams: {
@@ -545,14 +556,14 @@ export class ReportsPageComponent {
   }
 
   newTrip() {
-    const returnUrl = this.router.url.startsWith('/app/') ? this.router.url : '/app/reportes';
+    const returnUrl = this.reportReturnUrl();
     void this.router.navigate(['/app/viajes'], {
       queryParams: { new: '1', returnUrl }
     });
   }
 
   duplicateTrip(row: ReporteViajeItem) {
-    const returnUrl = this.router.url.startsWith('/app/') ? this.router.url : '/app/reportes';
+    const returnUrl = this.reportReturnUrl();
     void this.router.navigate(['/app/viajes'], {
       queryParams: {
         duplicate: row.id,
@@ -595,8 +606,70 @@ export class ReportsPageComponent {
 
     this.autoLoadTimer = setTimeout(() => {
       this.travelPage.set(1);
+      this.syncFiltersToQueryParams();
       this.loadTravelReport();
     }, 350);
+  }
+
+  private applyFiltersFromQueryParams(params: ParamMap) {
+    const year = Number(params.get('anio'));
+    const weeks = (params.get('semanas') ?? '')
+      .split(',')
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value >= 1 && value <= 53);
+    const vehicles = this.splitQueryValues(params.get('vehiculos'));
+    const clients = this.splitQueryValues(params.get('clientes'));
+    const page = Math.max(Number(params.get('page') ?? 1), 1);
+    const limit = Math.max(Number(params.get('limit') ?? 50), 1);
+
+    this.travelForm.patchValue(
+      {
+        anio: Number.isInteger(year) && year >= 2000 ? year : new Date().getFullYear(),
+        cobrado:
+          params.get('cobrado') === 'todos'
+            ? ''
+            : params.get('cobrado') ?? 'false',
+        search: params.get('q') ?? ''
+      },
+      { emitEvent: false }
+    );
+    this.selectedWeeks.set([...new Set(weeks)].sort((left, right) => left - right));
+    this.selectedVehicleIds.set(vehicles);
+    this.selectedClientIds.set(clients);
+    this.travelPage.set(page);
+    this.travelLimit.set(limit);
+  }
+
+  private splitQueryValues(value: string | null) {
+    return (value ?? '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  private syncFiltersToQueryParams() {
+    if (this.syncingFiltersFromUrl) return;
+
+    this.syncingFiltersFromUrl = true;
+    void this.router
+      .navigate([], {
+        relativeTo: this.route,
+        queryParams: {
+          anio: this.travelForm.controls.anio.value,
+          q: this.travelForm.controls.search.value.trim() || null,
+          semanas: this.selectedWeeks().join(',') || null,
+          vehiculos: this.selectedVehicleIds().join(',') || null,
+          clientes: this.selectedClientIds().join(',') || null,
+          cobrado: this.travelForm.controls.cobrado.value || 'todos',
+          page: this.travelPage() > 1 ? this.travelPage() : null,
+          limit: this.travelLimit() !== 50 ? this.travelLimit() : null
+        },
+        queryParamsHandling: 'merge',
+        replaceUrl: true
+      })
+      .finally(() => {
+        this.syncingFiltersFromUrl = false;
+      });
   }
 
   private travelReportParams() {
@@ -608,6 +681,23 @@ export class ReportsPageComponent {
       cobrado: this.travelForm.controls.cobrado.value,
       search: this.travelForm.controls.search.value.trim()
     };
+  }
+
+  private reportReturnUrl() {
+    return this.router.serializeUrl(
+      this.router.createUrlTree(['/app/reportes'], {
+        queryParams: {
+          anio: this.travelForm.controls.anio.value,
+          q: this.travelForm.controls.search.value.trim() || null,
+          semanas: this.selectedWeeks().join(',') || null,
+          vehiculos: this.selectedVehicleIds().join(',') || null,
+          clientes: this.selectedClientIds().join(',') || null,
+          cobrado: this.travelForm.controls.cobrado.value || 'todos',
+          page: this.travelPage() > 1 ? this.travelPage() : null,
+          limit: this.travelLimit() !== 50 ? this.travelLimit() : null
+        }
+      })
+    );
   }
 
   private download(path: string, params: Record<string, string | number | boolean>) {

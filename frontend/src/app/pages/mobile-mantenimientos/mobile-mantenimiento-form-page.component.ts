@@ -103,6 +103,7 @@ export class MobileMantenimientoFormPageComponent implements OnDestroy {
           if (mantenimiento) {
             this.fillForm(mantenimiento, { duplicate: this.duplicating });
           } else {
+            this.applyCreatePrefill();
             this.syncCatalogInputs();
           }
 
@@ -308,6 +309,36 @@ export class MobileMantenimientoFormPageComponent implements OnDestroy {
         costo_unitario: numberValue(repuesto.costo_unitario)
       }))
     };
+  }
+
+  private applyCreatePrefill() {
+    const params = this.route.snapshot.queryParamMap;
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    const numberPattern = /^\d+(\.\d+)?$/;
+    const patch: Partial<ReturnType<typeof this.form.getRawValue>> = {};
+
+    const vehiculoId = params.get('vehiculo_id');
+    const tipoMantenimientoId = params.get('tipo_mantenimiento_id');
+    const fechaMantenimiento = params.get('fecha_mantenimiento');
+    const costoTotal = params.get('costo_total');
+
+    if (vehiculoId) patch.vehiculo_id = vehiculoId;
+    if (tipoMantenimientoId) patch.tipo_mantenimiento_id = tipoMantenimientoId;
+    if (fechaMantenimiento && datePattern.test(fechaMantenimiento)) patch.fecha_mantenimiento = fechaMantenimiento;
+    if (costoTotal && numberPattern.test(costoTotal)) patch.costo_mano_obra = numberValue(costoTotal);
+
+    if (Object.keys(patch).length === 0) return;
+
+    this.form.patchValue(patch, { emitEvent: false });
+
+    const vehiculo = this.selectedVehiculo();
+    if (vehiculo) {
+      this.form.controls.kilometraje_actual_vehiculo.setValue(numberValue(vehiculo.kilometraje_actual), {
+        emitEvent: false
+      });
+    }
+
+    this.recalculateProximoMantenimiento();
   }
 
   private syncCatalogInputs() {

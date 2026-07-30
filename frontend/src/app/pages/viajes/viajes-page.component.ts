@@ -1,6 +1,6 @@
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router } from '@angular/router';
 import {
   LucideCalculator,
   LucideCheck,
@@ -133,6 +133,16 @@ interface ViajeDisplayRow {
   weekClass: string;
 }
 
+interface ViajesListState {
+  page: number;
+  limit: number;
+  search: string;
+  cliente: string;
+  vehiculo: string;
+  cobrado: string;
+  semana: string;
+}
+
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -247,6 +257,8 @@ export class ViajesPageComponent implements OnDestroy {
   private pendingDuplicateId: string | null = null;
   private pendingCreate = false;
   private filterTimer: ReturnType<typeof setTimeout> | null = null;
+  private syncingFiltersFromUrl = false;
+  private listStateBeforeForm: ViajesListState | null = null;
 
   readonly rows = signal<ViajeRow[]>([]);
   readonly pagination = signal<PaginationMeta | null>(null);
@@ -270,7 +282,7 @@ export class ViajesPageComponent implements OnDestroy {
   readonly search = signal('');
   readonly filterClienteTerm = signal('');
   readonly filterVehiculoTerm = signal('');
-  readonly filterCobrado = signal('');
+  readonly filterCobrado = signal('false');
   readonly filterSemanaTerm = signal('');
   readonly calculating = signal(false);
   readonly catalogInput = signal<Record<ViajeCatalogField, string>>({
@@ -324,9 +336,13 @@ export class ViajesPageComponent implements OnDestroy {
   constructor() {
     this.sub.add(
       this.route.queryParamMap.subscribe((params) => {
+        const filtersChanged = this.applyFiltersFromQueryParams(params);
         this.pendingCreate = params.has('new');
         this.pendingEditId = params.get('edit') ?? params.get('editId');
         this.pendingDuplicateId = params.get('duplicate') ?? params.get('duplicateId');
+        if (filtersChanged) {
+          this.load();
+        }
         this.openPendingCreate();
         this.openPendingEdit();
         this.openPendingDuplicate();
@@ -360,10 +376,16 @@ export class ViajesPageComponent implements OnDestroy {
     this.sub.add(
       forkJoin({
         viajes: this.api.get<ViajesListResponse>('/viajes', this.listParams()),
-        clientes: this.api.get<ClienteOption[]>('/clientes', { activo: true }),
-        vehiculos: this.api.get<VehiculoOption[]>('/vehiculos'),
-        conductores: this.api.get<ConductorOption[]>('/conductores', { estado: 'activo' }),
-        tarifasRuta: this.api.get<TarifaRutaOption[]>('/tarifas-ruta', { activa: true }),
+        clientes: this.api.get<ClienteOption[]>('/clientes', { activo: true, solo_propios: true }),
+        vehiculos: this.api.get<VehiculoOption[]>('/vehiculos', { solo_propios: true }),
+        conductores: this.api.get<ConductorOption[]>('/conductores', {
+          estado: 'activo',
+          solo_propios: true
+        }),
+        tarifasRuta: this.api.get<TarifaRutaOption[]>('/tarifas-ruta', {
+          activa: true,
+          solo_propios: true
+        }),
         tiposGasto: this.api.get<TipoGastoOption[]>('/tipos-gasto-viaje', { activo: true })
       }).subscribe({
         next: ({ viajes, clientes, vehiculos, conductores, tarifasRuta, tiposGasto }) => {
@@ -400,6 +422,7 @@ export class ViajesPageComponent implements OnDestroy {
     if (!meta || page < 1 || page > meta.total_pages || page === this.page()) return;
 
     this.page.set(page);
+    this.syncFiltersToQueryParams();
     this.load();
   }
 
@@ -408,6 +431,7 @@ export class ViajesPageComponent implements OnDestroy {
 
     this.limit.set(limit);
     this.page.set(1);
+    this.syncFiltersToQueryParams();
     this.load();
   }
 
@@ -434,6 +458,7 @@ export class ViajesPageComponent implements OnDestroy {
   setFilterCobrado(value: string) {
     this.filterCobrado.set(value);
     this.page.set(1);
+    this.syncFiltersToQueryParams();
     this.load();
   }
 
@@ -460,6 +485,9 @@ export class ViajesPageComponent implements OnDestroy {
   openCreate() {
     const today = todayInputDate();
     const tomorrow = addDaysInputDate(today, 1);
+    const viaticosParam = this.route.snapshot.queryParamMap.get('viaticos');
+    const hasManualViaticos =
+      viaticosParam !== null && /^\d+(\.\d+)?$/.test(viaticosParam);
     this.editingRow.set(null);
     this.form.reset({
       cliente_id: '',
@@ -488,19 +516,21 @@ export class ViajesPageComponent implements OnDestroy {
       estado: 'programado',
       observaciones: ''
     });
+    this.precioRealManual = false;
+    this.costoRealManual = hasManualViaticos;
+    this.fechaLlegadaManual = false;
+    this.applyCreatePrefill();
     this.gastos.set([]);
     this.deletedGastoIds.set([]);
     this.resetGastoForm();
     this.syncCatalogInputs();
-    this.precioRealManual = false;
-    this.costoRealManual = false;
-    this.fechaLlegadaManual = false;
     this.formOpen.set(true);
     this.error.set(null);
     this.message.set(null);
   }
 
   openEdit(row: ViajeRow) {
+    this.captureListStateBeforeForm();
     this.editingRow.set(row);
     this.form.reset({
       cliente_id: String(row.cliente_id),
@@ -543,6 +573,7 @@ export class ViajesPageComponent implements OnDestroy {
   }
 
   openDuplicate(row: ViajeRow) {
+    this.captureListStateBeforeForm();
     this.editingRow.set(null);
     this.form.reset({
       cliente_id: String(row.cliente_id),
@@ -592,6 +623,7 @@ export class ViajesPageComponent implements OnDestroy {
     this.deletedGastoIds.set([]);
     this.saving.set(false);
     this.error.set(null);
+    this.restoreListStateAfterForm();
     if (returnUrl) {
       void this.router.navigateByUrl(returnUrl);
       return;
@@ -850,6 +882,7 @@ export class ViajesPageComponent implements OnDestroy {
             this.saving.set(false);
             this.formOpen.set(false);
             this.message.set(row ? 'Viaje actualizado.' : 'Viaje creado.');
+            this.restoreListStateAfterForm();
             if (returnUrl) {
               void this.router.navigateByUrl(returnUrl);
               return;
@@ -1183,6 +1216,38 @@ export class ViajesPageComponent implements OnDestroy {
     this.clearEditQuery();
   }
 
+  private applyCreatePrefill() {
+    const params = this.route.snapshot.queryParamMap;
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    const numberPattern = /^\d+(\.\d+)?$/;
+    const patch: Partial<ReturnType<typeof this.form.getRawValue>> = {};
+
+    for (const field of ['cliente_id', 'vehiculo_id', 'conductor_id', 'tarifa_ruta_id'] as const) {
+      const value = params.get(field);
+      if (value) patch[field] = value;
+    }
+
+    const fechaSalida = params.get('fecha_salida');
+    const fechaLlegada = params.get('fecha_llegada');
+    if (fechaSalida && datePattern.test(fechaSalida)) patch.fecha_salida = fechaSalida;
+    if (fechaLlegada && datePattern.test(fechaLlegada)) patch.fecha_llegada = fechaLlegada;
+
+    const guias = params.get('numeros_guia_remision');
+    if (guias) patch.numeros_guia_remision = guias;
+
+    const precioFlete = params.get('precio_flete');
+    if (precioFlete && numberPattern.test(precioFlete)) patch.precio_flete = Number(precioFlete);
+
+    const viaticos = params.get('viaticos');
+    if (viaticos && numberPattern.test(viaticos)) patch.viaticos = Number(viaticos);
+
+    if (!Object.keys(patch).length) return;
+
+    this.form.patchValue(patch, { emitEvent: false });
+    this.syncCatalogInputs();
+    this.onCalculationInputChanged();
+  }
+
   private openPendingDuplicate() {
     if (!this.pendingDuplicateId) return;
 
@@ -1215,10 +1280,52 @@ export class ViajesPageComponent implements OnDestroy {
   private clearEditQuery() {
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { new: null, edit: null, editId: null, duplicate: null, duplicateId: null },
+      queryParams: {
+        new: null,
+        edit: null,
+        editId: null,
+        duplicate: null,
+        duplicateId: null,
+        cliente_id: null,
+        vehiculo_id: null,
+        conductor_id: null,
+        tarifa_ruta_id: null,
+        fecha_salida: null,
+        fecha_llegada: null,
+        numeros_guia_remision: null,
+        precio_flete: null,
+        viaticos: null
+      },
       queryParamsHandling: 'merge',
       replaceUrl: true
     });
+  }
+
+  private captureListStateBeforeForm() {
+    this.listStateBeforeForm = {
+      page: this.page(),
+      limit: this.limit(),
+      search: this.search(),
+      cliente: this.filterClienteTerm(),
+      vehiculo: this.filterVehiculoTerm(),
+      cobrado: this.filterCobrado(),
+      semana: this.filterSemanaTerm()
+    };
+  }
+
+  private restoreListStateAfterForm() {
+    const state = this.listStateBeforeForm;
+    this.listStateBeforeForm = null;
+    if (!state) return;
+
+    this.page.set(state.page);
+    this.limit.set(state.limit);
+    this.search.set(state.search);
+    this.filterClienteTerm.set(state.cliente);
+    this.filterVehiculoTerm.set(state.vehiculo);
+    this.filterCobrado.set(state.cobrado);
+    this.filterSemanaTerm.set(state.semana);
+    this.syncFiltersToQueryParams();
   }
 
   private editReturnUrl() {
@@ -1235,6 +1342,58 @@ export class ViajesPageComponent implements OnDestroy {
       queryParamsHandling: 'merge',
       replaceUrl: true
     });
+  }
+
+  private applyFiltersFromQueryParams(params: ParamMap) {
+    if (this.syncingFiltersFromUrl) return false;
+
+    const nextPage = Math.max(Number(params.get('page') ?? 1), 1);
+    const nextLimit = Math.max(Number(params.get('limit') ?? 50), 1);
+    const nextSearch = params.get('q') ?? '';
+    const nextCliente = params.get('cliente') ?? '';
+    const nextVehiculo = params.get('vehiculo') ?? '';
+    const cobradoParam = params.get('cobrado');
+    const nextCobrado = cobradoParam === 'todos' ? '' : cobradoParam ?? 'false';
+    const nextSemana = params.get('semana') ?? '';
+    let changed = false;
+
+    const setIfChanged = <T>(current: T, next: T, setter: (value: T) => void) => {
+      if (current === next) return;
+      setter(next);
+      changed = true;
+    };
+
+    setIfChanged(this.page(), nextPage, (value) => this.page.set(value));
+    setIfChanged(this.limit(), nextLimit, (value) => this.limit.set(value));
+    setIfChanged(this.search(), nextSearch, (value) => this.search.set(value));
+    setIfChanged(this.filterClienteTerm(), nextCliente, (value) => this.filterClienteTerm.set(value));
+    setIfChanged(this.filterVehiculoTerm(), nextVehiculo, (value) => this.filterVehiculoTerm.set(value));
+    setIfChanged(this.filterCobrado(), nextCobrado, (value) => this.filterCobrado.set(value));
+    setIfChanged(this.filterSemanaTerm(), nextSemana, (value) => this.filterSemanaTerm.set(value));
+
+    return changed;
+  }
+
+  private syncFiltersToQueryParams() {
+    this.syncingFiltersFromUrl = true;
+    void this.router
+      .navigate([], {
+        relativeTo: this.route,
+        queryParams: {
+          q: this.search().trim() || null,
+          cliente: this.filterClienteTerm().trim() || null,
+          vehiculo: this.filterVehiculoTerm().trim() || null,
+          cobrado: this.filterCobrado() || 'todos',
+          semana: this.filterSemanaTerm().trim() || null,
+          page: this.page() > 1 ? this.page() : null,
+          limit: this.limit() !== 50 ? this.limit() : null
+        },
+        queryParamsHandling: 'merge',
+        replaceUrl: true
+      })
+      .finally(() => {
+        this.syncingFiltersFromUrl = false;
+      });
   }
 
   private setViajesResponse(response: ViajesListResponse) {
@@ -1273,6 +1432,7 @@ export class ViajesPageComponent implements OnDestroy {
 
     this.filterTimer = setTimeout(() => {
       this.page.set(1);
+      this.syncFiltersToQueryParams();
       this.load();
     }, 350);
   }

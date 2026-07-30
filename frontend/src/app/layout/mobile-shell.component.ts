@@ -6,6 +6,7 @@ import {
   LucideDollarSign,
   LucideHandshake,
   LucideLogOut,
+  LucideSparkles,
   LucideTruck,
   LucideWrench
 } from '@lucide/angular';
@@ -22,6 +23,7 @@ import { AuthService } from '../core/auth.service';
     LucideDollarSign,
     LucideHandshake,
     LucideLogOut,
+    LucideSparkles,
     LucideTruck,
     LucideWrench
   ],

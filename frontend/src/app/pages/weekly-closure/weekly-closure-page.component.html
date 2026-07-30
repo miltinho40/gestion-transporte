@@ -105,6 +105,63 @@
     </div>
   }
 
+  @if (asistenteCierre(c); as asistente) {
+    <div class="card border-0 shadow-sm weekly-assistant-card mb-3">
+      <div class="card-header bg-white weekly-assistant-header">
+        <div class="d-flex align-items-center gap-2">
+          <span class="weekly-assistant-icon">
+            <svg lucideSparkles size="16"></svg>
+          </span>
+          <div>
+            <div class="fw-semibold">Asistente de cierre semanal</div>
+            <div class="small text-secondary">{{ asistente.resumen }}</div>
+          </div>
+        </div>
+        <span class="badge weekly-assistant-risk {{ assistantRiskClass(asistente.riesgo) }}">
+          Riesgo {{ assistantRiskLabel(asistente.riesgo) }}
+        </span>
+      </div>
+      <div class="card-body">
+        @if (asistente.alertas.length) {
+          <div class="weekly-assistant-alerts">
+            @for (alerta of asistente.alertas; track alerta.id) {
+              <div class="weekly-assistant-alert">
+                <div class="weekly-assistant-alert-main">
+                  <span class="badge {{ assistantSeverityClass(alerta.severidad) }}">
+                    {{ assistantSeverityLabel(alerta.severidad) }}
+                  </span>
+                  <div>
+                    <div class="fw-semibold">{{ alerta.titulo }}</div>
+                    <div class="text-secondary small">{{ alerta.mensaje }}</div>
+                    <div class="small weekly-assistant-action-text">
+                      {{ alerta.accion_sugerida }}
+                    </div>
+                  </div>
+                </div>
+                @if (alerta.source_id && (alerta.source_type === 'viaje' || alerta.source_type === 'mantenimiento')) {
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary btn-sm weekly-activity-icon-btn"
+                    (click)="editarAlertaAsistente(alerta)"
+                    title="Revisar registro"
+                    aria-label="Revisar registro"
+                  >
+                    <svg lucidePencil size="13"></svg>
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        } @else {
+          <div class="weekly-assistant-empty">
+            <svg lucideCheck size="16"></svg>
+            No se detectaron novedades relevantes para este cierre.
+          </div>
+        }
+      </div>
+    </div>
+  }
+
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
       <div class="small text-secondary">Vehículo del cierre</div>

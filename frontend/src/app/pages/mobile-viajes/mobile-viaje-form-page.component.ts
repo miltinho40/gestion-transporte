@@ -127,10 +127,16 @@ export class MobileViajeFormPageComponent implements OnDestroy {
     this.error.set(null);
 
     const baseRequests = {
-      clientes: this.api.get<ClienteOption[]>('/clientes', { activo: true }),
-      vehiculos: this.api.get<VehiculoOption[]>('/vehiculos'),
-      conductores: this.api.get<ConductorOption[]>('/conductores', { estado: 'activo' }),
-      tarifasRuta: this.api.get<TarifaRutaOption[]>('/tarifas-ruta', { activa: true }),
+      clientes: this.api.get<ClienteOption[]>('/clientes', { activo: true, solo_propios: true }),
+      vehiculos: this.api.get<VehiculoOption[]>('/vehiculos', { solo_propios: true }),
+      conductores: this.api.get<ConductorOption[]>('/conductores', {
+        estado: 'activo',
+        solo_propios: true
+      }),
+      tarifasRuta: this.api.get<TarifaRutaOption[]>('/tarifas-ruta', {
+        activa: true,
+        solo_propios: true
+      }),
       tiposGasto: this.api.get<TipoGastoOption[]>('/tipos-gasto-viaje', { activo: true })
     };
     const sourceViajeId = this.viajeId ?? this.duplicateFromId;
@@ -154,6 +160,7 @@ export class MobileViajeFormPageComponent implements OnDestroy {
             this.setGastos(gastos, { duplicate: this.duplicating });
           } else {
             this.gastos.set([]);
+            this.applyCreatePrefill();
             this.syncCatalogInputs();
           }
 
@@ -431,6 +438,39 @@ export class MobileViajeFormPageComponent implements OnDestroy {
     this.precioRealManual = true;
     this.viaticosManual = true;
     this.syncCatalogInputs();
+  }
+
+  private applyCreatePrefill() {
+    const params = this.route.snapshot.queryParamMap;
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    const numberPattern = /^\d+(\.\d+)?$/;
+    const patch: Partial<ReturnType<typeof this.form.getRawValue>> = {};
+
+    for (const field of ['cliente_id', 'vehiculo_id', 'conductor_id', 'tarifa_ruta_id'] as const) {
+      const value = params.get(field);
+      if (value) patch[field] = value;
+    }
+
+    const fechaSalida = params.get('fecha_salida');
+    const fechaLlegada = params.get('fecha_llegada');
+    if (fechaSalida && datePattern.test(fechaSalida)) patch.fecha_salida = fechaSalida;
+    if (fechaLlegada && datePattern.test(fechaLlegada)) patch.fecha_llegada = fechaLlegada;
+
+    const guias = params.get('numeros_guia_remision');
+    if (guias) patch.numeros_guia_remision = guias;
+
+    const precioFlete = params.get('precio_flete');
+    if (precioFlete && numberPattern.test(precioFlete)) patch.precio_flete = Number(precioFlete);
+
+    const viaticos = params.get('viaticos');
+    if (viaticos && numberPattern.test(viaticos)) patch.viaticos = Number(viaticos);
+
+    if (!Object.keys(patch).length) return;
+
+    this.form.patchValue(patch, { emitEvent: false });
+    this.precioRealManual = false;
+    this.viaticosManual = Boolean(patch.viaticos);
+    this.fetchCalculation({ resetPrecioReal: true, resetViaticos: !patch.viaticos });
   }
 
   private applyCalculation(calculo: CalculoViaje, forcePrecioFlete: boolean) {

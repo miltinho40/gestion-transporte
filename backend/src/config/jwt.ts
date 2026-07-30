@@ -4,6 +4,7 @@ import { env } from './env.js';
 
 export interface JwtPayload {
   usuario_id: string;
+  sesion_id?: string;
   propietario_id?: string;
   rol?: string;
   permisos?: string[];

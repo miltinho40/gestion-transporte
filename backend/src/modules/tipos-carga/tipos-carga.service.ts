@@ -6,6 +6,7 @@ import { parseBigIntId } from '../../utils/ids.js';
 import {
   assertCanWriteScopedRecord,
   resolveReadScope,
+  resolveReadScopeWithOwnOverride,
   resolveWriteOwnerId
 } from '../../utils/ownership-scope.js';
 import type {
@@ -17,6 +18,7 @@ import type {
 interface ListFilters {
   search?: unknown;
   activo?: unknown;
+  solo_propios?: unknown;
 }
 
 const mapTipoCarga = <
@@ -37,7 +39,10 @@ const buildWhere = (
   user: JwtPayload | undefined,
   filters: ListFilters
 ): Prisma.TipoCargaWhereInput => {
-  const scope = resolveReadScope(user);
+  const scope = resolveReadScopeWithOwnOverride(
+    user,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
   const where: Prisma.TipoCargaWhereInput = {};
 
   if (!scope.all) {

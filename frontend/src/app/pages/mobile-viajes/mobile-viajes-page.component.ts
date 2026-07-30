@@ -73,7 +73,7 @@ export class MobileViajesPageComponent implements OnDestroy {
   readonly markingCobroId = signal<string | null>(null);
   readonly savingGuidesId = signal<string | null>(null);
   readonly search = signal('');
-  readonly cobrado = signal('');
+  readonly cobrado = signal('false');
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly guideRow = signal<ViajeRow | null>(null);
@@ -104,8 +104,11 @@ export class MobileViajesPageComponent implements OnDestroy {
           page: this.page(),
           limit: this.limit()
         }),
-        clientes: this.api.get<ClienteOption[]>('/clientes', { activo: true }),
-        vehiculos: this.api.get<VehiculoOption[]>('/vehiculos')
+        clientes: this.api.get<ClienteOption[]>('/clientes', {
+          activo: true,
+          solo_propios: true
+        }),
+        vehiculos: this.api.get<VehiculoOption[]>('/vehiculos', { solo_propios: true })
       }).subscribe({
         next: ({ viajes, clientes, vehiculos }) => {
           if (isPaginatedResponse(viajes)) {

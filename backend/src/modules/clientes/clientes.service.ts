@@ -3,7 +3,7 @@ import type { JwtPayload } from '../../config/jwt.js';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import { parseBigIntId } from '../../utils/ids.js';
-import { resolveReadScopeFromUserOrPropietarioId } from '../../utils/ownership-scope.js';
+import { resolveReadScopeWithOwnOverride } from '../../utils/ownership-scope.js';
 import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import type {
   ClienteCreateInput,
@@ -14,13 +14,26 @@ import type {
 interface ListClientesFilters {
   search?: unknown;
   activo?: unknown;
+  solo_propios?: unknown;
 }
+
+const includePropietario = {
+  propietario: {
+    select: {
+      id: true,
+      nombre: true
+    }
+  }
+} satisfies Prisma.ClienteInclude;
 
 const buildWhere = (
   scopeInput: JwtPayload | unknown,
   filters: ListClientesFilters
 ): Prisma.ClienteWhereInput => {
-  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
+  const scope = resolveReadScopeWithOwnOverride(
+    scopeInput,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
   const where: Prisma.ClienteWhereInput = scope.all
     ? {}
     : {
@@ -80,6 +93,7 @@ export const listClientes = async (
   if (!pagination) {
     return prisma.cliente.findMany({
       where,
+      include: includePropietario,
       orderBy
     });
   }
@@ -87,6 +101,7 @@ export const listClientes = async (
   const [data, total] = await prisma.$transaction([
     prisma.cliente.findMany({
       where,
+      include: includePropietario,
       orderBy,
       skip: pagination.skip,
       take: pagination.limit
@@ -98,14 +113,15 @@ export const listClientes = async (
 };
 
 export const getClienteById = async (scopeInput: JwtPayload | unknown, idInput: unknown) => {
-  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
+  const scope = resolveReadScopeWithOwnOverride(scopeInput, false);
   const id = parseBigIntId(idInput);
 
   const cliente = await prisma.cliente.findFirst({
     where: {
       id,
       ...(scope.all ? {} : { propietario_id: scope.propietarioId })
-    }
+    },
+    include: includePropietario
   });
 
   if (!cliente) {

@@ -37,6 +37,31 @@ export const resolveReadScopeFromUserOrPropietarioId = (
   };
 };
 
+export const resolveReadScopeWithOwnOverride = (
+  input: JwtPayload | unknown,
+  ownRequested: boolean
+) => {
+  if (
+    ownRequested &&
+    input &&
+    typeof input === 'object' &&
+    'usuario_id' in input
+  ) {
+    const user = input as JwtPayload;
+
+    if (!user.propietario_id) {
+      throw new AppError('Debes seleccionar un propietario para esta accion', 400);
+    }
+
+    return {
+      all: false,
+      propietarioId: parseBigIntId(user.propietario_id, 'propietario_id')
+    };
+  }
+
+  return resolveReadScopeFromUserOrPropietarioId(input);
+};
+
 export const resolveWriteOwnerId = (
   user: JwtPayload | undefined,
   globalRequested?: boolean
@@ -69,10 +94,6 @@ export const assertCanWriteScopedRecord = (
       throw new AppError('Solo super admin puede modificar registros globales', 403);
     }
 
-    return;
-  }
-
-  if (user.es_super_admin) {
     return;
   }
 

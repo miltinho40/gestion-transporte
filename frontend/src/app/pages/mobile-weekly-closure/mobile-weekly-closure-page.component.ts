@@ -8,7 +8,8 @@ import {
   LucideCopy,
   LucidePencil,
   LucideRefreshCw,
-  LucideSend
+  LucideSend,
+  LucideSparkles
 } from '@lucide/angular';
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
@@ -57,6 +58,27 @@ interface CierreSemanal {
     diferencias: unknown[];
     total_diferencias: number;
   };
+  asistente_cierre?: AsistenteCierre;
+}
+
+interface AsistenteCierre {
+  disponible: boolean;
+  riesgo: 'bajo' | 'medio' | 'alto';
+  puntaje: number;
+  total_alertas: number;
+  resumen: string;
+  alertas: AsistenteCierreAlerta[];
+}
+
+interface AsistenteCierreAlerta {
+  id: string;
+  tipo: string;
+  severidad: 'info' | 'advertencia' | 'critica';
+  titulo: string;
+  mensaje: string;
+  accion_sugerida: string;
+  source_type?: 'viaje' | 'mantenimiento' | 'cierre' | null;
+  source_id?: string | null;
 }
 
 interface ViajeCierre {
@@ -134,6 +156,7 @@ const todayInputDate = () => {
     LucidePencil,
     LucideRefreshCw,
     LucideSend,
+    LucideSparkles,
     AutoDismissAlertDirective
   ],
   templateUrl: './mobile-weekly-closure-page.component.html',
@@ -195,7 +218,7 @@ export class MobileWeeklyClosurePageComponent implements OnDestroy {
     this.loadingVehiculos.set(true);
     this.error.set(null);
 
-    this.api.get<VehiculoOption[]>('/vehiculos').subscribe({
+    this.api.get<VehiculoOption[]>('/vehiculos', { solo_propios: true }).subscribe({
       next: (vehiculos) => {
         this.vehiculos.set(vehiculos);
         if (!this.form.controls.vehiculo_id.value && vehiculos[0]) {
@@ -361,11 +384,70 @@ export class MobileWeeklyClosurePageComponent implements OnDestroy {
     return [...viajes.sort(sortByDate), ...mantenimientos.sort(sortByDate)];
   }
 
+  asistenteCierre(cierre: CierreSemanal | null) {
+    return cierre?.asistente_cierre ?? null;
+  }
+
+  assistantRiskLabel(riesgo: AsistenteCierre['riesgo']) {
+    const labels: Record<AsistenteCierre['riesgo'], string> = {
+      bajo: 'Bajo',
+      medio: 'Medio',
+      alto: 'Alto'
+    };
+
+    return labels[riesgo] ?? riesgo;
+  }
+
+  assistantRiskClass(riesgo: AsistenteCierre['riesgo']) {
+    const classes: Record<AsistenteCierre['riesgo'], string> = {
+      bajo: 'assistant-risk-low',
+      medio: 'assistant-risk-medium',
+      alto: 'assistant-risk-high'
+    };
+
+    return classes[riesgo] ?? classes.bajo;
+  }
+
+  assistantSeverityLabel(severidad: AsistenteCierreAlerta['severidad']) {
+    const labels: Record<AsistenteCierreAlerta['severidad'], string> = {
+      info: 'Info',
+      advertencia: 'Advertencia',
+      critica: 'Crítica'
+    };
+
+    return labels[severidad] ?? severidad;
+  }
+
+  assistantSeverityClass(severidad: AsistenteCierreAlerta['severidad']) {
+    const classes: Record<AsistenteCierreAlerta['severidad'], string> = {
+      info: 'assistant-severity-info',
+      advertencia: 'assistant-severity-warning',
+      critica: 'assistant-severity-danger'
+    };
+
+    return classes[severidad] ?? classes.info;
+  }
+
   editarActividad(item: ActividadSemanalItem) {
     const route =
       item.sourceType === 'viaje'
         ? ['/movil/viajes', item.sourceId, 'editar']
         : ['/movil/mantenimientos', item.sourceId, 'editar'];
+
+    void this.router.navigate(route, {
+      queryParams: { returnUrl: this.cierreReturnUrl() }
+    });
+  }
+
+  editarAlertaAsistente(alerta: AsistenteCierreAlerta) {
+    if (!alerta.source_id || (alerta.source_type !== 'viaje' && alerta.source_type !== 'mantenimiento')) {
+      return;
+    }
+
+    const route =
+      alerta.source_type === 'viaje'
+        ? ['/movil/viajes', alerta.source_id, 'editar']
+        : ['/movil/mantenimientos', alerta.source_id, 'editar'];
 
     void this.router.navigate(route, {
       queryParams: { returnUrl: this.cierreReturnUrl() }

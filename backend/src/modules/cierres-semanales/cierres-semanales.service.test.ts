@@ -11,7 +11,12 @@ process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/gestion_transporte_test';
 process.env.JWT_SECRET ??= 'test-secret-with-enough-length';
 
-const { __testing, calculateBonificacion, getIsoWeekRange } = await import(
+const {
+  __testing,
+  calculateBonificacion,
+  calculatePagoSemanalConductor,
+  getIsoWeekRange
+} = await import(
   './cierres-semanales.service.js'
 );
 
@@ -130,6 +135,17 @@ const mockViaje = (overrides: Record<string, unknown> = {}) =>
   }) as never;
 
 describe('cierres semanales', () => {
+  it('calcula el pago semanal con sueldo, bono, retornos y domingos', () => {
+    const total = calculatePagoSemanalConductor({
+      sueldo: decimal('190.00'),
+      bono: decimal('40.00'),
+      retornos: decimal('70.00'),
+      domingos: decimal('20.00')
+    });
+
+    assert.equal(total.toFixed(2), '320.00');
+  });
+
   it('calcula rangos ISO de lunes a domingo', () => {
     const week25 = getIsoWeekRange(2026, 25);
 

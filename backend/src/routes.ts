@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { alertasRouter } from './modules/alertas/alertas.routes.js';
+import { asistenteRouter } from './modules/asistente/asistente.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { categoriasPeajeRouter } from './modules/categorias-peaje/categorias-peaje.routes.js';
 import { cierresSemanalesRouter } from './modules/cierres-semanales/cierres-semanales.routes.js';
@@ -31,6 +32,7 @@ export const apiRouter = Router();
 
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/alertas', alertasRouter);
+apiRouter.use('/asistente', asistenteRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/categorias-peaje', categoriasPeajeRouter);
 apiRouter.use('/cierres-semanales', cierresSemanalesRouter);

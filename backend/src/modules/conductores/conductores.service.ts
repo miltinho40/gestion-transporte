@@ -3,7 +3,7 @@ import type { JwtPayload } from '../../config/jwt.js';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import { parseBigIntId } from '../../utils/ids.js';
-import { resolveReadScopeFromUserOrPropietarioId } from '../../utils/ownership-scope.js';
+import { resolveReadScopeWithOwnOverride } from '../../utils/ownership-scope.js';
 import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import { toPrismaEstadoConductor } from './conductores.mapper.js';
 import type {
@@ -16,7 +16,17 @@ interface ListConductoresFilters {
   search?: unknown;
   estado?: unknown;
   licencia_vencida?: unknown;
+  solo_propios?: unknown;
 }
+
+const includePropietario = {
+  propietario: {
+    select: {
+      id: true,
+      nombre: true
+    }
+  }
+} satisfies Prisma.ConductorInclude;
 
 const toDateOnly = (value?: string | null) => {
   if (!value) {
@@ -30,7 +40,10 @@ const buildWhere = (
   scopeInput: JwtPayload | unknown,
   filters: ListConductoresFilters
 ): Prisma.ConductorWhereInput => {
-  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
+  const scope = resolveReadScopeWithOwnOverride(
+    scopeInput,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
   const where: Prisma.ConductorWhereInput = scope.all
     ? {}
     : {
@@ -116,6 +129,7 @@ export const listConductores = async (
   if (!pagination) {
     return prisma.conductor.findMany({
       where,
+      include: includePropietario,
       orderBy
     });
   }
@@ -123,6 +137,7 @@ export const listConductores = async (
   const [data, total] = await prisma.$transaction([
     prisma.conductor.findMany({
       where,
+      include: includePropietario,
       orderBy,
       skip: pagination.skip,
       take: pagination.limit
@@ -134,14 +149,15 @@ export const listConductores = async (
 };
 
 export const getConductorById = async (scopeInput: JwtPayload | unknown, idInput: unknown) => {
-  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
+  const scope = resolveReadScopeWithOwnOverride(scopeInput, false);
   const id = parseBigIntId(idInput);
 
   const conductor = await prisma.conductor.findFirst({
     where: {
       id,
       ...(scope.all ? {} : { propietario_id: scope.propietarioId })
-    }
+    },
+    include: includePropietario
   });
 
   if (!conductor) {

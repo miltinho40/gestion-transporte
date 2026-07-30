@@ -2,8 +2,8 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import {
-  DEFAULT_TEMPORARY_PASSWORD,
-  hashDefaultTemporaryPassword,
+  generateHashedTemporaryPassword,
+  generateTemporaryPassword,
   hashPassword
 } from '../../utils/default-password.js';
 import { parseBigIntId } from '../../utils/ids.js';
@@ -118,7 +118,7 @@ export const getUsuarioById = async (idInput: unknown) => {
 export const createUsuario = async (input: UsuarioCreateInput) => {
   await ensureEmailAvailable(input.email);
 
-  const claveTemporal = input.password ?? DEFAULT_TEMPORARY_PASSWORD;
+  const claveTemporal = input.password ?? generateTemporaryPassword();
   const password_hash = await hashPassword(claveTemporal);
 
   const usuario = await prisma.usuario.create({
@@ -180,14 +180,21 @@ export const updatePasswordUsuario = async (idInput: unknown, input: UsuarioPass
 
   const password_hash = await hashPassword(input.password);
 
-  return prisma.usuario.update({
-    where: { id },
-    data: {
-      password_hash,
-      email_verificado: true,
-      requiere_password: true
-    },
-    select: usuarioSelect
+  return prisma.$transaction(async (tx) => {
+    const usuario = await tx.usuario.update({
+      where: { id },
+      data: {
+        password_hash,
+        email_verificado: true,
+        requiere_password: true
+      },
+      select: usuarioSelect
+    });
+    await tx.sesionUsuario.updateMany({
+      where: { usuario_id: id, revocada_en: null },
+      data: { revocada_en: new Date() }
+    });
+    return usuario;
   });
 };
 
@@ -195,21 +202,28 @@ export const resetPasswordUsuario = async (idInput: unknown) => {
   const id = parseBigIntId(idInput);
   await getUsuarioById(id);
 
-  const password_hash = await hashDefaultTemporaryPassword();
+  const temporary = await generateHashedTemporaryPassword();
 
-  const usuario = await prisma.usuario.update({
-    where: { id },
-    data: {
-      password_hash,
-      email_verificado: true,
-      requiere_password: true
-    },
-    select: usuarioSelect
+  const usuario = await prisma.$transaction(async (tx) => {
+    const updated = await tx.usuario.update({
+      where: { id },
+      data: {
+        password_hash: temporary.hash,
+        email_verificado: true,
+        requiere_password: true
+      },
+      select: usuarioSelect
+    });
+    await tx.sesionUsuario.updateMany({
+      where: { usuario_id: id, revocada_en: null },
+      data: { revocada_en: new Date() }
+    });
+    return updated;
   });
 
   return {
     ...usuario,
-    clave_temporal: DEFAULT_TEMPORARY_PASSWORD
+    clave_temporal: temporary.password
   };
 };
 

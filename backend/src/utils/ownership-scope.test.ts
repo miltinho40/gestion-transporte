@@ -4,6 +4,7 @@ import { AppError } from './app-error.js';
 import {
   assertCanWriteScopedRecord,
   resolveReadScope,
+  resolveReadScopeWithOwnOverride,
   resolveWriteOwnerId
 } from './ownership-scope.js';
 
@@ -41,5 +42,38 @@ describe('ownership scope', () => {
 
   it('permite al super admin crear registros globales', () => {
     assert.equal(resolveWriteOwnerId({ usuario_id: '1', es_super_admin: true }, true), null);
+  });
+
+  it('limita al propietario activo cuando el super admin solicita datos propios', () => {
+    assert.deepEqual(
+      resolveReadScopeWithOwnOverride(
+        { usuario_id: '1', propietario_id: '25', es_super_admin: true },
+        true
+      ),
+      {
+        all: false,
+        propietarioId: 25n
+      }
+    );
+  });
+
+  it('impide al super admin modificar datos de otro propietario', () => {
+    assert.throws(
+      () =>
+        assertCanWriteScopedRecord(
+          { usuario_id: '1', propietario_id: '25', es_super_admin: true },
+          26n
+        ),
+      (error) => error instanceof AppError && error.statusCode === 403
+    );
+  });
+
+  it('permite al super admin modificar datos del propietario activo', () => {
+    assert.doesNotThrow(() =>
+      assertCanWriteScopedRecord(
+        { usuario_id: '1', propietario_id: '25', es_super_admin: true },
+        25n
+      )
+    );
   });
 });

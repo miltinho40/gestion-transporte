@@ -44,6 +44,7 @@ export interface ApiListColumn {
   label: string;
   path: string;
   type?: 'text' | 'date' | 'money' | 'boolean' | 'badge' | 'hoursTime';
+  superAdminOnly?: boolean;
 }
 
 export interface SelectOption {

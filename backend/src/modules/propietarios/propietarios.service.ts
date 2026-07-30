@@ -2,8 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import {
-  DEFAULT_TEMPORARY_PASSWORD,
-  hashDefaultTemporaryPassword
+  generateHashedTemporaryPassword
 } from '../../utils/default-password.js';
 import { parseBigIntId } from '../../utils/ids.js';
 import { createPasswordInvitation } from '../../utils/user-invitations.js';
@@ -124,9 +123,10 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
       where: { email: admin.email }
     });
     const debeAsignarClaveTemporal = !usuarioExistente?.password_hash;
-    const passwordHashTemporal = debeAsignarClaveTemporal
-      ? await hashDefaultTemporaryPassword()
-      : undefined;
+    const temporaryPassword = debeAsignarClaveTemporal
+      ? await generateHashedTemporaryPassword()
+      : null;
+    const passwordHashTemporal = temporaryPassword?.hash;
     const usuario = usuarioExistente
       ? await tx.usuario.update({
           where: { id: usuarioExistente.id },
@@ -188,7 +188,7 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
       },
       admin_usuario_id: usuario.id,
       debe_enviar_invitacion: false,
-      clave_temporal: debeAsignarClaveTemporal ? DEFAULT_TEMPORARY_PASSWORD : null
+      clave_temporal: temporaryPassword?.password ?? null
     };
   });
 

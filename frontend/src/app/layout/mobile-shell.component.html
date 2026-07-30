@@ -17,6 +17,12 @@
   </main>
 
   <nav class="mobile-nav" aria-label="Navegación móvil">
+    @if (hasPermission('asistente')) {
+      <a routerLink="/movil/asistente" routerLinkActive="active">
+        <svg lucideSparkles size="20"></svg>
+        <span>Asist.</span>
+      </a>
+    }
     @if (canOwnFleet('viajes')) {
       <a routerLink="/movil/viajes" routerLinkActive="active">
         <svg lucideClipboardList size="20"></svg>

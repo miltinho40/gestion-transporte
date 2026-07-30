@@ -76,6 +76,60 @@
       </div>
     }
 
+    @if (asistenteCierre(c); as asistente) {
+      <section class="assistant-card">
+        <div class="assistant-header">
+          <div class="assistant-title">
+            <span class="assistant-icon">
+              <svg lucideSparkles size="15"></svg>
+            </span>
+            <div>
+              <h2>Asistente de cierre</h2>
+              <p>{{ asistente.resumen }}</p>
+            </div>
+          </div>
+          <span class="assistant-risk {{ assistantRiskClass(asistente.riesgo) }}">
+            {{ assistantRiskLabel(asistente.riesgo) }}
+          </span>
+        </div>
+
+        @if (asistente.alertas.length) {
+          <div class="assistant-alert-list">
+            @for (alerta of asistente.alertas; track alerta.id) {
+              <article class="assistant-alert">
+                <div class="assistant-alert-body">
+                  <span class="assistant-severity {{ assistantSeverityClass(alerta.severidad) }}">
+                    {{ assistantSeverityLabel(alerta.severidad) }}
+                  </span>
+                  <div>
+                    <h3>{{ alerta.titulo }}</h3>
+                    <p>{{ alerta.mensaje }}</p>
+                    <small>{{ alerta.accion_sugerida }}</small>
+                  </div>
+                </div>
+                @if (alerta.source_id && (alerta.source_type === 'viaje' || alerta.source_type === 'mantenimiento')) {
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary btn-sm"
+                    (click)="editarAlertaAsistente(alerta)"
+                    title="Revisar"
+                    aria-label="Revisar"
+                  >
+                    <svg lucidePencil size="14"></svg>
+                  </button>
+                }
+              </article>
+            }
+          </div>
+        } @else {
+          <div class="assistant-ok">
+            <svg lucideCheck size="15"></svg>
+            Sin novedades relevantes.
+          </div>
+        }
+      </section>
+    }
+
     <section class="driver-card">
       <span>Transportista</span>
       <strong>{{ transportistaLabel(c) }}</strong>

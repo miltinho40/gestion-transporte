@@ -1,6 +1,14 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { tap } from 'rxjs';
+import {
+  catchError,
+  finalize,
+  map,
+  Observable,
+  of,
+  shareReplay,
+  tap
+} from 'rxjs';
 import { API_BASE_URL } from './api.config';
 import type { AuthContext, AuthUser, LoginResponse, PropietarioAcceso } from './models';
 
@@ -24,6 +32,7 @@ const storageKey = 'gestion_transporte_session';
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly state = signal<SessionState>(this.restoreSession());
+  private refreshRequest: Observable<LoginResponse> | null = null;
 
   readonly token = computed(() => this.state().token);
   readonly usuario = computed(() => this.state().usuario);
@@ -63,7 +72,7 @@ export class AuthService {
       propietarios: response.propietarios
     };
     this.state.set(session);
-    localStorage.setItem(storageKey, JSON.stringify(session));
+    this.persistSessionMetadata(session);
   }
 
   markPasswordChanged() {
@@ -79,10 +88,47 @@ export class AuthService {
     };
 
     this.state.set(session);
-    localStorage.setItem(storageKey, JSON.stringify(session));
+    this.persistSessionMetadata(session);
   }
 
   logout() {
+    this.clearSession();
+    this.http.post<void>(`${API_BASE_URL}/auth/logout`, {}).subscribe({
+      error: () => undefined
+    });
+  }
+
+  initializeSession() {
+    return this.refreshSession().pipe(
+      map(() => undefined),
+      catchError(() => {
+        this.clearSession();
+        return of(undefined);
+      })
+    );
+  }
+
+  refreshSession() {
+    if (this.refreshRequest) return this.refreshRequest;
+
+    this.refreshRequest = this.http
+      .post<LoginResponse>(`${API_BASE_URL}/auth/refresh`, {})
+      .pipe(
+        tap((response) => {
+          if (!response.contexto) {
+            throw new Error('La sesión no tiene un propietario activo');
+          }
+          this.setSession(response);
+        }),
+        finalize(() => {
+          this.refreshRequest = null;
+        }),
+        shareReplay({ bufferSize: 1, refCount: false })
+      );
+    return this.refreshRequest;
+  }
+
+  clearSession() {
     this.state.set(emptySession);
     localStorage.removeItem(storageKey);
   }
@@ -102,9 +148,26 @@ export class AuthService {
 
     try {
       const parsed = JSON.parse(raw) as SessionState;
-      return parsed.token && parsed.contexto ? parsed : emptySession;
+      return parsed.contexto
+        ? {
+            token: null,
+            usuario: parsed.usuario,
+            contexto: parsed.contexto,
+            propietarios: parsed.propietarios ?? []
+          }
+        : emptySession;
     } catch {
       return emptySession;
     }
+  }
+
+  private persistSessionMetadata(session: SessionState) {
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        ...session,
+        token: null
+      })
+    );
   }
 }

@@ -3,7 +3,7 @@ import type { JwtPayload } from '../../config/jwt.js';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import { parseBigIntId } from '../../utils/ids.js';
-import { resolveReadScopeFromUserOrPropietarioId } from '../../utils/ownership-scope.js';
+import { resolveReadScopeWithOwnOverride } from '../../utils/ownership-scope.js';
 import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import { toPrismaEstadoVehiculo } from './vehiculos.mapper.js';
 import type {
@@ -16,17 +16,27 @@ interface ListVehiculosFilters {
   search?: unknown;
   estado?: unknown;
   categoria_peaje_id?: unknown;
+  solo_propios?: unknown;
 }
 
 const includeCategoria = {
-  categoria_peaje: true
+  categoria_peaje: true,
+  propietario: {
+    select: {
+      id: true,
+      nombre: true
+    }
+  }
 } satisfies Prisma.VehiculoInclude;
 
 const buildWhere = (
   scopeInput: JwtPayload | unknown,
   filters: ListVehiculosFilters
 ): Prisma.VehiculoWhereInput => {
-  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
+  const scope = resolveReadScopeWithOwnOverride(
+    scopeInput,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
   const where: Prisma.VehiculoWhereInput = scope.all
     ? {}
     : {
@@ -192,7 +202,7 @@ export const listVehiculos = async (
 };
 
 export const getVehiculoById = async (scopeInput: JwtPayload | unknown, idInput: unknown) => {
-  const scope = resolveReadScopeFromUserOrPropietarioId(scopeInput);
+  const scope = resolveReadScopeWithOwnOverride(scopeInput, false);
   const id = parseBigIntId(idInput);
 
   const vehiculo = await prisma.vehiculo.findFirst({

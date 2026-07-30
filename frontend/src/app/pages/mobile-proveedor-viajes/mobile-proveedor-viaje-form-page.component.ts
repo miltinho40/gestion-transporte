@@ -102,9 +102,18 @@ export class MobileProveedorViajeFormPageComponent implements OnDestroy {
 
     this.sub.add(
       forkJoin({
-        clientes: this.api.get<ClienteOption[]>('/clientes', { activo: true }),
-        proveedores: this.api.get<ProveedorOption[]>('/proveedores', { activo: true }),
-        tarifasRuta: this.api.get<TarifaRutaOption[]>('/tarifas-ruta', { activa: true }),
+        clientes: this.api.get<ClienteOption[]>('/clientes', {
+          activo: true,
+          solo_propios: true
+        }),
+        proveedores: this.api.get<ProveedorOption[]>('/proveedores', {
+          activo: true,
+          solo_propios: true
+        }),
+        tarifasRuta: this.api.get<TarifaRutaOption[]>('/tarifas-ruta', {
+          activa: true,
+          solo_propios: true
+        }),
         viaje: sourceId ? this.api.get<ViajeProveedorRow>(`/viajes-proveedor/${sourceId}`) : of(null)
       }).subscribe({
         next: ({ clientes, proveedores, tarifasRuta, viaje }) => {

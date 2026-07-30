@@ -113,6 +113,9 @@ model Propietario {
   auditoria_eventos         AuditoriaEvento[]
   proveedores               Proveedor[]
   viajes_proveedor          ViajeProveedor[]
+  conversaciones_asistente  ConversacionAsistente[]
+  preferencias_asistente    PreferenciaAsistente[]
+  sesiones_usuario          SesionUsuario[]
 
   @@map("propietarios")
 }
@@ -144,12 +147,36 @@ model Usuario {
   created_at        DateTime  @default(now()) @db.Timestamptz(6)
   updated_at        DateTime  @updatedAt @db.Timestamptz(6)
 
-  usuarios_propietarios UsuarioPropietario[]
-  invitaciones          InvitacionUsuario[]
-  cierres_semanales     CierreSemanal[]      @relation("UsuarioCierresSemanales")
-  auditoria_eventos     AuditoriaEvento[]
+  usuarios_propietarios    UsuarioPropietario[]
+  invitaciones             InvitacionUsuario[]
+  cierres_semanales        CierreSemanal[]         @relation("UsuarioCierresSemanales")
+  auditoria_eventos        AuditoriaEvento[]
+  conversaciones_asistente ConversacionAsistente[]
+  preferencias_asistente   PreferenciaAsistente[]
+  sesiones                 SesionUsuario[]
 
   @@map("usuarios")
+}
+
+model SesionUsuario {
+  id                 String    @id @default(uuid()) @db.Uuid
+  usuario_id         BigInt
+  propietario_id     BigInt?
+  refresh_token_hash String    @unique @db.VarChar(64)
+  expira_en          DateTime  @db.Timestamptz(6)
+  revocada_en        DateTime? @db.Timestamptz(6)
+  ultimo_uso_en      DateTime  @default(now()) @db.Timestamptz(6)
+  ip                 String?   @db.VarChar(64)
+  user_agent         String?   @db.VarChar(255)
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime  @updatedAt @db.Timestamptz(6)
+
+  usuario     Usuario      @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+  propietario Propietario? @relation(fields: [propietario_id], references: [id], onDelete: Cascade)
+
+  @@index([usuario_id, revocada_en, expira_en])
+  @@index([propietario_id, revocada_en])
+  @@map("sesiones_usuario")
 }
 
 model AuditoriaEvento {
@@ -217,6 +244,106 @@ model UsuarioPropietario {
   @@index([propietario_id])
   @@index([rol_id])
   @@map("usuarios_propietarios")
+}
+
+model ConversacionAsistente {
+  id                BigInt   @id @default(autoincrement())
+  propietario_id    BigInt
+  usuario_id        BigInt
+  canal             String   @default("web") @db.VarChar(20)
+  titulo            String?  @db.VarChar(160)
+  estado            String   @default("activa") @db.VarChar(20)
+  contexto          Json?
+  ultimo_mensaje_at DateTime @default(now()) @db.Timestamptz(6)
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario Propietario                     @relation(fields: [propietario_id], references: [id], onDelete: Cascade)
+  usuario     Usuario                         @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+  mensajes    MensajeAsistente[]
+  borradores  BorradorAsistente[]
+  ejecuciones EjecucionHerramientaAsistente[]
+
+  @@index([propietario_id, usuario_id, ultimo_mensaje_at])
+  @@index([usuario_id, estado])
+  @@map("conversaciones_asistente")
+}
+
+model MensajeAsistente {
+  id              BigInt   @id @default(autoincrement())
+  conversacion_id BigInt
+  rol             String   @db.VarChar(20)
+  contenido       String   @db.Text
+  metadata        Json?
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  conversacion ConversacionAsistente @relation(fields: [conversacion_id], references: [id], onDelete: Cascade)
+
+  @@index([conversacion_id, created_at])
+  @@map("mensajes_asistente")
+}
+
+model BorradorAsistente {
+  id              BigInt    @id @default(autoincrement())
+  conversacion_id BigInt
+  tipo            String    @db.VarChar(40)
+  estado          String    @default("pendiente") @db.VarChar(20)
+  datos           Json
+  advertencias    Json?
+  expira_at       DateTime? @db.Timestamptz(6)
+  aplicado_at     DateTime? @db.Timestamptz(6)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @updatedAt @db.Timestamptz(6)
+
+  conversacion ConversacionAsistente @relation(fields: [conversacion_id], references: [id], onDelete: Cascade)
+
+  @@index([conversacion_id, estado, updated_at])
+  @@map("borradores_asistente")
+}
+
+model EjecucionHerramientaAsistente {
+  id                    BigInt   @id @default(autoincrement())
+  conversacion_id       BigInt
+  herramienta           String   @db.VarChar(80)
+  categoria             String   @db.VarChar(20)
+  estado                String   @db.VarChar(20)
+  parametros            Json?
+  resultado             Json?
+  requiere_confirmacion Boolean  @default(false)
+  confirmada            Boolean  @default(false)
+  error                 String?  @db.VarChar(500)
+  duracion_ms           Int?
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+
+  conversacion ConversacionAsistente @relation(fields: [conversacion_id], references: [id], onDelete: Cascade)
+
+  @@index([conversacion_id, created_at])
+  @@index([herramienta, estado])
+  @@map("ejecuciones_herramientas_asistente")
+}
+
+model PreferenciaAsistente {
+  id             BigInt   @id @default(autoincrement())
+  propietario_id BigInt
+  usuario_id     BigInt
+  alcance        String   @default("personal") @db.VarChar(20)
+  scope_key      String   @db.VarChar(80)
+  tipo           String   @db.VarChar(40)
+  clave          String   @db.VarChar(120)
+  valor          Json
+  descripcion    String?  @db.VarChar(255)
+  activa         Boolean  @default(true)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario Propietario @relation(fields: [propietario_id], references: [id], onDelete: Cascade)
+  usuario     Usuario     @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+
+  @@unique([propietario_id, scope_key, clave])
+  @@index([propietario_id, scope_key, activa])
+  @@index([propietario_id, usuario_id, activa])
+  @@index([usuario_id, tipo, activa])
+  @@map("preferencias_asistente")
 }
 
 model Cliente {

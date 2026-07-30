@@ -130,16 +130,18 @@ export class ProveedorResumenPageComponent {
 
   loadCatalogs() {
     this.loadingCatalogs.set(true);
-    this.api.get<ProveedorOption[]>('/proveedores', { activo: true }).subscribe({
-      next: (proveedores) => {
-        this.proveedores.set(proveedores);
-        this.loadingCatalogs.set(false);
-      },
-      error: (err) => {
-        this.error.set(err?.error?.message ?? 'No se pudieron cargar los proveedores.');
-        this.loadingCatalogs.set(false);
-      }
-    });
+    this.api
+      .get<ProveedorOption[]>('/proveedores', { activo: true, solo_propios: true })
+      .subscribe({
+        next: (proveedores) => {
+          this.proveedores.set(proveedores);
+          this.loadingCatalogs.set(false);
+        },
+        error: (err) => {
+          this.error.set(err?.error?.message ?? 'No se pudieron cargar los proveedores.');
+          this.loadingCatalogs.set(false);
+        }
+      });
   }
 
   loadReport() {
