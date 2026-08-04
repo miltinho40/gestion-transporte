@@ -16,6 +16,8 @@ const envSchema = z.object({
   OPENAI_MODEL: z.string().trim().min(1).default('gpt-5.6-luna'),
   OPENAI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(10000),
   OPENAI_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.55),
+  OPENAI_INPUT_COST_PER_MILLION: z.coerce.number().min(0).default(0),
+  OPENAI_OUTPUT_COST_PER_MILLION: z.coerce.number().min(0).default(0),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
   SMTP_SECURE: z.coerce.boolean().default(false),

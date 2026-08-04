@@ -45,6 +45,10 @@ export const contextForNextMessage = (
     return jsonValue({ consulta: response.contexto });
   }
 
+  if (response.tipo === 'consulta' || response.tipo === 'accion') {
+    return Prisma.JsonNull;
+  }
+
   return previousContext === null || previousContext === undefined
     ? Prisma.JsonNull
     : jsonValue(previousContext);
@@ -104,7 +108,7 @@ export const persistAssistantSuccess = async (input: {
   const nextContext = contextForNextMessage(input.request, input.response, input.previousContext);
   const confirmed = Boolean(input.request.contexto?.confirmar);
 
-  await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     await tx.mensajeAsistente.create({
       data: {
         conversacion_id: input.conversationId,
@@ -114,7 +118,7 @@ export const persistAssistantSuccess = async (input: {
       }
     });
 
-    await tx.mensajeAsistente.create({
+    const assistantMessage = await tx.mensajeAsistente.create({
       data: {
         conversacion_id: input.conversationId,
         rol: 'asistente',
@@ -219,6 +223,8 @@ export const persistAssistantSuccess = async (input: {
         ultimo_mensaje_at: new Date()
       }
     });
+
+    return { assistantMessageId: assistantMessage.id };
   });
 };
 
@@ -290,8 +296,17 @@ export const getAssistantConversation = async (
     },
     include: {
       mensajes: {
-        orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
-        take: 100
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        take: 100,
+        include: {
+          evaluacion: {
+            select: {
+              calificacion: true,
+              correccion: true,
+              updated_at: true
+            }
+          }
+        }
       }
     }
   });
@@ -300,7 +315,10 @@ export const getAssistantConversation = async (
     throw new AppError('Conversacion del asistente no encontrada', 404);
   }
 
-  return conversation;
+  return {
+    ...conversation,
+    mensajes: conversation.mensajes.reverse()
+  };
 };
 
 export const __testing = {

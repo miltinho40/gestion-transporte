@@ -22,6 +22,12 @@ import {
   listAssistantPreferences,
   prepareAssistantPreference
 } from './asistente.preferences.js';
+import { loadApprovedAssistantExamples } from './asistente.examples.js';
+export {
+  evaluateAssistantMessage,
+  listAssistantEvaluations,
+  reviewAssistantEvaluation
+} from './asistente.feedback.js';
 
 export { __testing };
 
@@ -73,15 +79,22 @@ export const procesarMensajeAsistente = async (
     ...parsed,
     contexto: restoredContext
   };
-  const preferences = await listAssistantPreferences(user);
+  const [preferences, approvedExamples] = await Promise.all([
+    listAssistantPreferences(user),
+    loadApprovedAssistantExamples(user)
+  ]);
   const expanded = applyAssistantPreferencesToMessage(
     request.mensaje,
     preferences
   );
-  const interpretation = await interpretAssistantMessage(user, {
-    ...request,
-    mensaje: expanded.message
-  });
+  const interpretation = await interpretAssistantMessage(
+    user,
+    {
+      ...request,
+      mensaje: expanded.message
+    },
+    approvedExamples
+  );
   const tool = interpretation.tool;
   assertAssistantToolAllowed(tool, user, Boolean(request.contexto?.confirmar));
   const startedAt = Date.now();
@@ -93,7 +106,12 @@ export const procesarMensajeAsistente = async (
         mensaje: interpretation.message,
         herramienta: interpretation.tool.name,
         entidades: interpretation.parameters,
-        preferencias: preferences
+        preferencias: preferences,
+        capacidades: {
+          super_admin: Boolean(user.es_super_admin),
+          propietario: Boolean(user.es_super_admin || user.es_propietario),
+          intermediario: Boolean(user.es_super_admin || user.es_intermediario)
+        }
       };
     const executeRequest = async () => {
       if (cancelling) {
@@ -134,7 +152,7 @@ export const procesarMensajeAsistente = async (
       }
     };
 
-    await persistAssistantSuccess({
+    const persisted = await persistAssistantSuccess({
       conversationId: conversation.id,
       request,
       response,
@@ -146,7 +164,8 @@ export const procesarMensajeAsistente = async (
 
     return {
       ...response,
-      conversacion_id: conversation.id
+      conversacion_id: conversation.id,
+      mensaje_id: persisted.assistantMessageId
     };
   } catch (error) {
     await persistAssistantFailure({

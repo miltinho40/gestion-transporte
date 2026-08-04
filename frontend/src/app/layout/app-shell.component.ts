@@ -49,6 +49,7 @@ export class AppShellComponent {
   readonly isAdmin = computed(
     () => this.auth.usuario()?.es_super_admin || this.auth.contexto()?.rol === 'admin'
   );
+  readonly canReviewAssistant = computed(() => this.auth.isSuperAdmin());
   readonly isPropietario = computed(() => this.auth.hasOwnFleet());
   readonly isIntermediario = computed(() => this.auth.isIntermediary());
   readonly showTransporte = computed(

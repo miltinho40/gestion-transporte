@@ -1,6 +1,6 @@
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   LucideCheck,
   LucideClipboardList,
@@ -51,6 +51,7 @@ export class MobileProveedorViajesPageComponent implements OnDestroy {
   private readonly api = inject(ApiService);
   private readonly dialog = inject(DialogService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly sub = new Subscription();
 
   readonly rows = signal<ViajeProveedorRow[]>([]);
@@ -71,6 +72,10 @@ export class MobileProveedorViajesPageComponent implements OnDestroy {
   private filterTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
+    const query = this.route.snapshot.queryParamMap;
+    this.search.set(query.get('search') ?? '');
+    this.cobrado.set(query.get('cobrado') ?? '');
+    this.pagado.set(query.get('pagado_proveedor') ?? '');
     this.load();
   }
 
@@ -89,6 +94,10 @@ export class MobileProveedorViajesPageComponent implements OnDestroy {
           search: this.search().trim(),
           cobrado: this.cobrado(),
           pagado_proveedor: this.pagado(),
+          cliente_ids: this.route.snapshot.queryParamMap.get('cliente_ids') ?? '',
+          proveedor_ids: this.route.snapshot.queryParamMap.get('proveedor_ids') ?? '',
+          numero_semana: this.route.snapshot.queryParamMap.get('numero_semana') ?? '',
+          anio_semana: this.route.snapshot.queryParamMap.get('anio_semana') ?? '',
           page: this.page(),
           limit: this.limit()
         })

@@ -35,6 +35,31 @@ describe('asistente', () => {
     assert.equal(next.agrupar_por, 'vehiculo');
   });
 
+  it('conserva filtros de entidades al continuar un analisis', () => {
+    const next = __testing.parseAnalyticsPlan(
+      'Ahora la semana 23',
+      __testing.normalizeText('Ahora la semana 23'),
+      {},
+      {
+        metrica: 'valor_a_facturar',
+        agrupar_por: 'vehiculo',
+        operacion: 'suma',
+        orden: 'desc',
+        limite: 5,
+        semana: 22,
+        anio: 2026,
+        cliente_id: '10',
+        cliente_nombre: 'JIMMY CALDERON',
+        destino: 'vinces'
+      }
+    );
+
+    assert.equal(next.semana, 23);
+    assert.equal(next.cliente_id, '10');
+    assert.equal(next.cliente_nombre, 'JIMMY CALDERON');
+    assert.equal(next.destino, 'vinces');
+  });
+
   it('interpreta cuanto gano un conductor como pago semanal', () => {
     const plan = __testing.parseAnalyticsPlan(
       'Cuanto gano Harold en la semana 26 de 2026',
@@ -116,7 +141,7 @@ describe('asistente', () => {
         respuesta: 'Voy a abrir el formulario para crear un nuevo viaje.',
         action: {
           label: 'Nuevo viaje',
-          route: '/app/viajes',
+          route: '/app/reportes',
           query: { new: '1' },
           operacion: 'abrir'
         }
@@ -129,6 +154,27 @@ describe('asistente', () => {
         'abrir_formulario'
       )?.action.route,
       '/app/clientes'
+    );
+    assert.equal(
+      __testing.openCreateFormAction(
+        __testing.normalizeText('Crea un viaje de proveedor'),
+        'abrir_formulario'
+      )?.action.route,
+      '/app/proveedores/transporte'
+    );
+    assert.equal(
+      __testing.openCreateFormAction(
+        __testing.normalizeText('¿Puedes crear un nuevo viaje?'),
+        'preparar_viaje'
+      )?.action.route,
+      '/app/reportes'
+    );
+    assert.equal(
+      __testing.openCreateFormAction(
+        __testing.normalizeText('Crea un viaje para Transpalfra a Vinces mañana'),
+        'preparar_viaje'
+      ),
+      null
     );
   });
 
@@ -143,6 +189,18 @@ describe('asistente', () => {
       __testing.assistantRecordId('actualiza mantenimiento #15', 'mantenimiento'),
       '15'
     );
+  });
+
+  it('interpreta cantidades para consultas de registros recientes', () => {
+    assert.equal(__testing.parseRequestedCount('dame los tres ultimos viajes de darwin'), 3);
+    assert.equal(__testing.parseRequestedCount('muestra los 5 ultimos viajes'), 5);
+    assert.equal(__testing.parseRequestedCount('cual fue el ultimo viaje'), 1);
+  });
+
+  it('distingue pagos al proveedor de cobros al cliente', () => {
+    assert.equal(__testing.parseProviderPaymentFilter('solo los pendientes de pago'), false);
+    assert.equal(__testing.parseProviderPaymentFilter('ahora los ya pagados'), true);
+    assert.equal(__testing.parseProviderPaymentFilter('solo por cobrar'), undefined);
   });
 
   it('separa guías por coma o guion', () => {
@@ -160,6 +218,33 @@ describe('asistente', () => {
     assert.equal(
       __testing.parseNamedMoneyValue('precio 350, viaticos 40', ['viatico', 'viaticos']),
       '40'
+    );
+    assert.equal(
+      __testing.parseMoneyValue('cambio de aceite por 230 dolares'),
+      '230'
+    );
+  });
+
+  it('pide elegir cuando varios tipos de mantenimiento coinciden', () => {
+    const matches = __testing.rankTipoMantenimientoMatches(
+      [
+        { nombre: 'CAMBIO ACEITE CAJA Y CORONA' },
+        { nombre: 'CAMBIO ACEITE MOTOR 20.000 KM' },
+        { nombre: 'CAMBIO DE ACEITE MOTOR 10.000 KM' },
+        { nombre: 'CAMBIO DE LLANTAS' }
+      ],
+      __testing.normalizeText(
+        'crea un mantenimiento en el vehicolo oaa1227, cambio de aceite por 230 dolares'
+      )
+    );
+
+    assert.deepEqual(
+      matches.map((item) => item.nombre),
+      [
+        'CAMBIO ACEITE CAJA Y CORONA',
+        'CAMBIO ACEITE MOTOR 20.000 KM',
+        'CAMBIO DE ACEITE MOTOR 10.000 KM'
+      ]
     );
   });
 
@@ -204,6 +289,50 @@ describe('asistente', () => {
         advertencias: []
       }),
       ['ruta/precio', 'viaticos']
+    );
+  });
+
+  it('resuelve nombres y destinos para consultar el ultimo viaje', () => {
+    const conductores = [
+      { id: '1', nombre: 'DARWIN ALVAREZ' },
+      { id: '2', nombre: 'VICENTE RAMIREZ' }
+    ];
+
+    assert.deepEqual(
+      __testing.catalogMatchesByName(
+        conductores,
+        'cual fue el ultimo viaje de darwin'
+      ),
+      [{ id: '1', nombre: 'DARWIN ALVAREZ' }]
+    );
+    assert.equal(
+      __testing.destinationSearchFromMessage(
+        'cual fue el ultimo viaje de darwin a vinces'
+      ),
+      'vinces'
+    );
+    assert.equal(
+      __testing.destinationSearchFromMessage(
+        'ultimo viaje del oaa5313',
+        'San Juan'
+      ),
+      'san juan'
+    );
+    assert.equal(
+      __testing.latestTripSubjectFromMessage(
+        'cual fue el ultimo viaje de darwin a vinces'
+      ),
+      'darwin'
+    );
+    assert.equal(
+      __testing.latestTripSubjectFromMessage(
+        'dame los tres ultimos viajes de darwin'
+      ),
+      'darwin'
+    );
+    assert.equal(
+      __testing.latestTripSubjectFromMessage('cual fue el ultimo viaje a san juan'),
+      ''
     );
   });
 });

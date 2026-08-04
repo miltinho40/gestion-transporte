@@ -598,7 +598,7 @@ export class WeeklyClosurePageComponent implements OnDestroy {
   }
 
   editarActividad(item: ActividadSemanalItem) {
-    const route = item.sourceType === 'viaje' ? '/app/viajes' : '/app/mantenimientos';
+    const route = item.sourceType === 'viaje' ? '/app/reportes' : '/app/mantenimientos';
     void this.router.navigate([route], {
       queryParams: {
         edit: item.sourceId,
@@ -612,7 +612,7 @@ export class WeeklyClosurePageComponent implements OnDestroy {
       return;
     }
 
-    const route = alerta.source_type === 'viaje' ? '/app/viajes' : '/app/mantenimientos';
+    const route = alerta.source_type === 'viaje' ? '/app/reportes' : '/app/mantenimientos';
     void this.router.navigate([route], {
       queryParams: {
         edit: alerta.source_id,

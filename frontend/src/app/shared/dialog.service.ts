@@ -19,6 +19,16 @@ interface SupportPromptOptions {
   defaultDate?: string;
 }
 
+interface TextPromptOptions {
+  title: string;
+  text?: string;
+  label?: string;
+  placeholder?: string;
+  confirmText?: string;
+  value?: string;
+  maxLength?: number;
+}
+
 export interface SupportPromptResult {
   fecha: string;
   soporte: string | null;
@@ -114,5 +124,35 @@ export class DialogService {
     });
 
     return result.isConfirmed ? result.value ?? null : null;
+  }
+
+  async textPrompt(options: TextPromptOptions): Promise<string | null> {
+    const result = await Swal.fire<string>({
+      title: options.title,
+      text: options.text,
+      input: 'textarea',
+      inputLabel: options.label,
+      inputPlaceholder: options.placeholder,
+      inputValue: options.value ?? '',
+      inputAttributes: {
+        maxlength: String(options.maxLength ?? 1200),
+        autocapitalize: 'sentences'
+      },
+      showCancelButton: true,
+      confirmButtonText: options.confirmText ?? 'Guardar',
+      cancelButtonText: 'Cancelar',
+      reverseButtons: true,
+      focusCancel: true,
+      heightAuto: false,
+      buttonsStyling: false,
+      customClass: {
+        confirmButton: 'btn btn-primary',
+        cancelButton: 'btn btn-outline-secondary me-2',
+        popup: 'app-alert-modal'
+      },
+      preConfirm: (value) => String(value ?? '').trim()
+    });
+
+    return result.isConfirmed ? result.value ?? '' : null;
   }
 }

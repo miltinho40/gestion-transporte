@@ -22,7 +22,7 @@ describe('memoria del asistente', () => {
         actions: [
           {
             label: 'Guardar viaje',
-            route: '/app/viajes',
+            route: '/app/reportes',
             query: {},
             operacion: 'guardar'
           }
@@ -40,7 +40,7 @@ describe('memoria del asistente', () => {
       },
       action: {
         label: 'Guardar viaje',
-        route: '/app/viajes',
+        route: '/app/reportes',
         query: {},
         operacion: 'guardar'
       }
@@ -65,6 +65,22 @@ describe('memoria del asistente', () => {
         },
         { tipo: 'accion', respuesta: 'Guardado' },
         { draft: { tipo: 'viaje' } }
+      ),
+      Prisma.JsonNull
+    );
+  });
+
+  it('limpia filtros anteriores cuando una consulta cambia de tema', () => {
+    assert.equal(
+      contextForNextMessage(
+        { mensaje: 'Muestra mantenimientos', canal: 'web' },
+        { tipo: 'consulta', respuesta: 'Resumen de mantenimientos' },
+        {
+          consulta: {
+            tipo: 'viajes',
+            filtros: { cliente_id: '10', semana: 22 }
+          }
+        }
       ),
       Prisma.JsonNull
     );

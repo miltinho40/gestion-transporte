@@ -85,6 +85,31 @@ describe('interprete hibrido del asistente', () => {
     assert.equal(interpretation.usage?.totalTokens, 150);
   });
 
+  it('extrae el conductor al consultar el ultimo viaje', async () => {
+    const interpretation = await interpretAssistantMessageWithClient(
+      propietario,
+      {
+        mensaje: 'Cual fue el ultimo viaje de Darwin?',
+        canal: 'web'
+      },
+      {
+        responses: {
+          create: async () => ({
+            output_text: JSON.stringify({
+              tool: 'consultar_viajes',
+              canonical_message: 'Cual fue el ultimo viaje del conductor Darwin',
+              confidence: 0.97,
+              parameters: [{ name: 'conductor', value: 'Darwin' }]
+            })
+          })
+        }
+      }
+    );
+
+    assert.equal(interpretation.tool.name, 'consultar_viajes');
+    assert.equal(interpretation.parameters?.conductor, 'Darwin');
+  });
+
   it('usa reglas cuando la confianza del modelo es baja', async () => {
     const interpretation = await interpretAssistantMessageWithClient(
       propietario,
@@ -106,11 +131,11 @@ describe('interprete hibrido del asistente', () => {
     );
 
     assert.equal(interpretation.provider, 'rules');
-    assert.equal(interpretation.tool.name, 'consultar_viajes_pendientes');
+    assert.equal(interpretation.tool.name, 'consultar_viajes');
     assert.equal(interpretation.fallbackReason, 'confianza_baja');
   });
 
-  it('rechaza una herramienta que el rol no tiene disponible', async () => {
+  it('rechaza que el modelo cambie una consulta de proveedor a flota propia', async () => {
     const interpretation = await interpretAssistantMessageWithClient(
       {
         usuario_id: '30',
@@ -128,7 +153,8 @@ describe('interprete hibrido del asistente', () => {
             output_text: JSON.stringify({
               tool: 'consultar_viajes',
               canonical_message: 'Muestrame viajes propios',
-              confidence: 0.99
+              confidence: 0.99,
+              parameters: [{ name: 'origen_viajes', value: 'propios' }]
             })
           })
         }
@@ -136,8 +162,8 @@ describe('interprete hibrido del asistente', () => {
     );
 
     assert.equal(interpretation.provider, 'rules');
-    assert.equal(interpretation.tool.name, 'consultar_viajes_proveedor');
-    assert.equal(interpretation.fallbackReason, 'herramienta_no_permitida');
+    assert.equal(interpretation.tool.name, 'consultar_viajes');
+    assert.equal(interpretation.fallbackReason, 'alcance_no_permitido');
   });
 
   it('no envia identificadores internos sin anonimizar al modelo', async () => {
@@ -172,6 +198,47 @@ describe('interprete hibrido del asistente', () => {
     assert.doesNotMatch(requestText, /123456789|987654321/);
   });
 
+  it('incluye ejemplos aprobados del propietario en las instrucciones', async () => {
+    let requestText = '';
+
+    await interpretAssistantMessageWithClient(
+      propietario,
+      {
+        mensaje: 'Dame los tres ultimos viajes de Darwin',
+        canal: 'web'
+      },
+      {
+        responses: {
+          create: async (params) => {
+            requestText = JSON.stringify(params);
+            return {
+              output_text: JSON.stringify({
+                tool: 'consultar_viajes',
+                canonical_message: 'Consultar tres viajes del conductor Darwin',
+                confidence: 0.98,
+                parameters: [
+                  { name: 'conductor', value: 'Darwin' },
+                  { name: 'limite', value: '3' }
+                ]
+              })
+            };
+          }
+        }
+      },
+      [
+        {
+          mensaje: 'Dame los tres ultimos viajes de [CONDUCTOR]',
+          correccion: 'Consultar tres viajes del conductor [CONDUCTOR]',
+          herramienta: 'consultar_viajes',
+          parametros: { limite: '3' }
+        }
+      ]
+    );
+
+    assert.match(requestText, /Ejemplos aprobados del propietario actual/);
+    assert.match(requestText, /\[CONDUCTOR\]/);
+  });
+
   it('no consulta al modelo al confirmar un borrador', async () => {
     let calls = 0;
     __testing.setOpenAIClient({
@@ -196,7 +263,7 @@ describe('interprete hibrido del asistente', () => {
         },
         action: {
           label: 'Guardar viaje',
-          route: '/app/viajes',
+          route: '/app/reportes',
           query: {},
           operacion: 'guardar'
         }
@@ -223,7 +290,7 @@ describe('interprete hibrido del asistente', () => {
     });
 
     assert.equal(interpretation.provider, 'rules');
-    assert.equal(interpretation.tool.name, 'consultar_viajes_pendientes');
+    assert.equal(interpretation.tool.name, 'consultar_viajes');
     assert.equal(
       interpretation.fallbackReason,
       'servicio_openai_no_disponible'

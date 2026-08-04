@@ -5,22 +5,21 @@ import type { AsistenteMensajeInput } from './asistente.schema.js';
 export type AssistantToolName =
   | 'interpretar_solicitud'
   | 'consultar_viajes'
-  | 'consultar_viajes_pendientes'
-  | 'consultar_viajes_proveedor'
   | 'consultar_mantenimientos'
-  | 'consultar_cierre_semanal'
   | 'analizar_operacion'
   | 'abrir_formulario'
   | 'preparar_cliente'
   | 'preparar_vehiculo'
   | 'preparar_conductor'
   | 'preparar_viaje'
+  | 'preparar_viaje_proveedor'
   | 'preparar_mantenimiento'
   | 'preparar_edicion'
   | 'preparar_preferencia'
   | 'consultar_preferencias'
   | 'cancelar_borrador'
   | 'aplicar_borrador'
+  | 'aplicar_viaje_proveedor'
   | 'aplicar_preferencia';
 
 export interface AssistantToolDefinition {
@@ -41,28 +40,10 @@ export const assistantToolCatalog: Record<AssistantToolName, AssistantToolDefini
     name: 'consultar_viajes',
     category: 'lectura',
     requiresConfirmation: false,
-    scope: 'propietario'
-  },
-  consultar_viajes_pendientes: {
-    name: 'consultar_viajes_pendientes',
-    category: 'lectura',
-    requiresConfirmation: false,
-    scope: 'propietario'
-  },
-  consultar_viajes_proveedor: {
-    name: 'consultar_viajes_proveedor',
-    category: 'lectura',
-    requiresConfirmation: false,
-    scope: 'intermediario'
+    scope: 'cualquiera'
   },
   consultar_mantenimientos: {
     name: 'consultar_mantenimientos',
-    category: 'lectura',
-    requiresConfirmation: false,
-    scope: 'propietario'
-  },
-  consultar_cierre_semanal: {
-    name: 'consultar_cierre_semanal',
     category: 'lectura',
     requiresConfirmation: false,
     scope: 'propietario'
@@ -103,6 +84,12 @@ export const assistantToolCatalog: Record<AssistantToolName, AssistantToolDefini
     requiresConfirmation: false,
     scope: 'propietario'
   },
+  preparar_viaje_proveedor: {
+    name: 'preparar_viaje_proveedor',
+    category: 'preparacion',
+    requiresConfirmation: false,
+    scope: 'intermediario'
+  },
   preparar_mantenimiento: {
     name: 'preparar_mantenimiento',
     category: 'preparacion',
@@ -139,6 +126,12 @@ export const assistantToolCatalog: Record<AssistantToolName, AssistantToolDefini
     requiresConfirmation: true,
     scope: 'propietario'
   },
+  aplicar_viaje_proveedor: {
+    name: 'aplicar_viaje_proveedor',
+    category: 'escritura',
+    requiresConfirmation: true,
+    scope: 'intermediario'
+  },
   aplicar_preferencia: {
     name: 'aplicar_preferencia',
     category: 'escritura',
@@ -146,6 +139,11 @@ export const assistantToolCatalog: Record<AssistantToolName, AssistantToolDefini
     scope: 'cualquiera'
   }
 };
+
+export const requestsEmptyCreateForm = (normalized: string) =>
+  /^[¿?¡!]*\s*(?:(?:puedes|podrias|quiero|deseo|necesito)\s+)?(?:crear|crea|agregar|agrega|registrar|registra|abrir|abre)\s+(?:un|una)?\s*(?:nuevo|nueva)?\s*(?:viaje(?:\s+de\s+proveedor)?|mantenimiento|cliente|vehiculo|carro|conductor)(?:\s+nuevo|\s+nueva)?\s*[?.!]*$/.test(
+    normalized
+  );
 
 export const isAssistantToolAllowed = (
   tool: AssistantToolDefinition,
@@ -202,7 +200,9 @@ export const selectAssistantTool = (input: AsistenteMensajeInput): AssistantTool
   }
 
   if (input.contexto?.confirmar && input.contexto.action?.operacion) {
-    return assistantToolCatalog.aplicar_borrador;
+    return input.contexto.draft?.tipo === 'viaje_proveedor'
+      ? assistantToolCatalog.aplicar_viaje_proveedor
+      : assistantToolCatalog.aplicar_borrador;
   }
 
   if (input.contexto?.draft?.tipo === 'preferencia') {
@@ -211,6 +211,10 @@ export const selectAssistantTool = (input: AsistenteMensajeInput): AssistantTool
 
   if (input.contexto?.draft?.tipo === 'viaje') {
     return assistantToolCatalog.preparar_viaje;
+  }
+
+  if (input.contexto?.draft?.tipo === 'viaje_proveedor') {
+    return assistantToolCatalog.preparar_viaje_proveedor;
   }
 
   if (input.contexto?.draft?.tipo === 'cliente') {
@@ -252,41 +256,57 @@ export const selectAssistantTool = (input: AsistenteMensajeInput): AssistantTool
 
   if (
     /(abre|abrir|muestra|mostrar).*(modal|formulario|pantalla|nuevo|nueva)/.test(normalized) &&
-    /(viaje|cliente|vehiculo|conductor)/.test(normalized)
+    /(viaje|cliente|vehiculo|conductor|proveedor)/.test(normalized)
   ) {
     return assistantToolCatalog.abrir_formulario;
   }
 
-  if (/(crea|crear|registra|registrar|agrega|agregar).*(mantenimiento)/.test(normalized)) {
-    return assistantToolCatalog.preparar_mantenimiento;
+  if (requestsEmptyCreateForm(normalized)) {
+    return assistantToolCatalog.abrir_formulario;
   }
 
-  if (/(crea|crear|registra|registrar|agrega|agregar).*(cliente)/.test(normalized)) {
-    return assistantToolCatalog.preparar_cliente;
-  }
+  const creationVerb = /\b(crea|crear|registra|registrar|agrega|agregar)\b/.exec(normalized);
+  if (creationVerb?.index !== undefined) {
+    const subject = normalized.slice(creationVerb.index + creationVerb[0].length);
+    if (/\bviaje\b.*\bproveedor(?:es)?\b|\bproveedor(?:es)?\b.*\bviaje\b/.test(subject)) {
+      return assistantToolCatalog.preparar_viaje_proveedor;
+    }
+    const targets: Array<{ pattern: RegExp; tool: AssistantToolDefinition }> = [
+      { pattern: /\bmantenimiento\b/, tool: assistantToolCatalog.preparar_mantenimiento },
+      { pattern: /\bviaje\b/, tool: assistantToolCatalog.preparar_viaje },
+      { pattern: /\bcliente\b/, tool: assistantToolCatalog.preparar_cliente },
+      { pattern: /\b(vehiculo|carro|camion)\b/, tool: assistantToolCatalog.preparar_vehiculo },
+      {
+        pattern: /\b(conductor|chofer|transportista)\b/,
+        tool: assistantToolCatalog.preparar_conductor
+      }
+    ];
+    const target = targets
+      .map((candidate) => ({ ...candidate, index: subject.search(candidate.pattern) }))
+      .filter((candidate) => candidate.index >= 0)
+      .sort((left, right) => left.index - right.index)[0];
 
-  if (/(crea|crear|registra|registrar|agrega|agregar).*(vehiculo|carro|camion)/.test(normalized)) {
-    return assistantToolCatalog.preparar_vehiculo;
-  }
-
-  if (/(crea|crear|registra|registrar|agrega|agregar).*(conductor|chofer|transportista)/.test(normalized)) {
-    return assistantToolCatalog.preparar_conductor;
-  }
-
-  if (/(crea|crear|registra|registrar|agrega|agregar).*(viaje)/.test(normalized)) {
-    return assistantToolCatalog.preparar_viaje;
+    if (target) return target.tool;
   }
 
   if (normalized.includes('proveedor')) {
-    return assistantToolCatalog.consultar_viajes_proveedor;
+    return assistantToolCatalog.consultar_viajes;
+  }
+
+  if (input.contexto?.consulta?.tipo === 'viajes_proveedor') {
+    return assistantToolCatalog.consultar_viajes;
   }
 
   if (normalized.includes('mantenimiento') || normalized.includes('aceite')) {
     return assistantToolCatalog.consultar_mantenimientos;
   }
 
+  if (input.contexto?.consulta?.tipo === 'mantenimientos') {
+    return assistantToolCatalog.consultar_mantenimientos;
+  }
+
   if (normalized.includes('cierre')) {
-    return assistantToolCatalog.consultar_cierre_semanal;
+    return assistantToolCatalog.analizar_operacion;
   }
 
   if (
@@ -299,17 +319,23 @@ export const selectAssistantTool = (input: AsistenteMensajeInput): AssistantTool
     return assistantToolCatalog.analizar_operacion;
   }
 
-  if (input.contexto?.consulta?.tipo === 'analitica_viajes') {
-    return assistantToolCatalog.analizar_operacion;
-  }
-
+  const explicitlyRequestsTravelList =
+    /\b(muestra|muestrame|dame|lista|listar|ver)\b.*\bviajes?\b/.test(normalized) &&
+    !/\b(mas|mayor|menor|promedio|top|ranking|compara|comparar)\b/.test(normalized);
   if (
     normalized.includes('pendiente') ||
     normalized.includes('sin cobrar') ||
     normalized.includes('por cobrar') ||
     normalized.includes('cobro')
   ) {
-    return assistantToolCatalog.consultar_viajes_pendientes;
+    return assistantToolCatalog.consultar_viajes;
+  }
+  if (explicitlyRequestsTravelList) {
+    return assistantToolCatalog.consultar_viajes;
+  }
+
+  if (input.contexto?.consulta?.tipo === 'analitica_viajes') {
+    return assistantToolCatalog.analizar_operacion;
   }
 
   if (

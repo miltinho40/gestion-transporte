@@ -23,45 +23,60 @@ import { createVehiculo } from '../vehiculos/vehiculos.service.js';
 import { vehiculoCreateSchema } from '../vehiculos/vehiculos.schema.js';
 import { createConductor } from '../conductores/conductores.service.js';
 import { conductorCreateSchema } from '../conductores/conductores.schema.js';
+import { createViajeProveedor } from '../viajes-proveedor/viajes-proveedor.service.js';
+import { viajeProveedorCreateSchema } from '../viajes-proveedor/viajes-proveedor.schema.js';
 import type { AuditContext } from '../../utils/audit.js';
 import { asistenteMensajeSchema } from './asistente.schema.js';
 import type { AsistenteMensajeInput } from './asistente.schema.js';
 import type {
   AssistantExtractedParameters
 } from './asistente.interpreter.js';
+import { requestsEmptyCreateForm } from './asistente.tools.js';
 import type { AssistantToolName } from './asistente.tools.js';
 import {
   resolveAssistantTripDefaults
 } from './asistente.preferences.js';
+import {
+  clearRequestedConversationFilters,
+  commonFiltersForAnalytics,
+  commonFiltersFromAnalytics,
+  conversationFilterLabels,
+  isConversationFollowUp,
+  replaceCommonFiltersInAnalytics,
+  requestsCobradoFilterClear
+} from './asistente.context.js';
 import type {
   AssistantPreferenceRecord
 } from './asistente.preferences.js';
-
-type AssistantEngineInput = AsistenteMensajeInput & {
-  herramienta?: AssistantToolName;
-  entidades?: AssistantExtractedParameters;
-  preferencias?: AssistantPreferenceRecord[];
-};
-
-type AssistantCard = {
-  titulo: string;
-  valor: string;
-  detalle?: string;
-};
-
-type AssistantDraft = {
-  tipo: 'viaje' | 'mantenimiento' | 'cliente' | 'vehiculo' | 'conductor';
-  titulo: string;
-  campos: Record<string, string>;
-  advertencias: string[];
-};
-
-type AssistantAction = {
-  label: string;
-  route: string;
-  query: Record<string, string>;
-  operacion?: 'abrir' | 'guardar' | 'editar';
-};
+import type {
+  AnalyticsAggregation,
+  AnalyticsDimension,
+  AnalyticsMetric,
+  AnalyticsOrder,
+  AssistantAction,
+  AssistantAnalyticsContext,
+  AssistantCard,
+  AssistantDraft,
+  AssistantEngineInput,
+  AssistantMaintenanceQueryContext,
+  AssistantOperationalQueryPlan,
+  AssistantProviderQueryContext,
+  AssistantQueryContext,
+  OperationalQuerySource
+} from './asistente.engine.types.js';
+import { buildOperationalQueryPlan } from './asistente.query-plan.js';
+import {
+  addDays,
+  dateOnly,
+  dateRangeFromMessage,
+  ownerWhere,
+  parseRelativeDate,
+  parseStructuredDate,
+  parseWeek,
+  parseYear,
+  today,
+  viajeSemanaWhere
+} from './asistente.dates.js';
 
 const openCreateFormAction = (
   normalized: string,
@@ -69,11 +84,22 @@ const openCreateFormAction = (
 ): { respuesta: string; action: AssistantAction } | null => {
   const requested =
     tool === 'abrir_formulario' ||
+    requestsEmptyCreateForm(normalized) ||
     (/(abre|abrir|muestra|mostrar).*(modal|formulario|pantalla|nuevo|nueva)/.test(normalized) &&
-      /(viaje|cliente|vehiculo|conductor)/.test(normalized));
+      /(viaje|cliente|vehiculo|conductor|proveedor)/.test(normalized));
   if (!requested) return null;
 
   const targets = [
+    {
+      matches: /\bviajes?\b.*\bproveedor(?:es)?\b|\bproveedor(?:es)?\b.*\bviajes?\b/,
+      singular: 'viaje de proveedor',
+      route: '/app/proveedores/transporte'
+    },
+    {
+      matches: /\bmantenimientos?\b/,
+      singular: 'mantenimiento',
+      route: '/app/mantenimientos'
+    },
     {
       matches: /\bclientes?\b/,
       singular: 'cliente',
@@ -92,7 +118,7 @@ const openCreateFormAction = (
     {
       matches: /\bviajes?\b/,
       singular: 'viaje',
-      route: '/app/viajes'
+      route: '/app/reportes'
     }
   ] as const;
   const target = targets.find((item) => item.matches.test(normalized));
@@ -108,62 +134,6 @@ const openCreateFormAction = (
     }
   };
 };
-
-type AssistantQueryContext = {
-  tipo: 'viajes';
-  filtros: {
-    cliente_id?: string;
-    cliente_nombre?: string;
-    vehiculo_id?: string;
-    vehiculo_placa?: string;
-    destino?: string;
-    semana?: number;
-    anio?: number;
-    cobrado?: boolean;
-  };
-};
-
-type AnalyticsMetric =
-  | 'valor_a_facturar'
-  | 'precio_viaje'
-  | 'utilidad_viajes'
-  | 'viaticos'
-  | 'cantidad_viajes'
-  | 'pago_conductor';
-type AnalyticsDimension = 'vehiculo' | 'cliente' | 'conductor' | 'destino';
-type AnalyticsAggregation = 'suma' | 'promedio' | 'conteo';
-type AnalyticsOrder = 'asc' | 'desc';
-
-type AssistantAnalyticsContext = {
-  tipo: 'analitica_viajes';
-  filtros: {
-    metrica: AnalyticsMetric;
-    agrupar_por: AnalyticsDimension;
-    operacion: AnalyticsAggregation;
-    orden: AnalyticsOrder;
-    limite: number;
-    semana?: number;
-    anio: number;
-    cobrado?: boolean;
-    conductor_id?: string;
-    conductor_nombre?: string;
-  };
-};
-
-const monthNames = [
-  'enero',
-  'febrero',
-  'marzo',
-  'abril',
-  'mayo',
-  'junio',
-  'julio',
-  'agosto',
-  'septiembre',
-  'octubre',
-  'noviembre',
-  'diciembre'
-] as const;
 
 const MAX_ROUTE_SUGGESTIONS = 10;
 
@@ -225,119 +195,6 @@ const toMoney = (value: number | string | Prisma.Decimal | null | undefined) =>
 const money = (value: number | string | Prisma.Decimal | null | undefined) =>
   `$ ${toMoney(value).toFixed(2)}`;
 
-const dateOnly = (value: Date | null | undefined) => value?.toISOString().slice(0, 10) ?? '-';
-
-const today = () => {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Guayaquil',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(new Date());
-  const value = Object.fromEntries(
-    parts
-      .filter((part) => part.type !== 'literal')
-      .map((part) => [part.type, part.value])
-  );
-  return new Date(`${value.year}-${value.month}-${value.day}T00:00:00.000Z`);
-};
-
-const startOfMonth = (date: Date) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-
-const endOfMonth = (date: Date) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0));
-
-const parseWeek = (message: string) => {
-  const match = message.match(/(?:semana|sem)\s*#?\s*(\d{1,2})/i);
-  const week = Number(match?.[1]);
-  return Number.isInteger(week) && week >= 1 && week <= 53 ? week : null;
-};
-
-const parseYear = (message: string) => {
-  const match = message.match(/\b(20\d{2})\b/);
-  const year = Number(match?.[1]);
-  return Number.isInteger(year) ? year : today().getUTCFullYear();
-};
-
-const addDays = (date: Date, days: number) => {
-  const next = new Date(date);
-  next.setUTCDate(next.getUTCDate() + days);
-  return next;
-};
-
-const parseRelativeDate = (normalized: string) => {
-  const base = today();
-  if (normalized.includes('pasado manana') || normalized.includes('pasado maniana')) {
-    return addDays(base, 2);
-  }
-  if (normalized.includes('manana') || normalized.includes('maniana')) {
-    return addDays(base, 1);
-  }
-  if (normalized.includes('ayer')) {
-    return addDays(base, -1);
-  }
-  return base;
-};
-
-const parseStructuredDate = (value: string | undefined, fallback: Date) => {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return fallback;
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
-};
-
-const parseMonth = (normalized: string) => {
-  const index = monthNames.findIndex((name) => normalized.includes(name));
-  if (index >= 0) return index;
-
-  if (normalized.includes('mes pasado')) {
-    const current = today();
-    return new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - 1, 1)).getUTCMonth();
-  }
-
-  return today().getUTCMonth();
-};
-
-const dateRangeFromMessage = (message: string, normalized: string) => {
-  const week = parseWeek(message);
-  const year = parseYear(message);
-
-  if (week) {
-    const { fechaInicio, fechaFin } = getIsoWeekRange(year, week);
-    return {
-      label: `semana ${week} de ${year}`,
-      fechaInicio,
-      fechaFin
-    };
-  }
-
-  const month = parseMonth(normalized);
-  const date = new Date(Date.UTC(year, month, 1));
-  return {
-    label: `${monthNames[month]} de ${year}`,
-    fechaInicio: startOfMonth(date),
-    fechaFin: endOfMonth(date)
-  };
-};
-
-const viajeSemanaWhere = (fechaInicio: Date, fechaFin: Date): Prisma.ViajeWhereInput => ({
-  OR: [
-    { fecha_llegada: { gte: fechaInicio, lte: fechaFin } },
-    { fecha_llegada: null, fecha_salida: { gte: fechaInicio, lte: fechaFin } }
-  ]
-});
-
-const viajeProveedorSemanaWhere = (
-  fechaInicio: Date,
-  fechaFin: Date
-): Prisma.ViajeProveedorWhereInput => ({
-  OR: [
-    { fecha_llegada: { gte: fechaInicio, lte: fechaFin } },
-    { fecha_llegada: null, fecha_salida: { gte: fechaInicio, lte: fechaFin } }
-  ]
-});
-
-const ownerWhere = (propietarioId: bigint | null) =>
-  propietarioId ? { propietario_id: propietarioId } : {};
-
 const topRowsText = (items: string[]) => (items.length ? items.join('\n') : 'No encontré registros para mostrar.');
 
 const includesAll = (text: string, words: string[]) => words.every((word) => text.includes(word));
@@ -362,6 +219,19 @@ const findCliente = async (propietarioId: bigint | null, normalized: string) => 
       .filter((word) => word.length >= 4)
       .some((word) => normalized.includes(word))
   );
+};
+
+const findProveedor = async (propietarioId: bigint | null, normalized: string) => {
+  const proveedores = await prisma.proveedor.findMany({
+    where: {
+      ...ownerWhere(propietarioId),
+      activo: true
+    },
+    orderBy: { nombre: 'asc' },
+    take: 200
+  });
+
+  return catalogMatchesByName(proveedores, normalized)[0];
 };
 
 const findConductor = async (propietarioId: bigint | null, normalized: string) => {
@@ -391,6 +261,46 @@ const findVehiculo = async (propietarioId: bigint | null, normalized: string) =>
 
   return vehiculos.find((vehiculo) => normalized.includes(normalizeText(vehiculo.placa)));
 };
+
+const catalogMatchesByName = <T extends { nombre: string }>(items: T[], searchText: string) => {
+  const search = normalizeText(searchText);
+  if (!search) return [];
+
+  const matches = items.filter((item) => {
+    const normalizedName = normalizeText(item.nombre);
+    const nameWords = normalizedName.split(/\s+/).filter((word) => word.length >= 4);
+    return search.includes(normalizedName) || nameWords.some((word) => search.includes(word));
+  });
+  const fullMatches = matches.filter((item) => search.includes(normalizeText(item.nombre)));
+
+  return fullMatches.length ? fullMatches : matches;
+};
+
+const catalogMatchesByPlate = <T extends { placa: string }>(items: T[], searchText: string) => {
+  const search = normalizeText(searchText).replace(/[^a-z0-9]/g, '');
+  if (!search) return [];
+
+  return items.filter((item) => search.includes(normalizeText(item.placa).replace(/[^a-z0-9]/g, '')));
+};
+
+const destinationSearchFromMessage = (
+  normalized: string,
+  explicitDestination?: string
+) => {
+  if (explicitDestination?.trim()) return normalizeText(explicitDestination);
+
+  const destination =
+    normalized.match(
+      /\b(?:a|hacia|destino)\s+(.+?)(?=\s+(?:de|del|con|para|en|semana|cliente|vehiculo|carro|conductor|chofer|cobrado|cobrados|por cobrar)\b|$)/
+    )?.[1]?.trim() ?? '';
+
+  return /^(facturar|pagar|cobrar)\b/.test(destination) ? '' : destination;
+};
+
+const latestTripSubjectFromMessage = (normalized: string) =>
+  normalized.match(
+    /\bultim(?:o|os|a|as)\s+viajes?\s+(?:de|del)\s+(.+?)(?=\s+(?:a|hacia|destino)\b|$)/
+  )?.[1]?.trim() ?? '';
 
 const latestConductorForVehicle = async (
   propietarioId: bigint | null,
@@ -531,7 +441,40 @@ const narrowTarifaRutaMatches = (
   );
 };
 
-const findTipoMantenimiento = async (propietarioId: bigint | null, normalized: string) => {
+const rankTipoMantenimientoMatches = <T extends { nombre: string }>(
+  tipos: T[],
+  normalized: string
+) => {
+  const exact = tipos.filter((tipo) => normalized.includes(normalizeText(tipo.nombre)));
+  if (exact.length) return exact;
+
+  const genericWords = new Set([
+    'cambio',
+    'mantenimiento',
+    'preventivo',
+    'correctivo',
+    'servicio',
+    'realizado'
+  ]);
+  const scored = tipos.map((tipo) => {
+    const words = normalizeText(tipo.nombre)
+      .split(/[^a-z0-9]+/)
+      .filter((word) => word.length >= 4 && !genericWords.has(word));
+    return {
+      tipo,
+      score: words.filter((word) => normalized.includes(word)).length
+    };
+  });
+  const highest = Math.max(0, ...scored.map((item) => item.score));
+  return highest
+    ? scored.filter((item) => item.score === highest).map((item) => item.tipo)
+    : [];
+};
+
+const findTipoMantenimientoMatches = async (
+  propietarioId: bigint | null,
+  normalized: string
+) => {
   const tipos = await prisma.tipoMantenimiento.findMany({
     where: propietarioId
       ? {
@@ -543,12 +486,18 @@ const findTipoMantenimiento = async (propietarioId: bigint | null, normalized: s
     take: 200
   });
 
-  return tipos.find((tipo) =>
-    normalizeText(tipo.nombre)
-      .split(/\s+/)
-      .filter((word) => word.length >= 4)
-      .some((word) => normalized.includes(word))
-  );
+  return rankTipoMantenimientoMatches(tipos, normalized);
+};
+
+const selectTipoMantenimiento = <T extends { nombre: string }>(matches: T[], normalized: string) => {
+  if (matches.length === 1) return matches[0];
+  const exact = matches.filter((tipo) => normalized.includes(normalizeText(tipo.nombre)));
+  return exact.length === 1 ? exact[0] : undefined;
+};
+
+const findTipoMantenimiento = async (propietarioId: bigint | null, normalized: string) => {
+  const matches = await findTipoMantenimientoMatches(propietarioId, normalized);
+  return selectTipoMantenimiento(matches, normalized);
 };
 
 const parseGuides = (message: string) => {
@@ -844,6 +793,8 @@ const actionsForDraft = (action: AssistantAction, tipo: AssistantDraft['tipo'], 
           label:
             tipo === 'viaje'
               ? 'Guardar viaje'
+              : tipo === 'viaje_proveedor'
+                ? 'Guardar viaje de proveedor'
               : tipo === 'mantenimiento'
                 ? 'Guardar mantenimiento'
                 : tipo === 'cliente'
@@ -905,7 +856,7 @@ const buildEditDraftFromText = async (
       } satisfies AssistantDraft,
       action: {
         label: 'Confirmar modificación',
-        route: '/app/viajes',
+        route: '/app/reportes',
         query: { id, ...changes },
         operacion: 'editar' as const
       }
@@ -958,6 +909,14 @@ const missingFromDraft = (draft: AssistantDraft) =>
         draft.campos['conductor'] === 'Por confirmar' ? 'conductor' : '',
         draft.campos['viaticos'] === 'Por confirmar' ? 'viaticos' : ''
       ].filter((item): item is string => Boolean(item))
+    : draft.tipo === 'viaje_proveedor'
+      ? [
+          draft.campos['cliente'] === 'Por confirmar' ? 'cliente' : '',
+          draft.campos['proveedor'] === 'Por confirmar' ? 'proveedor' : '',
+          draft.campos['ruta'] === 'Por confirmar' ? 'ruta/precio' : '',
+          draft.campos['precio_viaje'] === 'Por confirmar' ? 'precio' : '',
+          draft.campos['viaticos'] === 'Por confirmar' ? 'viaticos' : ''
+        ].filter((item): item is string => Boolean(item))
     : draft.tipo === 'mantenimiento'
       ? [
         draft.campos['vehiculo'] === 'Por confirmar' ? 'vehiculo' : '',
@@ -1325,6 +1284,65 @@ const buildViajeDraftFromQuery = async (query: Record<string, string>) => {
   };
 };
 
+const buildViajeProveedorDraftFromQuery = async (query: Record<string, string>) => {
+  const [cliente, proveedor, tarifa] = await Promise.all([
+    query['cliente_id']
+      ? prisma.cliente.findUnique({ where: { id: BigInt(query['cliente_id']) } })
+      : null,
+    query['proveedor_id']
+      ? prisma.proveedor.findUnique({ where: { id: BigInt(query['proveedor_id']) } })
+      : null,
+    query['tarifa_ruta_id']
+      ? prisma.tarifaRuta.findUnique({
+          where: { id: BigInt(query['tarifa_ruta_id']) },
+          include: { ruta: true, tipo_carga: true }
+        })
+      : null
+  ]);
+  const precio = toMoney(query['precio_viaje']);
+  const porcentajeCliente = toMoney(cliente?.porcentaje_comision);
+  const porcentajeProveedor = toMoney(proveedor?.porcentaje_utilidad);
+  const valorFacturar = precio.minus(precio.times(porcentajeCliente).div(100)).toDecimalPlaces(2);
+  const precioPagar = valorFacturar
+    .minus(valorFacturar.times(porcentajeProveedor).div(100))
+    .toDecimalPlaces(2);
+  const utilidad = valorFacturar.minus(precioPagar).minus(toMoney(query['viaticos'])).toDecimalPlaces(2);
+  const missing = [
+    !query['cliente_id'] ? 'cliente' : '',
+    !query['proveedor_id'] ? 'proveedor' : '',
+    !query['tarifa_ruta_id'] ? 'ruta/precio' : '',
+    !query['precio_viaje'] ? 'precio' : ''
+  ].filter((item): item is string => Boolean(item));
+
+  return {
+    draft: {
+      tipo: 'viaje_proveedor' as const,
+      titulo: 'Borrador de viaje de proveedor',
+      campos: {
+        fecha_salida: query['fecha_salida'] ?? 'Por confirmar',
+        fecha_llegada: query['fecha_llegada'] ?? 'Por confirmar',
+        cliente: cliente?.nombre ?? 'Por confirmar',
+        proveedor: proveedor?.nombre ?? 'Por confirmar',
+        ruta: tarifa ? `${tarifa.ruta.origen} - ${tarifa.ruta.destino}` : 'Por confirmar',
+        tipo_carga: tarifa?.tipo_carga.nombre ?? 'Por confirmar',
+        guias: query['numeros_guia_remision'] ?? 'No indicadas',
+        precio_viaje: query['precio_viaje'] ?? 'Por confirmar',
+        a_facturar: valorFacturar.toFixed(2),
+        a_pagar_proveedor: precioPagar.toFixed(2),
+        viaticos: query['viaticos'] ?? '0',
+        utilidad: utilidad.toFixed(2)
+      },
+      advertencias: [
+        'Aún no guardo el viaje de proveedor desde el chat.',
+        missing.length
+          ? `Falta completar: ${missing.join(', ')}.`
+          : 'Los datos principales están completos y listos para confirmar.'
+      ]
+    } satisfies AssistantDraft,
+    missing
+  };
+};
+
 const buildMantenimientoDraftFromQuery = async (query: Record<string, string>) => {
   const [vehiculo, tipo] = await Promise.all([
     query['vehiculo_id'] ? prisma.vehiculo.findUnique({ where: { id: BigInt(query['vehiculo_id']) } }) : null,
@@ -1442,6 +1460,54 @@ const completeDraftFromContext = async (
     };
   }
 
+  if (contextDraft.tipo === 'viaje_proveedor') {
+    const [cliente, proveedor] = await Promise.all([
+      findCliente(propietarioId, normalized),
+      findProveedor(propietarioId, normalized)
+    ]);
+    const guias = parseGuidesNormalized(input.mensaje);
+    const precio = parseNamedMoneyValue(input.mensaje, [
+      'precio',
+      'flete',
+      'precio viaje',
+      'valor'
+    ]);
+    const viaticos = parseNamedMoneyValue(input.mensaje, ['viatico', 'viaticos']);
+    if (cliente) query['cliente_id'] = String(cliente.id);
+    if (proveedor) query['proveedor_id'] = String(proveedor.id);
+
+    const tarifaMatches = await findTarifaRutaMatches(propietarioId, normalized);
+    const tarifa = selectTarifaRuta(tarifaMatches, normalized);
+    if (tarifa) {
+      query['tarifa_ruta_id'] = String(tarifa.id);
+      if (!query['precio_viaje']) query['precio_viaje'] = tarifa.precio.toFixed(2);
+    }
+    if (precio) query['precio_viaje'] = precio;
+    if (viaticos) query['viaticos'] = viaticos;
+    if (guias.length) query['numeros_guia_remision'] = guias.join(', ');
+
+    const result = await buildViajeProveedorDraftFromQuery(query);
+    const routeSuggestions =
+      !query['tarifa_ruta_id'] && tarifaMatches.length > 1
+        ? tarifaMatches.slice(0, MAX_ROUTE_SUGGESTIONS).map((item) => `Ruta: ${tarifaOptionLabel(item)}`)
+        : [];
+    return {
+      draft: routeSuggestions.length
+        ? {
+            ...result.draft,
+            advertencias: [
+              'Aún no guardo el viaje de proveedor desde el chat.',
+              `Encontré ${tarifaMatches.length} precios que coinciden. Elige una ruta/precio.`
+            ]
+          }
+        : result.draft,
+      action: { ...contextAction, query },
+      sugerencias: routeSuggestions.length
+        ? routeSuggestions
+        : [nextMissingSuggestion(result.missing), 'Abrir viaje prellenado']
+    };
+  }
+
   if (contextDraft.tipo === 'viaje') {
     const [cliente, conductor, vehiculo] = await Promise.all([
       findCliente(propietarioId, normalized),
@@ -1526,7 +1592,11 @@ const completeDraftFromContext = async (
     findVehiculo(propietarioId, normalized),
     findTipoMantenimiento(propietarioId, normalized)
   ]);
-  const costo = parseNamedMoneyValue(input.mensaje, ['costo', 'valor', 'precio']);
+  const costo =
+    parseNamedMoneyValue(input.mensaje, ['costo', 'valor', 'precio']) ||
+    parseMoneyValue(input.mensaje) ||
+    normalizeText(input.mensaje).match(/^\$?\s*(\d+(?:[.,]\d{1,2})?)(?:\s*dolares?)?$/)?.[1]?.replace(',', '.') ||
+    '';
 
   if (vehiculo) query['vehiculo_id'] = String(vehiculo.id);
   if (tipo) query['tipo_mantenimiento_id'] = String(tipo.id);
@@ -1551,6 +1621,68 @@ const buildDraftFromText = async (
   const structuredText = normalizeText(
     [normalized, ...Object.values(entities ?? {})].join(' ')
   );
+
+  if (tool === 'preparar_viaje_proveedor') {
+    const fechaSalida = parseStructuredDate(
+      entities?.fecha_salida,
+      parseRelativeDate(normalized)
+    );
+    const [cliente, proveedor, tarifaMatches] = await Promise.all([
+      findCliente(propietarioId, `${structuredText} ${normalizeText(entities?.cliente)}`),
+      findProveedor(propietarioId, `${structuredText} ${normalizeText(entities?.proveedor)}`),
+      findTarifaRutaMatches(propietarioId, structuredText)
+    ]);
+    const tarifa = selectTarifaRuta(
+      narrowTarifaRutaMatches(tarifaMatches, entities),
+      structuredText
+    );
+    const precio =
+      entities?.precio_flete ??
+      parseNamedMoneyValue(message, ['precio', 'flete', 'precio viaje', 'valor']) ??
+      tarifa?.precio.toFixed(2);
+    const viaticos =
+      entities?.viaticos ??
+      parseNamedMoneyValue(message, ['viatico', 'viaticos']) ??
+      '0';
+    const guias = parseGuidesNormalized(entities?.numeros_guia_remision ?? message);
+    const query: Record<string, string> = {
+      new: '1',
+      fecha_salida: dateOnly(fechaSalida),
+      fecha_llegada: dateOnly(addDays(fechaSalida, 1)),
+      viaticos,
+      estado: 'programado'
+    };
+    if (cliente) query['cliente_id'] = String(cliente.id);
+    if (proveedor) query['proveedor_id'] = String(proveedor.id);
+    if (tarifa) query['tarifa_ruta_id'] = String(tarifa.id);
+    if (precio) query['precio_viaje'] = precio;
+    if (guias.length) query['numeros_guia_remision'] = guias.join(', ');
+
+    const result = await buildViajeProveedorDraftFromQuery(query);
+    const routeSuggestions =
+      !tarifa && tarifaMatches.length > 1
+        ? tarifaMatches.slice(0, MAX_ROUTE_SUGGESTIONS).map((item) => `Ruta: ${tarifaOptionLabel(item)}`)
+        : [];
+    return {
+      draft: routeSuggestions.length
+        ? {
+            ...result.draft,
+            advertencias: [
+              'Aún no guardo el viaje de proveedor desde el chat.',
+              `Encontré ${tarifaMatches.length} precios que coinciden. Elige una ruta/precio.`
+            ]
+          }
+        : result.draft,
+      action: {
+        label: 'Abrir viaje de proveedor prellenado',
+        route: '/app/proveedores/transporte',
+        query
+      },
+      sugerencias: routeSuggestions.length
+        ? routeSuggestions
+        : [nextMissingSuggestion(result.missing), 'Abrir viaje prellenado']
+    };
+  }
 
   if (
     tool === 'preparar_cliente' ||
@@ -1668,16 +1800,19 @@ const buildDraftFromText = async (
       entities?.fecha_mantenimiento,
       parseRelativeDate(structuredText)
     );
-    const [vehiculo, tipo] = await Promise.all([
+    const [vehiculo, tipoMatches] = await Promise.all([
       findVehiculo(propietarioId, normalizeText(entities?.vehiculo ?? structuredText)),
-      findTipoMantenimiento(
+      findTipoMantenimientoMatches(
         propietarioId,
         normalizeText(entities?.tipo_mantenimiento ?? structuredText)
       )
     ]);
+    const maintenanceSearch = normalizeText(entities?.tipo_mantenimiento ?? structuredText);
+    const tipo = selectTipoMantenimiento(tipoMatches, maintenanceSearch);
     const costo =
       entities?.costo_total ??
-      parseNamedMoneyValue(message, ['costo', 'valor', 'precio']);
+      (parseNamedMoneyValue(message, ['costo', 'valor', 'precio']) ||
+        parseMoneyValue(message));
     const query: Record<string, string> = {
       new: '1',
       fecha_mantenimiento: dateOnly(fecha)
@@ -1698,14 +1833,21 @@ const buildDraftFromText = async (
         },
         advertencias: [
           'Aun no guardo el mantenimiento desde el chat.',
-          vehiculo && tipo ? 'Puedo abrir el formulario prellenado para confirmar.' : 'Faltan datos para completar el formulario.'
+          !tipo && tipoMatches.length > 1
+            ? `Encontré ${tipoMatches.length} tipos de mantenimiento que coinciden. Elige uno.`
+            : vehiculo && tipo
+              ? 'Puedo abrir el formulario prellenado para confirmar.'
+              : 'Faltan datos para completar el formulario.'
         ]
       },
       action: {
         label: 'Abrir mantenimiento prellenado',
         route: '/app/mantenimientos',
         query
-      }
+      },
+      sugerencias: !tipo && tipoMatches.length > 1
+        ? tipoMatches.slice(0, 10).map((item) => `Tipo: ${item.nombre}`)
+        : undefined
     };
   }
 
@@ -1870,7 +2012,7 @@ const buildDraftFromText = async (
       },
       action: {
         label: 'Abrir viaje prellenado',
-        route: '/app/viajes',
+        route: '/app/reportes',
         query
       },
       sugerencias: routeSuggestions.length
@@ -1918,7 +2060,298 @@ const pendingOwnTrips = async (propietarioId: bigint | null) => {
   };
 };
 
-const pendingProviderTrips = async (propietarioId: bigint | null) => {
+const parseProviderPaymentFilter = (normalized: string) => {
+  if (/\b(no pagados?|sin pagar|por pagar|pendientes? de pago|pago pendiente)\b/.test(normalized)) {
+    return false;
+  }
+  if (/\b(pagados?|ya pagados?)\b/.test(normalized)) return true;
+  return undefined;
+};
+
+const clearProviderConversationFilters = (
+  current: AssistantProviderQueryContext['filtros'],
+  normalized: string
+) => {
+  const filters = { ...current };
+  if (/\b(?:limpia|quitar?|elimina(?:r)?)\s+(?:todos\s+)?los filtros\b|\bsin filtros\b/.test(normalized)) {
+    return {};
+  }
+  if (/\b(todos los|sin filtro de|quita(?:r)?(?: el filtro de)?)\s+clientes?\b/.test(normalized)) {
+    delete filters.cliente_id;
+    delete filters.cliente_nombre;
+  }
+  if (/\b(todos los|sin filtro de|quita(?:r)?(?: el filtro de)?)\s+proveedores?\b/.test(normalized)) {
+    delete filters.proveedor_id;
+    delete filters.proveedor_nombre;
+  }
+  if (/\b(todos los|sin filtro de|quita(?:r)?(?: el filtro de)?)\s+(?:destinos?|rutas?)\b/.test(normalized)) {
+    delete filters.destino;
+  }
+  if (/\b(todas las|sin filtro de|quita(?:r)?(?: el filtro de)?)\s+semanas?\b/.test(normalized)) {
+    delete filters.semana;
+    delete filters.anio;
+  }
+  if (requestsCobradoFilterClear(normalized)) delete filters.cobrado;
+  if (/\b(pagados y por pagar|todos los estados de pago|sin filtro de pago|quita(?:r)?(?: el filtro de)? pago)\b/.test(normalized)) {
+    delete filters.pagado_proveedor;
+  }
+  return filters;
+};
+
+const parseProviderContextFilters = async (
+  propietarioId: bigint | null,
+  message: string,
+  normalized: string,
+  entities: AssistantExtractedParameters = {},
+  previous?: AssistantProviderQueryContext['filtros']
+) => {
+  const filters = clearProviderConversationFilters(previous ?? {}, normalized);
+  const explicitWeek = entities.semana ? Number(entities.semana) : parseWeek(message);
+  const cobrado = parseCobradoFilter(`${normalized} ${normalizeText(entities.estado_cobro)}`);
+  const pagado = parseProviderPaymentFilter(`${normalized} ${normalizeText(entities.estado_pago)}`);
+  const [cliente, proveedor] = await Promise.all([
+    findCliente(propietarioId, `${normalized} ${normalizeText(entities.cliente)}`),
+    findProveedor(propietarioId, `${normalized} ${normalizeText(entities.proveedor)}`)
+  ]);
+  const destination = destinationSearchFromMessage(normalized, entities.destino);
+  const entityLimit = Number(entities.limite);
+  const requestedLimit = Number.isInteger(entityLimit) && entityLimit > 0
+    ? Math.min(entityLimit, 50)
+    : /\bultim(?:o|os|a|as)\b/.test(normalized)
+      ? parseRequestedCount(normalized)
+      : undefined;
+
+  if (explicitWeek && explicitWeek >= 1 && explicitWeek <= 53) {
+    filters.semana = explicitWeek;
+  } else if (previous?.semana && /\b(siguiente|proxima)\b/.test(normalized)) {
+    filters.semana = Math.min(previous.semana + 1, 53);
+  } else if (previous?.semana && /\banterior\b/.test(normalized)) {
+    filters.semana = Math.max(previous.semana - 1, 1);
+  }
+  if (explicitWeek || /\b20\d{2}\b/.test(message)) filters.anio = parseYear(message);
+  if (cliente) {
+    filters.cliente_id = String(cliente.id);
+    filters.cliente_nombre = cliente.nombre;
+  }
+  if (proveedor) {
+    filters.proveedor_id = String(proveedor.id);
+    filters.proveedor_nombre = proveedor.nombre;
+  }
+  if (destination) filters.destino = destination;
+  if (cobrado !== undefined && !requestsCobradoFilterClear(normalized)) filters.cobrado = cobrado;
+  if (pagado !== undefined) filters.pagado_proveedor = pagado;
+  if (requestedLimit) filters.limite = requestedLimit;
+  if (!filters.limite) filters.limite = 10;
+  return filters;
+};
+
+const providerFilterLabels = (filters: AssistantProviderQueryContext['filtros']) =>
+  [
+    filters.cliente_nombre ? `cliente ${filters.cliente_nombre}` : '',
+    filters.proveedor_nombre ? `proveedor ${filters.proveedor_nombre}` : '',
+    filters.destino ? `destino ${filters.destino}` : '',
+    filters.semana ? `semana ${filters.semana} de ${filters.anio}` : '',
+    typeof filters.cobrado === 'boolean' ? (filters.cobrado ? 'cobrados' : 'por cobrar') : '',
+    typeof filters.pagado_proveedor === 'boolean'
+      ? filters.pagado_proveedor
+        ? 'pagados al proveedor'
+        : 'por pagar al proveedor'
+      : ''
+  ].filter(Boolean);
+
+const providerTripOrderBy = (
+  plan?: AssistantOperationalQueryPlan
+): Prisma.ViajeProveedorOrderByWithRelationInput[] => {
+  const direction = plan?.orden.direccion ?? 'desc';
+  if (plan?.orden.campo === 'precio_viaje') return [{ precio_viaje: direction }, { id: direction }];
+  if (plan?.orden.campo === 'valor_a_facturar') return [{ valor_a_facturar: direction }, { id: direction }];
+  if (plan?.orden.campo === 'utilidad') return [{ utilidad: direction }, { id: direction }];
+  return [{ fecha_salida: direction }, { id: direction }];
+};
+
+const providerTripsSummary = async (
+  propietarioId: bigint | null,
+  message: string,
+  normalized: string,
+  entities: AssistantExtractedParameters = {},
+  previous?: AssistantProviderQueryContext['filtros'],
+  plan?: AssistantOperationalQueryPlan
+) => {
+  const filters = await parseProviderContextFilters(
+    propietarioId,
+    message,
+    normalized,
+    entities,
+    previous
+  );
+  if (plan) {
+    filters.limite = plan.limite;
+    filters.orden_campo = plan.orden.campo;
+    filters.orden_direccion = plan.orden.direccion;
+  }
+  const weekRange = filters.semana
+    ? getIsoWeekRange(filters.anio ?? parseYear(message), filters.semana)
+    : null;
+  const explicitFrom = entities.fecha_desde
+    ? parseStructuredDate(entities.fecha_desde, today())
+    : null;
+  const explicitTo = entities.fecha_hasta
+    ? parseStructuredDate(entities.fecha_hasta, explicitFrom ?? today())
+    : null;
+  const periodRange = weekRange
+    ? weekRange
+    : explicitFrom || explicitTo
+      ? { fechaInicio: explicitFrom ?? explicitTo!, fechaFin: explicitTo ?? explicitFrom! }
+      : plan?.periodo === 'explicito'
+        ? dateRangeFromMessage(message, normalized)
+        : null;
+  const where: Prisma.ViajeProveedorWhereInput = {
+    ...ownerWhere(propietarioId),
+    estado: { not: EstadoViaje.CANCELADO },
+    ...(filters.cliente_id ? { cliente_id: BigInt(filters.cliente_id) } : {}),
+    ...(filters.proveedor_id ? { proveedor_id: BigInt(filters.proveedor_id) } : {}),
+    ...(filters.destino
+      ? { tarifa_ruta: { ruta: { destino: { contains: filters.destino, mode: 'insensitive' } } } }
+      : {}),
+    ...(typeof filters.cobrado === 'boolean' ? { cobrado: filters.cobrado } : {}),
+    ...(typeof filters.pagado_proveedor === 'boolean'
+      ? { pagado_proveedor: filters.pagado_proveedor }
+      : {}),
+    ...(periodRange ? { fecha_salida: { gte: periodRange.fechaInicio, lte: periodRange.fechaFin } } : {})
+  };
+  const [rows, total, sums, pendingCobro, pendingPago] = await prisma.$transaction([
+    prisma.viajeProveedor.findMany({
+      where,
+      include: {
+        cliente: true,
+        proveedor: true,
+        tarifa_ruta: { include: { ruta: true } }
+      },
+      orderBy: providerTripOrderBy(plan),
+      ...(plan?.modo === 'agrupado' ? {} : { take: filters.limite ?? 10 })
+    }),
+    prisma.viajeProveedor.count({ where }),
+    prisma.viajeProveedor.aggregate({
+      where,
+      _sum: {
+        precio_viaje: true,
+        valor_a_facturar: true,
+        precio_pagar_proveedor: true,
+        viaticos: true,
+        utilidad: true
+      }
+    }),
+    prisma.viajeProveedor.count({ where: { AND: [where, { cobrado: false }] } }),
+    prisma.viajeProveedor.count({ where: { AND: [where, { pagado_proveedor: false }] } })
+  ]);
+  const labels = providerFilterLabels(filters);
+  const filterPhrase = labels.length ? ` con filtros de ${labels.join(', ')}` : '';
+  const actionQuery: Record<string, string> = {
+    ...(filters.cliente_id ? { cliente_ids: filters.cliente_id } : {}),
+    ...(filters.proveedor_id ? { proveedor_ids: filters.proveedor_id } : {}),
+    ...(filters.destino ? { search: filters.destino } : {}),
+    ...(filters.semana ? { numero_semana: String(filters.semana) } : {}),
+    ...(filters.anio ? { anio_semana: String(filters.anio) } : {}),
+    ...(typeof filters.cobrado === 'boolean' ? { cobrado: String(filters.cobrado) } : {}),
+    ...(typeof filters.pagado_proveedor === 'boolean'
+      ? { pagado_proveedor: String(filters.pagado_proveedor) }
+      : {})
+  };
+
+  if (plan?.modo === 'agrupado' && plan.agregacion) {
+    const groups = new Map<string, { count: number; total: Prisma.Decimal }>();
+    for (const trip of rows) {
+      const key = plan.agregacion.agrupar_por === 'cliente'
+        ? trip.cliente.nombre
+        : plan.agregacion.agrupar_por === 'destino'
+          ? trip.tarifa_ruta.ruta.destino
+          : trip.proveedor.nombre;
+      const value = plan.agregacion.metrica === 'cantidad_viajes'
+        ? toMoney(1)
+        : plan.agregacion.metrica === 'precio_viaje'
+          ? toMoney(trip.precio_viaje)
+          : plan.agregacion.metrica === 'utilidad_viajes'
+            ? toMoney(trip.utilidad)
+            : plan.agregacion.metrica === 'viaticos'
+              ? toMoney(trip.viaticos)
+              : toMoney(trip.valor_a_facturar);
+      const current = groups.get(key) ?? { count: 0, total: toMoney(0) };
+      current.count += 1;
+      current.total = current.total.plus(value);
+      groups.set(key, current);
+    }
+    const grouped = [...groups.entries()]
+      .map(([name, value]) => ({
+        name,
+        count: value.count,
+        value: plan.agregacion!.operacion === 'promedio'
+          ? value.total.div(value.count || 1)
+          : plan.agregacion!.operacion === 'conteo'
+            ? toMoney(value.count)
+            : value.total
+      }))
+      .sort((left, right) => {
+        const comparison = left.value.comparedTo(right.value);
+        return plan.orden.direccion === 'asc' ? comparison : -comparison;
+      })
+      .slice(0, plan.limite);
+    return {
+      respuesta: total
+        ? `Agrupé ${total} viaje(s) de proveedores${filterPhrase}.`
+        : `No encontré viajes de proveedores${filterPhrase}.`,
+      cards: total
+        ? [
+            { titulo: 'Viajes', valor: String(total) },
+            { titulo: 'A facturar', valor: money(sums._sum.valor_a_facturar) },
+            { titulo: 'Utilidad', valor: money(sums._sum.utilidad) },
+            { titulo: 'Grupos', valor: String(groups.size) }
+          ]
+        : [],
+      detalle: grouped
+        .map((item, index) => `${index + 1}. ${item.name} | viajes: ${item.count} | valor: ${plan.agregacion!.operacion === 'conteo' ? item.count : money(item.value)}`)
+        .join('\n'),
+      actions: [],
+      contexto: {
+        tipo: 'viajes_proveedor' as const,
+        filtros: filters
+      }
+    };
+  }
+
+  return {
+    respuesta: total
+      ? `Encontré ${total} viaje(s) de proveedores${filterPhrase}. Hay ${pendingCobro} por cobrar y ${pendingPago} por pagar al proveedor.`
+      : `No encontré viajes de proveedores${filterPhrase}.`,
+    cards: total
+      ? [
+          { titulo: 'Viajes', valor: String(total), detalle: `${pendingCobro} por cobrar` },
+          { titulo: 'A facturar', valor: money(sums._sum.valor_a_facturar) },
+          { titulo: 'A pagar', valor: money(sums._sum.precio_pagar_proveedor), detalle: `${pendingPago} pendientes` },
+          { titulo: 'Utilidad', valor: money(sums._sum.utilidad) }
+        ]
+      : [],
+    detalle: topRowsText(
+      rows.map(
+        (viaje) =>
+          `${dateOnly(viaje.fecha_salida)} | ${viaje.cliente.nombre} | ${viaje.proveedor.nombre} | ${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino} | facturar: ${money(viaje.valor_a_facturar)} | pagar: ${money(viaje.precio_pagar_proveedor)} | ${viaje.cobrado ? 'cobrado' : 'por cobrar'} | ${viaje.pagado_proveedor ? 'pagado' : 'por pagar'}`
+      )
+    ),
+    actions: [
+      {
+        label: 'Ver viajes de proveedores',
+        route: '/app/proveedores/transporte',
+        query: actionQuery,
+        operacion: 'abrir' as const
+      }
+    ],
+    contexto: {
+      tipo: 'viajes_proveedor' as const,
+      filtros: filters
+    }
+  };
+};
+
+const pendingProviderTripsLegacy = async (propietarioId: bigint | null) => {
   const rows = await prisma.viajeProveedor.findMany({
     where: {
       ...ownerWhere(propietarioId),
@@ -1984,6 +2417,159 @@ const maintenanceSummary = async (propietarioId: bigint | null, input: string, n
           `${dateOnly(item.fecha_mantenimiento)} | ${item.vehiculo.placa} | ${item.tipo_mantenimiento.nombre} | ${money(item.costo_total)}`
       )
     )
+  };
+};
+
+const structuredMaintenanceSummary = async (
+  propietarioId: bigint | null,
+  message: string,
+  normalized: string,
+  entities: AssistantExtractedParameters,
+  plan: AssistantOperationalQueryPlan,
+  previous?: AssistantMaintenanceQueryContext['filtros']
+) => {
+  const filters: AssistantMaintenanceQueryContext['filtros'] = { ...(previous ?? {}) };
+  if (/\b(?:limpia|quitar?|elimina(?:r)?)\s+(?:todos\s+)?los filtros\b|\bsin filtros\b/.test(normalized)) {
+    Object.keys(filters).forEach((key) => delete filters[key as keyof typeof filters]);
+  }
+  const [vehiculo, tipo] = await Promise.all([
+    findVehiculo(propietarioId, `${normalized} ${normalizeText(entities.vehiculo ?? entities.placa)}`),
+    findTipoMantenimiento(propietarioId, `${normalized} ${normalizeText(entities.tipo_mantenimiento)}`)
+  ]);
+  const explicitWeek = entities.semana ? Number(entities.semana) : parseWeek(message);
+  if (explicitWeek) filters.semana = explicitWeek;
+  else if (filters.semana && /\b(?:siguiente|proxima)\b/.test(normalized)) {
+    filters.semana = Math.min(filters.semana + 1, 53);
+  } else if (filters.semana && /\banterior\b/.test(normalized)) {
+    filters.semana = Math.max(filters.semana - 1, 1);
+  }
+  if (explicitWeek || /\b20\d{2}\b/.test(message)) filters.anio = parseYear(message);
+  if (vehiculo) {
+    filters.vehiculo_id = String(vehiculo.id);
+    filters.vehiculo_placa = vehiculo.placa;
+  }
+  if (tipo) {
+    filters.tipo_mantenimiento_id = String(tipo.id);
+    filters.tipo_mantenimiento_nombre = tipo.nombre;
+  }
+  filters.limite = plan.limite;
+  filters.orden_campo = plan.orden.campo;
+  filters.orden_direccion = plan.orden.direccion;
+
+  const year = filters.anio ?? parseYear(message);
+  const explicitFrom = entities.fecha_desde
+    ? parseStructuredDate(entities.fecha_desde, today())
+    : null;
+  const explicitTo = entities.fecha_hasta
+    ? parseStructuredDate(entities.fecha_hasta, explicitFrom ?? today())
+    : null;
+  const range = filters.semana
+    ? { ...getIsoWeekRange(year, filters.semana), label: `semana ${filters.semana} de ${year}` }
+    : explicitFrom || explicitTo
+      ? {
+          fechaInicio: explicitFrom ?? explicitTo!,
+          fechaFin: explicitTo ?? explicitFrom!,
+          label: `${dateOnly(explicitFrom ?? explicitTo)} a ${dateOnly(explicitTo ?? explicitFrom)}`
+        }
+    : plan.periodo === 'predeterminado'
+      ? dateRangeFromMessage(message, normalized)
+      : null;
+  const where: Prisma.MantenimientoWhereInput = {
+    ...ownerWhere(propietarioId),
+    estado: EstadoMantenimiento.REALIZADO,
+    ...(range ? { fecha_mantenimiento: { gte: range.fechaInicio, lte: range.fechaFin } } : {}),
+    ...(filters.vehiculo_id ? { vehiculo_id: BigInt(filters.vehiculo_id) } : {}),
+    ...(filters.tipo_mantenimiento_id
+      ? { tipo_mantenimiento_id: BigInt(filters.tipo_mantenimiento_id) }
+      : {})
+  };
+  const direction = plan.orden.direccion;
+  const orderBy: Prisma.MantenimientoOrderByWithRelationInput[] =
+    plan.orden.campo === 'costo'
+      ? [{ costo_total: direction }, { id: direction }]
+      : [{ fecha_mantenimiento: direction }, { id: direction }];
+  const allRows = await prisma.mantenimiento.findMany({
+    where,
+    include: { vehiculo: true, tipo_mantenimiento: true, repuestos: true },
+    orderBy
+  });
+  const totalCost = allRows.reduce((sum, item) => sum.plus(toMoney(item.costo_total)), toMoney(0));
+  const labels = [
+    filters.vehiculo_placa ? `vehículo ${filters.vehiculo_placa}` : '',
+    filters.tipo_mantenimiento_nombre ? `tipo ${filters.tipo_mantenimiento_nombre}` : '',
+    range?.label ?? 'historial completo'
+  ].filter(Boolean);
+
+  if (plan.modo === 'agrupado') {
+    const byVehicle = plan.agregacion?.agrupar_por === 'vehiculo';
+    const groups = new Map<string, { count: number; total: Prisma.Decimal }>();
+    for (const item of allRows) {
+      const key = byVehicle ? item.vehiculo.placa : item.tipo_mantenimiento.nombre;
+      const current = groups.get(key) ?? { count: 0, total: toMoney(0) };
+      current.count += 1;
+      current.total = current.total.plus(toMoney(item.costo_total));
+      groups.set(key, current);
+    }
+    const operation = plan.agregacion?.operacion ?? 'suma';
+    const grouped = [...groups.entries()]
+      .map(([name, value]) => ({
+        name,
+        count: value.count,
+        value: operation === 'conteo'
+          ? toMoney(value.count)
+          : operation === 'promedio'
+            ? value.total.div(value.count || 1)
+            : value.total
+      }))
+      .sort((left, right) => {
+        const comparison = left.value.comparedTo(right.value);
+        return direction === 'asc' ? comparison : -comparison;
+      })
+      .slice(0, plan.limite);
+    return {
+      respuesta: allRows.length
+        ? `Agrupé ${allRows.length} mantenimiento(s) de ${labels.join(', ')}.`
+        : `No encontré mantenimientos de ${labels.join(', ')}.`,
+      cards: allRows.length
+        ? [
+            { titulo: 'Mantenimientos', valor: String(allRows.length) },
+            { titulo: 'Costo total', valor: money(totalCost) },
+            { titulo: 'Grupos', valor: String(groups.size) }
+          ]
+        : [],
+      detalle: grouped
+        .map((item, index) => `${index + 1}. ${item.name} | registros: ${item.count} | valor: ${operation === 'conteo' ? item.count : money(item.value)}`)
+        .join('\n'),
+      contexto: { tipo: 'mantenimientos' as const, filtros: filters }
+    };
+  }
+
+  const rows = allRows.slice(0, plan.limite);
+  const average = allRows.length ? totalCost.div(allRows.length) : toMoney(0);
+  return {
+    respuesta: allRows.length
+      ? `Encontré ${allRows.length} mantenimiento(s) de ${labels.join(', ')}, por ${money(totalCost)}.${allRows.length > rows.length ? ` Muestro ${rows.length} según el orden solicitado.` : ''}`
+      : `No encontré mantenimientos de ${labels.join(', ')}.`,
+    cards: allRows.length
+      ? [
+          { titulo: 'Mantenimientos', valor: String(allRows.length) },
+          { titulo: 'Costo total', valor: money(totalCost) },
+          { titulo: 'Costo promedio', valor: money(average) }
+        ]
+      : [],
+    detalle: topRowsText(
+      rows.map(
+        (item) =>
+          `${dateOnly(item.fecha_mantenimiento)} | ${item.vehiculo.placa} | ${item.tipo_mantenimiento.nombre} | km ${item.kilometraje_actual_vehiculo} | ${money(item.costo_total)}`
+      )
+    ),
+    actions: rows.slice(0, 10).map((item, index) => ({
+      label: `Abrir mantenimiento ${index + 1}`,
+      route: '/app/mantenimientos',
+      query: { edit: String(item.id) },
+      operacion: 'abrir' as const
+    })),
+    contexto: { tipo: 'mantenimientos' as const, filtros: filters }
   };
 };
 
@@ -2157,8 +2743,13 @@ const parseAnalyticsPlan = (
     semana: explicitWeek ?? relativeWeek ?? previous?.semana ?? current.semana,
     anio: explicitYear || previous?.anio || current.anio,
     ...(typeof resolvedCobrado === 'boolean' ? { cobrado: resolvedCobrado } : {}),
+    ...(previous?.cliente_id ? { cliente_id: previous.cliente_id } : {}),
+    ...(previous?.cliente_nombre ? { cliente_nombre: previous.cliente_nombre } : {}),
+    ...(previous?.vehiculo_id ? { vehiculo_id: previous.vehiculo_id } : {}),
+    ...(previous?.vehiculo_placa ? { vehiculo_placa: previous.vehiculo_placa } : {}),
     ...(previous?.conductor_id ? { conductor_id: previous.conductor_id } : {}),
-    ...(previous?.conductor_nombre ? { conductor_nombre: previous.conductor_nombre } : {})
+    ...(previous?.conductor_nombre ? { conductor_nombre: previous.conductor_nombre } : {}),
+    ...(previous?.destino ? { destino: previous.destino } : {})
   };
 };
 
@@ -2358,7 +2949,16 @@ const analyticsTravelQuery = async (
       ...ownerWhere(propietarioId),
       estado: { not: EstadoViaje.CANCELADO },
       ...viajeSemanaWhere(fechaInicio, fechaFin),
+      ...(plan.cliente_id ? { cliente_id: BigInt(plan.cliente_id) } : {}),
+      ...(plan.vehiculo_id ? { vehiculo_id: BigInt(plan.vehiculo_id) } : {}),
       ...(plan.conductor_id ? { conductor_id: BigInt(plan.conductor_id) } : {}),
+      ...(plan.destino
+        ? {
+            tarifa_ruta: {
+              ruta: { destino: { contains: plan.destino, mode: 'insensitive' } }
+            }
+          }
+        : {}),
       ...(typeof plan.cobrado === 'boolean' ? { cobrado: plan.cobrado } : {})
     },
     select: {
@@ -2412,11 +3012,13 @@ const analyticsTravelQuery = async (
   const metricLabel = analyticsMetricLabel[plan.metrica];
   const dimensionLabel = analyticsDimensionLabel[plan.agrupar_por];
   const collectionLabel = `${dimensionLabel}${rows.length === 1 ? '' : 's'}`;
+  const appliedFilters = conversationFilterLabels(commonFiltersFromAnalytics(plan));
+  const filterPhrase = appliedFilters.length ? ` con filtros de ${appliedFilters.join(', ')}` : '';
 
   if (!rows.length) {
     return {
       tipo: 'consulta' as const,
-      respuesta: `No encontré viajes para la semana ${plan.semana} de ${plan.anio} con esos filtros.`,
+      respuesta: `No encontré viajes para la semana ${plan.semana} de ${plan.anio}${filterPhrase}.`,
       cards: [],
       detalle: '',
       contexto: {
@@ -2441,7 +3043,7 @@ const analyticsTravelQuery = async (
       : `${valueLabel} en ${first.count} ${tripLabel}`;
   return {
     tipo: 'consulta' as const,
-    respuesta: `En la semana ${plan.semana} de ${plan.anio}, el ${dimensionLabel} con ${plan.orden === 'desc' ? 'mayor' : 'menor'} ${metricPhrase} fue ${first.nombre}, con ${resultPhrase}.`,
+    respuesta: `En la semana ${plan.semana} de ${plan.anio}${filterPhrase}, el ${dimensionLabel} con ${plan.orden === 'desc' ? 'mayor' : 'menor'} ${metricPhrase} fue ${first.nombre}, con ${resultPhrase}.`,
     cards: [
       { titulo: `Primer ${dimensionLabel}`, valor: first.nombre },
       { titulo: metricLabel, valor: valueLabel },
@@ -2463,22 +3065,112 @@ const analyticsTravelQuery = async (
   };
 };
 
+const analyticsWeekTotal = async (
+  propietarioId: bigint | null,
+  plan: AssistantAnalyticsContext['filtros'],
+  week: number
+) => {
+  if (plan.metrica === 'pago_conductor') {
+    const payments = await getPagosSemanalesConductores(
+      propietarioId,
+      plan.anio,
+      week,
+      plan.conductor_id ? BigInt(plan.conductor_id) : undefined
+    );
+    return {
+      count: payments.length,
+      value: payments.reduce((sum, payment) => sum.plus(toMoney(payment.total)), toMoney(0))
+    };
+  }
+
+  const { fechaInicio, fechaFin } = getIsoWeekRange(plan.anio, week);
+  const trips = await prisma.viaje.findMany({
+    where: {
+      ...ownerWhere(propietarioId),
+      estado: { not: EstadoViaje.CANCELADO },
+      ...viajeSemanaWhere(fechaInicio, fechaFin),
+      ...(plan.cliente_id ? { cliente_id: BigInt(plan.cliente_id) } : {}),
+      ...(plan.vehiculo_id ? { vehiculo_id: BigInt(plan.vehiculo_id) } : {}),
+      ...(plan.conductor_id ? { conductor_id: BigInt(plan.conductor_id) } : {}),
+      ...(plan.destino
+        ? { tarifa_ruta: { ruta: { destino: { contains: plan.destino, mode: 'insensitive' } } } }
+        : {}),
+      ...(typeof plan.cobrado === 'boolean' ? { cobrado: plan.cobrado } : {})
+    },
+    select: {
+      precio_flete: true,
+      precio_real_flete: true,
+      viaticos: true,
+      costo_real_gastos: true
+    }
+  });
+  const total = trips.reduce(
+    (sum, trip) => sum.plus(analyticsTripValue(plan.metrica, trip)),
+    toMoney(0)
+  );
+  return {
+    count: trips.length,
+    value: plan.operacion === 'promedio' && trips.length ? total.div(trips.length) : total
+  };
+};
+
+const compareAnalyticsWeeks = async (
+  propietarioId: bigint | null,
+  plan: AssistantAnalyticsContext['filtros'],
+  weeks: [number, number]
+) => {
+  const [first, second] = await Promise.all([
+    analyticsWeekTotal(propietarioId, plan, weeks[0]),
+    analyticsWeekTotal(propietarioId, plan, weeks[1])
+  ]);
+  const difference = second.value.minus(first.value);
+  const improved = difference.greaterThanOrEqualTo(0);
+  const metricLabel = analyticsMetricLabel[plan.metrica];
+  const value = (item: { count: number; value: Prisma.Decimal }) =>
+    plan.metrica === 'cantidad_viajes' ? String(item.count) : money(item.value);
+  const differenceLabel = plan.metrica === 'cantidad_viajes'
+    ? difference.abs().toFixed(0)
+    : money(difference.abs());
+  const nextPlan = { ...plan, semana: weeks[1] };
+
+  return {
+    tipo: 'consulta' as const,
+    respuesta: `Comparé las semanas ${weeks[0]} y ${weeks[1]} de ${plan.anio}. ${metricLabel} ${improved ? 'aumentó' : 'disminuyó'} ${differenceLabel}.`,
+    cards: [
+      { titulo: `Semana ${weeks[0]}`, valor: value(first), detalle: `${first.count} viaje(s)` },
+      { titulo: `Semana ${weeks[1]}`, valor: value(second), detalle: `${second.count} viaje(s)` },
+      { titulo: 'Diferencia', valor: `${improved ? '+' : '-'}${differenceLabel}` }
+    ],
+    detalle: [
+      `Semana ${weeks[0]} | ${metricLabel}: ${value(first)} | viajes: ${first.count}`,
+      `Semana ${weeks[1]} | ${metricLabel}: ${value(second)} | viajes: ${second.count}`
+    ].join('\n'),
+    contexto: { tipo: 'analitica_viajes' as const, filtros: nextPlan },
+    sugerencias: ['Comparar otra semana', 'Ver detalle de viajes']
+  };
+};
+
 const parseTravelContextFilters = async (
   propietarioId: bigint | null,
   message: string,
   normalized: string,
+  entities: AssistantExtractedParameters = {},
   previous?: AssistantQueryContext['filtros']
 ) => {
-  const filters: AssistantQueryContext['filtros'] = { ...(previous ?? {}) };
-  const week = parseWeek(message);
-  const year = parseYear(message);
-  const cobrado = parseCobradoFilter(normalized);
-  const [cliente, vehiculo] = await Promise.all([
-    findCliente(propietarioId, normalized),
-    findVehiculo(propietarioId, normalized)
+  const filters = clearRequestedConversationFilters(previous ?? {}, normalized);
+  const week = entities.semana ? Number(entities.semana) : parseWeek(message);
+  const year = entities.anio ? Number(entities.anio) : parseYear(message);
+  const cobrado = parseCobradoFilter(`${normalized} ${normalizeText(entities.estado_cobro)}`);
+  const [cliente, vehiculo, conductor] = await Promise.all([
+    findCliente(propietarioId, `${normalized} ${normalizeText(entities.cliente)}`),
+    findVehiculo(propietarioId, `${normalized} ${normalizeText(entities.vehiculo ?? entities.placa)}`),
+    findConductor(propietarioId, `${normalized} ${normalizeText(entities.conductor)}`)
   ]);
+  const destination = destinationSearchFromMessage(normalized, entities.destino);
 
-  if (week) filters.semana = week;
+  if (week !== null && Number.isInteger(week) && week >= 1 && week <= 53) {
+    filters.semana = week;
+  }
   if (!week && previous?.semana && (normalized.includes('siguiente') || normalized.includes('proxima'))) {
     filters.semana = Math.min(previous.semana + 1, 53);
   }
@@ -2494,7 +3186,14 @@ const parseTravelContextFilters = async (
     filters.vehiculo_id = String(vehiculo.id);
     filters.vehiculo_placa = vehiculo.placa;
   }
-  if (cobrado !== undefined) filters.cobrado = cobrado;
+  if (conductor) {
+    filters.conductor_id = String(conductor.id);
+    filters.conductor_nombre = conductor.nombre;
+  }
+  if (destination) filters.destino = destination;
+  if (cobrado !== undefined && !requestsCobradoFilterClear(normalized)) {
+    filters.cobrado = cobrado;
+  }
 
   return filters;
 };
@@ -2503,9 +3202,16 @@ const travelSummaryWithFilters = async (
   propietarioId: bigint | null,
   message: string,
   normalized: string,
+  entities: AssistantExtractedParameters = {},
   previous?: AssistantQueryContext['filtros']
 ) => {
-  const filters = await parseTravelContextFilters(propietarioId, message, normalized, previous);
+  const filters = await parseTravelContextFilters(
+    propietarioId,
+    message,
+    normalized,
+    entities,
+    previous
+  );
   const week = filters.semana ?? parseWeek(message);
   const year = filters.anio ?? parseYear(message);
 
@@ -2525,6 +3231,14 @@ const travelSummaryWithFilters = async (
       ...viajeSemanaWhere(fechaInicio, fechaFin),
       ...(filters.cliente_id ? { cliente_id: BigInt(filters.cliente_id) } : {}),
       ...(filters.vehiculo_id ? { vehiculo_id: BigInt(filters.vehiculo_id) } : {}),
+      ...(filters.conductor_id ? { conductor_id: BigInt(filters.conductor_id) } : {}),
+      ...(filters.destino
+        ? {
+            tarifa_ruta: {
+              ruta: { destino: { contains: filters.destino, mode: 'insensitive' } }
+            }
+          }
+        : {}),
       ...(filters.cobrado !== undefined ? { cobrado: filters.cobrado } : {})
     },
     include: {
@@ -2543,12 +3257,7 @@ const travelSummaryWithFilters = async (
     (sum, viaje) => sum.plus(toMoney(viaje.precio_real_flete).minus(toMoney(viaje.costo_real_gastos))),
     toMoney(0)
   );
-  const labelParts = [
-    filters.cliente_nombre ? `cliente ${filters.cliente_nombre}` : '',
-    filters.vehiculo_placa ? `vehiculo ${filters.vehiculo_placa}` : '',
-    filters.cobrado !== undefined ? (filters.cobrado ? 'cobrados' : 'por cobrar') : '',
-    `semana ${week} de ${year}`
-  ].filter(Boolean);
+  const labelParts = [...conversationFilterLabels(filters), `semana ${week} de ${year}`];
 
   return {
     respuesta: `Encontré ${rows.length} viaje(s) de ${labelParts.join(', ')}. A facturar: ${money(facturar)}. Utilidad viajes: ${money(utilidad)}.`,
@@ -2575,14 +3284,134 @@ const travelSummaryWithFilters = async (
   };
 };
 
-const isTravelContinuation = (normalized: string, context?: AssistantQueryContext) =>
-  context?.tipo === 'viajes' &&
-  (parseWeek(normalized) !== null ||
-    normalized.includes('ahora') ||
-    normalized.includes('siguiente') ||
-    normalized.includes('anterior') ||
-    normalized.includes('cobrado') ||
-    normalized.includes('cobrados'));
+const isTravelContinuation = isConversationFollowUp;
+
+const ownTripOrderBy = (plan: AssistantOperationalQueryPlan): Prisma.ViajeOrderByWithRelationInput[] => {
+  const direction = plan.orden.direccion;
+  if (plan.orden.campo === 'precio_viaje') return [{ precio_flete: direction }, { id: direction }];
+  if (plan.orden.campo === 'valor_a_facturar' || plan.orden.campo === 'utilidad') {
+    return [{ precio_real_flete: direction }, { id: direction }];
+  }
+  return [{ fecha_llegada: direction }, { fecha_salida: direction }, { id: direction }];
+};
+
+const structuredTravelSummary = async (
+  propietarioId: bigint | null,
+  message: string,
+  normalized: string,
+  entities: AssistantExtractedParameters,
+  plan: AssistantOperationalQueryPlan,
+  previous?: AssistantQueryContext['filtros']
+) => {
+  const filters = await parseTravelContextFilters(
+    propietarioId,
+    message,
+    normalized,
+    entities,
+    previous
+  );
+  const week = filters.semana ?? parseWeek(message);
+  const year = filters.anio ?? parseYear(message);
+  const explicitFrom = entities.fecha_desde
+    ? parseStructuredDate(entities.fecha_desde, today())
+    : null;
+  const explicitTo = entities.fecha_hasta
+    ? parseStructuredDate(entities.fecha_hasta, explicitFrom ?? today())
+    : null;
+  const range = week
+    ? { ...getIsoWeekRange(year, week), label: `semana ${week} de ${year}` }
+    : explicitFrom || explicitTo
+      ? {
+          fechaInicio: explicitFrom ?? explicitTo!,
+          fechaFin: explicitTo ?? explicitFrom!,
+          label: `${dateOnly(explicitFrom ?? explicitTo)} a ${dateOnly(explicitTo ?? explicitFrom)}`
+        }
+      : plan.periodo === 'predeterminado'
+        ? dateRangeFromMessage(message, normalized)
+        : null;
+  const where: Prisma.ViajeWhereInput = {
+    ...ownerWhere(propietarioId),
+    estado: { not: EstadoViaje.CANCELADO },
+    ...(range ? viajeSemanaWhere(range.fechaInicio, range.fechaFin) : {}),
+    ...(filters.cliente_id ? { cliente_id: BigInt(filters.cliente_id) } : {}),
+    ...(filters.vehiculo_id ? { vehiculo_id: BigInt(filters.vehiculo_id) } : {}),
+    ...(filters.conductor_id ? { conductor_id: BigInt(filters.conductor_id) } : {}),
+    ...(filters.destino
+      ? { tarifa_ruta: { ruta: { destino: { contains: filters.destino, mode: 'insensitive' } } } }
+      : {}),
+    ...(typeof filters.cobrado === 'boolean' ? { cobrado: filters.cobrado } : {})
+  };
+  const [rows, total, sums] = await prisma.$transaction([
+    prisma.viaje.findMany({
+      where,
+      include: {
+        cliente: true,
+        vehiculo: true,
+        conductor: true,
+        tarifa_ruta: { include: { ruta: true, tipo_carga: true } }
+      },
+      orderBy: ownTripOrderBy(plan),
+      take: plan.orden.campo === 'utilidad' ? Math.min(plan.limite * 5, 50) : plan.limite
+    }),
+    prisma.viaje.count({ where }),
+    prisma.viaje.aggregate({
+      where,
+      _sum: { precio_flete: true, precio_real_flete: true, costo_real_gastos: true }
+    })
+  ]);
+
+  if (plan.orden.campo === 'utilidad') {
+    rows.sort((left, right) => {
+      const leftValue = toMoney(left.precio_real_flete).minus(toMoney(left.costo_real_gastos));
+      const rightValue = toMoney(right.precio_real_flete).minus(toMoney(right.costo_real_gastos));
+      const comparison = leftValue.comparedTo(rightValue);
+      return plan.orden.direccion === 'asc' ? comparison : -comparison;
+    });
+    rows.splice(plan.limite);
+  }
+
+  const precioViajes = toMoney(sums._sum.precio_flete);
+  const facturar = toMoney(sums._sum.precio_real_flete);
+  const utilidad = facturar.minus(toMoney(sums._sum.costo_real_gastos));
+  const labels = [...conversationFilterLabels(filters), range?.label ?? 'historial completo'];
+  const sample = total > rows.length ? ` Muestro ${rows.length} según el orden solicitado.` : '';
+
+  return {
+    respuesta: total
+      ? `Encontré ${total} viaje(s) de ${labels.join(', ')}. A facturar: ${money(facturar)}. Utilidad viajes: ${money(utilidad)}.${sample}`
+      : `No encontré viajes de ${labels.join(', ')}.`,
+    cards: total
+      ? [
+          { titulo: 'Viajes', valor: String(total), detalle: range?.label ?? 'Historial completo' },
+          { titulo: 'Precio viaje', valor: money(precioViajes) },
+          { titulo: 'A facturar', valor: money(facturar) },
+          { titulo: 'Utilidad viajes', valor: money(utilidad) }
+        ]
+      : [],
+    detalle: topRowsText(
+      rows.map(
+        (viaje) =>
+          `${dateOnly(viaje.fecha_llegada ?? viaje.fecha_salida)} | ${viaje.cliente.nombre} | ${viaje.conductor.nombre} | ${viaje.vehiculo.placa} | ${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino} | ${money(viaje.precio_real_flete)} | ${viaje.cobrado ? 'cobrado' : 'por cobrar'}`
+      )
+    ),
+    actions: rows.slice(0, 10).map((viaje, index) => ({
+      label: `Abrir viaje ${index + 1}`,
+      route: '/app/reportes',
+      query: { edit: String(viaje.id) },
+      operacion: 'abrir' as const
+    })),
+    contexto: {
+      tipo: 'viajes' as const,
+      filtros: {
+        ...filters,
+        ...(week ? { semana: week, anio: year } : {}),
+        limite: plan.limite,
+        orden_campo: plan.orden.campo,
+        orden_direccion: plan.orden.direccion
+      }
+    }
+  };
+};
 
 const normalizeAssistantQueryContext = (input: AsistenteMensajeInput): AssistantQueryContext | undefined => {
   const consulta = input.contexto?.consulta;
@@ -2596,10 +3425,78 @@ const normalizeAssistantQueryContext = (input: AsistenteMensajeInput): Assistant
       cliente_nombre: filtros['cliente_nombre'] == null ? undefined : String(filtros['cliente_nombre']),
       vehiculo_id: filtros['vehiculo_id'] == null ? undefined : String(filtros['vehiculo_id']),
       vehiculo_placa: filtros['vehiculo_placa'] == null ? undefined : String(filtros['vehiculo_placa']),
+      conductor_id: filtros['conductor_id'] == null ? undefined : String(filtros['conductor_id']),
+      conductor_nombre:
+        filtros['conductor_nombre'] == null ? undefined : String(filtros['conductor_nombre']),
       destino: filtros['destino'] == null ? undefined : String(filtros['destino']),
       semana: filtros['semana'] == null ? undefined : Number(filtros['semana']),
       anio: filtros['anio'] == null ? undefined : Number(filtros['anio']),
-      cobrado: typeof filtros['cobrado'] === 'boolean' ? filtros['cobrado'] : undefined
+      cobrado: typeof filtros['cobrado'] === 'boolean' ? filtros['cobrado'] : undefined,
+      limite: filtros['limite'] == null ? undefined : Math.min(Math.max(Number(filtros['limite']), 1), 50),
+      orden_campo: filtros['orden_campo'] == null
+        ? undefined
+        : String(filtros['orden_campo']) as AssistantQueryContext['filtros']['orden_campo'],
+      orden_direccion: filtros['orden_direccion'] === 'asc' ? 'asc' : filtros['orden_direccion'] === 'desc' ? 'desc' : undefined
+    }
+  };
+};
+
+const normalizeProviderQueryContext = (
+  input: AsistenteMensajeInput
+): AssistantProviderQueryContext | undefined => {
+  const consulta = input.contexto?.consulta;
+  if (!consulta || consulta.tipo !== 'viajes_proveedor') return undefined;
+  const filtros = consulta.filtros ?? {};
+
+  return {
+    tipo: 'viajes_proveedor',
+    filtros: {
+      cliente_id: filtros['cliente_id'] == null ? undefined : String(filtros['cliente_id']),
+      cliente_nombre:
+        filtros['cliente_nombre'] == null ? undefined : String(filtros['cliente_nombre']),
+      proveedor_id:
+        filtros['proveedor_id'] == null ? undefined : String(filtros['proveedor_id']),
+      proveedor_nombre:
+        filtros['proveedor_nombre'] == null ? undefined : String(filtros['proveedor_nombre']),
+      destino: filtros['destino'] == null ? undefined : String(filtros['destino']),
+      semana: filtros['semana'] == null ? undefined : Number(filtros['semana']),
+      anio: filtros['anio'] == null ? undefined : Number(filtros['anio']),
+      cobrado: typeof filtros['cobrado'] === 'boolean' ? filtros['cobrado'] : undefined,
+      pagado_proveedor:
+        typeof filtros['pagado_proveedor'] === 'boolean'
+          ? filtros['pagado_proveedor']
+          : undefined,
+      limite: filtros['limite'] == null
+        ? undefined
+        : Math.min(Math.max(Number(filtros['limite']), 1), 50),
+      orden_campo: filtros['orden_campo'] == null
+        ? undefined
+        : String(filtros['orden_campo']) as AssistantProviderQueryContext['filtros']['orden_campo'],
+      orden_direccion: filtros['orden_direccion'] === 'asc' ? 'asc' : filtros['orden_direccion'] === 'desc' ? 'desc' : undefined
+    }
+  };
+};
+
+const normalizeMaintenanceQueryContext = (
+  input: AsistenteMensajeInput
+): AssistantMaintenanceQueryContext | undefined => {
+  const consulta = input.contexto?.consulta;
+  if (!consulta || consulta.tipo !== 'mantenimientos') return undefined;
+  const filtros = consulta.filtros ?? {};
+  return {
+    tipo: 'mantenimientos',
+    filtros: {
+      vehiculo_id: filtros['vehiculo_id'] == null ? undefined : String(filtros['vehiculo_id']),
+      vehiculo_placa: filtros['vehiculo_placa'] == null ? undefined : String(filtros['vehiculo_placa']),
+      tipo_mantenimiento_id: filtros['tipo_mantenimiento_id'] == null ? undefined : String(filtros['tipo_mantenimiento_id']),
+      tipo_mantenimiento_nombre: filtros['tipo_mantenimiento_nombre'] == null ? undefined : String(filtros['tipo_mantenimiento_nombre']),
+      semana: filtros['semana'] == null ? undefined : Number(filtros['semana']),
+      anio: filtros['anio'] == null ? undefined : Number(filtros['anio']),
+      limite: filtros['limite'] == null ? undefined : Math.min(Math.max(Number(filtros['limite']), 1), 50),
+      orden_campo: filtros['orden_campo'] == null
+        ? undefined
+        : String(filtros['orden_campo']) as AssistantMaintenanceQueryContext['filtros']['orden_campo'],
+      orden_direccion: filtros['orden_direccion'] === 'asc' ? 'asc' : filtros['orden_direccion'] === 'desc' ? 'desc' : undefined
     }
   };
 };
@@ -2627,10 +3524,17 @@ const normalizeAnalyticsContext = (
       semana: filtros['semana'] == null ? undefined : Number(filtros['semana']),
       anio: Number(filtros['anio'] ?? currentIsoWeek().anio),
       cobrado: typeof filtros['cobrado'] === 'boolean' ? filtros['cobrado'] : undefined,
+      cliente_id: filtros['cliente_id'] == null ? undefined : String(filtros['cliente_id']),
+      cliente_nombre:
+        filtros['cliente_nombre'] == null ? undefined : String(filtros['cliente_nombre']),
+      vehiculo_id: filtros['vehiculo_id'] == null ? undefined : String(filtros['vehiculo_id']),
+      vehiculo_placa:
+        filtros['vehiculo_placa'] == null ? undefined : String(filtros['vehiculo_placa']),
       conductor_id:
         filtros['conductor_id'] == null ? undefined : String(filtros['conductor_id']),
       conductor_nombre:
-        filtros['conductor_nombre'] == null ? undefined : String(filtros['conductor_nombre'])
+        filtros['conductor_nombre'] == null ? undefined : String(filtros['conductor_nombre']),
+      destino: filtros['destino'] == null ? undefined : String(filtros['destino'])
     }
   };
 };
@@ -2657,7 +3561,7 @@ const parseRequestedCount = (normalized: string) => {
     diez: 10
   };
   const wordMatch = normalized.match(/\b(dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+(?:ultimos|ultimas)\b/)?.[1];
-  return wordMatch ? wordNumbers[wordMatch] : 1;
+  return wordMatch ? (wordNumbers[wordMatch] ?? 1) : 1;
 };
 
 const latestMaintenanceForVehicleLegacy = async (propietarioId: bigint | null, normalized: string) => {
@@ -2818,7 +3722,7 @@ const latestMaintenanceForVehicleList = async (propietarioId: bigint | null, nor
   };
 };
 
-const latestTripForVehicleDestination = async (propietarioId: bigint | null, normalized: string) => {
+const latestTripForVehicleDestinationLegacy = async (propietarioId: bigint | null, normalized: string) => {
   const vehiculo = await findVehiculo(propietarioId, normalized);
   if (!vehiculo) {
     return {
@@ -2891,7 +3795,239 @@ const latestTripForVehicleDestination = async (propietarioId: bigint | null, nor
     actions: [
       {
         label: 'Abrir viaje',
-        route: '/app/viajes',
+        route: '/app/reportes',
+        query: { edit: String(viaje.id) }
+      }
+    ]
+  };
+};
+
+const latestTripByEntity = async (
+  propietarioId: bigint | null,
+  normalized: string,
+  entities?: AssistantExtractedParameters
+) => {
+  const [conductores, clientes, vehiculos, rutas] = await Promise.all([
+    prisma.conductor.findMany({
+      where: { ...ownerWhere(propietarioId), estado: 'ACTIVO' },
+      select: { id: true, nombre: true },
+      orderBy: { nombre: 'asc' },
+      take: 500
+    }),
+    prisma.cliente.findMany({
+      where: { ...ownerWhere(propietarioId), activo: true },
+      select: { id: true, nombre: true },
+      orderBy: { nombre: 'asc' },
+      take: 500
+    }),
+    prisma.vehiculo.findMany({
+      where: ownerWhere(propietarioId),
+      select: { id: true, placa: true },
+      orderBy: { placa: 'asc' },
+      take: 500
+    }),
+    prisma.ruta.findMany({
+      where: propietarioId
+        ? {
+            OR: [
+              { propietario_id: null },
+              { propietario_id: propietarioId },
+              { propietario_id: BigInt(1) }
+            ]
+          }
+        : {},
+      select: { destino: true },
+      orderBy: { destino: 'asc' },
+      take: 5000
+    })
+  ]);
+
+  const subjectSearch = latestTripSubjectFromMessage(normalized);
+  const conductorMatches = catalogMatchesByName(
+    conductores,
+    entities?.conductor ?? subjectSearch ?? ''
+  );
+  const clienteMatches = catalogMatchesByName(
+    clientes,
+    entities?.cliente ?? subjectSearch ?? ''
+  );
+  const vehiculoMatches = catalogMatchesByPlate(
+    vehiculos,
+    entities?.vehiculo ?? entities?.placa ?? normalized
+  );
+  const destinationSearch = destinationSearchFromMessage(normalized, entities?.destino);
+  const destinosUnicos = [
+    ...new Map(
+      rutas.map((ruta) => [normalizeText(ruta.destino), { nombre: ruta.destino }])
+    ).values()
+  ];
+  const destinationMatches = destinationSearch
+    ? catalogMatchesByName(destinosUnicos, destinationSearch)
+    : [];
+
+  const ambiguous = [
+    conductorMatches.length > 1
+      ? { tipo: 'conductores', opciones: conductorMatches.map((item) => item.nombre) }
+      : null,
+    clienteMatches.length > 1
+      ? { tipo: 'clientes', opciones: clienteMatches.map((item) => item.nombre) }
+      : null,
+    vehiculoMatches.length > 1
+      ? { tipo: 'vehículos', opciones: vehiculoMatches.map((item) => item.placa) }
+      : null,
+    destinationMatches.length > 1
+      ? { tipo: 'destinos', opciones: destinationMatches.map((item) => item.nombre) }
+      : null
+  ].find(Boolean);
+
+  if (ambiguous) {
+    return {
+      respuesta: `Encontré varios ${ambiguous.tipo} que coinciden. Indica cuál deseas consultar: ${ambiguous.opciones.join(', ')}.`,
+      cards: [],
+      detalle: '',
+      sugerencias: ambiguous.opciones
+    };
+  }
+
+  if (entities?.conductor && !conductorMatches.length) {
+    return {
+      respuesta: `No encontré un conductor que coincida con ${entities.conductor}.`,
+      cards: [],
+      detalle: ''
+    };
+  }
+  if (entities?.cliente && !clienteMatches.length) {
+    return {
+      respuesta: `No encontré un cliente que coincida con ${entities.cliente}.`,
+      cards: [],
+      detalle: ''
+    };
+  }
+  if ((entities?.vehiculo || entities?.placa) && !vehiculoMatches.length) {
+    return {
+      respuesta: `No encontré un vehículo que coincida con ${entities.vehiculo ?? entities.placa}.`,
+      cards: [],
+      detalle: ''
+    };
+  }
+
+  const conductor = conductorMatches[0];
+  const cliente = clienteMatches[0];
+  const vehiculo = vehiculoMatches[0];
+  const destino = destinationMatches[0]?.nombre ?? entities?.destino;
+  if (subjectSearch && !conductor && !cliente && !vehiculo) {
+    return {
+      respuesta: `No encontré un conductor, cliente o vehículo que coincida con ${subjectSearch}.`,
+      cards: [],
+      detalle: ''
+    };
+  }
+
+  const requestedCount = parseRequestedCount(normalized);
+  const viajes = await prisma.viaje.findMany({
+    where: {
+      ...ownerWhere(propietarioId),
+      estado: { not: EstadoViaje.CANCELADO },
+      ...(conductor ? { conductor_id: conductor.id } : {}),
+      ...(cliente ? { cliente_id: cliente.id } : {}),
+      ...(vehiculo ? { vehiculo_id: vehiculo.id } : {}),
+      ...(destino
+        ? {
+            tarifa_ruta: {
+              ruta: { destino: { contains: destino, mode: 'insensitive' } }
+            }
+          }
+        : {})
+    },
+    include: {
+      cliente: true,
+      conductor: true,
+      vehiculo: true,
+      tarifa_ruta: { include: { ruta: true, tipo_carga: true } }
+    },
+    orderBy: [{ fecha_llegada: 'desc' }, { fecha_salida: 'desc' }, { id: 'desc' }],
+    take: requestedCount
+  });
+
+  const criteria = [
+    conductor ? `de ${conductor.nombre}` : '',
+    cliente ? `para ${cliente.nombre}` : '',
+    vehiculo ? `en ${vehiculo.placa}` : '',
+    destino ? `a ${destino}` : ''
+  ].filter(Boolean);
+  const criteriaText = criteria.length ? ` ${criteria.join(', ')}` : ' registrado';
+
+  if (!viajes.length) {
+    return {
+      respuesta: `No encontré viajes${criteriaText}.`,
+      cards: [],
+      detalle: ''
+    };
+  }
+
+  if (requestedCount > 1) {
+    const totalFacturar = viajes.reduce(
+      (sum, viaje) => sum.plus(toMoney(viaje.precio_real_flete)),
+      toMoney(0)
+    );
+
+    return {
+      respuesta: `Encontré ${viajes.length} de los ${requestedCount} viajes más recientes${criteriaText}.`,
+      cards: [
+        { titulo: 'Viajes encontrados', valor: String(viajes.length) },
+        { titulo: 'A facturar', valor: money(totalFacturar) },
+        ...(conductor ? [{ titulo: 'Conductor', valor: conductor.nombre }] : []),
+        ...(vehiculo ? [{ titulo: 'Vehículo', valor: vehiculo.placa }] : [])
+      ],
+      detalle: viajes
+        .map((viaje, index) => {
+          const rutaViaje = `${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino}`;
+          const guiasViaje = viaje.numeros_guia_remision?.length
+            ? viaje.numeros_guia_remision.join(', ')
+            : 'Sin guías';
+          return `${index + 1}. ${dateOnly(viaje.fecha_llegada ?? viaje.fecha_salida)} | ${viaje.conductor.nombre} | ${viaje.vehiculo.placa} | ${viaje.cliente.nombre} | ${rutaViaje} | Guías: ${guiasViaje} | ${money(viaje.precio_real_flete)}`;
+        })
+        .join('\n'),
+      actions: viajes.map((viaje, index) => ({
+        label: `Abrir viaje ${index + 1}`,
+        route: '/app/reportes',
+        query: { edit: String(viaje.id) }
+      }))
+    };
+  }
+
+  const viaje = viajes[0]!;
+
+  const ruta = `${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino}`;
+  const guias = viaje.numeros_guia_remision?.length
+    ? viaje.numeros_guia_remision.join(', ')
+    : 'Sin guías';
+
+  return {
+    respuesta: `El último viaje${criteriaText} fue el ${dateOnly(
+      viaje.fecha_llegada ?? viaje.fecha_salida
+    )}.`,
+    cards: [
+      { titulo: 'Conductor', valor: viaje.conductor.nombre },
+      { titulo: 'Vehículo', valor: viaje.vehiculo.placa },
+      { titulo: 'Cliente', valor: viaje.cliente.nombre },
+      { titulo: 'Ruta', valor: ruta },
+      { titulo: 'A facturar', valor: money(viaje.precio_real_flete) }
+    ],
+    detalle: [
+      `Fecha salida: ${dateOnly(viaje.fecha_salida)}`,
+      `Fecha entrega: ${dateOnly(viaje.fecha_llegada ?? viaje.fecha_salida)}`,
+      `Tipo carga: ${viaje.tarifa_ruta.tipo_carga.nombre}`,
+      `Capacidad: ${viaje.tarifa_ruta.capacidad ?? '-'}`,
+      `Guías: ${guias}`,
+      `Precio viaje: ${money(viaje.precio_flete)}`,
+      `Viáticos: ${money(viaje.viaticos)}`,
+      `Cobrado: ${viaje.cobrado ? 'sí' : 'no'}`
+    ].join('\n'),
+    actions: [
+      {
+        label: 'Abrir viaje',
+        route: '/app/reportes',
         query: { edit: String(viaje.id) }
       }
     ]
@@ -2910,7 +4046,7 @@ const saveDraftFromContext = async (
 
   const query = action.query;
   if (action.operacion === 'editar') {
-    if (action.route === '/app/viajes') {
+    if (action.route === '/app/reportes') {
       const payload = viajeUpdateSchema.parse({
         precio_flete: query['precio_flete'],
         viaticos: query['viaticos'],
@@ -2942,7 +4078,7 @@ const saveDraftFromContext = async (
     };
   }
 
-  if (action.route === '/app/viajes') {
+  if (action.route === '/app/reportes') {
     const payload = viajeCreateSchema.parse({
       cliente_id: query['cliente_id'],
       vehiculo_id: query['vehiculo_id'],
@@ -2962,6 +4098,30 @@ const saveDraftFromContext = async (
       cards: [{ titulo: 'Registro creado', valor: 'Viaje' }],
       detalle: `Fecha: ${dateOnly(viaje.fecha_salida)}\nPrecio viaje: ${money(viaje.precio_flete)}`,
       sugerencias: ['Crear otro viaje', 'Consultar viajes pendientes']
+    };
+  }
+
+  if (action.route === '/app/proveedores/transporte') {
+    const payload = viajeProveedorCreateSchema.parse({
+      cliente_id: query['cliente_id'],
+      proveedor_id: query['proveedor_id'],
+      tarifa_ruta_id: query['tarifa_ruta_id'],
+      fecha_salida: query['fecha_salida'],
+      fecha_llegada: query['fecha_llegada'],
+      numeros_guia_remision: query['numeros_guia_remision'] ?? '',
+      precio_viaje: query['precio_viaje'],
+      viaticos: query['viaticos'] ?? 0,
+      cobrado: false,
+      pagado_proveedor: false,
+      estado: 'programado'
+    });
+    const viaje = await createViajeProveedor(propietarioIdInput, payload, audit);
+    return {
+      tipo: 'accion' as const,
+      respuesta: `Viaje de proveedor guardado correctamente con el número ${String(viaje.id)}.`,
+      cards: [{ titulo: 'Registro creado', valor: 'Viaje de proveedor' }],
+      detalle: `Fecha: ${dateOnly(viaje.fecha_salida)}\nA facturar: ${money(viaje.valor_a_facturar)}\nA pagar: ${money(viaje.precio_pagar_proveedor)}`,
+      sugerencias: ['Crear otro viaje de proveedor', 'Consultar viajes de proveedores']
     };
   }
 
@@ -3110,7 +4270,19 @@ export const procesarMensajeAsistenteEngine = async (
   const propietarioId = propietarioIdInput ? parseBigIntId(propietarioIdInput, 'propietario_id') : null;
   const normalized = normalizeText(parsed.mensaje);
   const queryContext = normalizeAssistantQueryContext(parsed);
+  const providerQueryContext = normalizeProviderQueryContext(parsed);
+  const maintenanceQueryContext = normalizeMaintenanceQueryContext(parsed);
   const analyticsContext = normalizeAnalyticsContext(parsed);
+  const canUseFleet = input.capacidades?.propietario ?? true;
+  const canUseProviders = input.capacidades?.intermediario ?? true;
+  const requireFleetAccess = () => {
+    if (!canUseFleet) throw new AppError('Tu usuario no tiene acceso a operaciones de flota propia.', 403);
+  };
+  const requireProviderAccess = () => {
+    if (!canUseProviders) throw new AppError('Tu usuario no tiene acceso a viajes de proveedores.', 403);
+  };
+  const commonPreviousFilters = queryContext?.filtros ??
+    (analyticsContext ? commonFiltersFromAnalytics(analyticsContext.filtros) : undefined);
 
   if (parsed.contexto?.confirmar && parsed.contexto.action?.operacion === 'guardar') {
     return saveDraftFromContext(propietarioIdInput, parsed, audit);
@@ -3179,6 +4351,8 @@ export const procesarMensajeAsistenteEngine = async (
     const draftLabel =
       draftResult.draft.tipo === 'viaje'
         ? 'viaje'
+        : draftResult.draft.tipo === 'viaje_proveedor'
+          ? 'viaje de proveedor'
         : draftResult.draft.tipo === 'mantenimiento'
           ? 'mantenimiento'
           : draftResult.draft.tipo === 'cliente'
@@ -3201,18 +4375,119 @@ export const procesarMensajeAsistenteEngine = async (
     };
   }
 
+  const previousSource: OperationalQuerySource | undefined = providerQueryContext
+    ? 'viajes_proveedores'
+    : maintenanceQueryContext
+      ? 'mantenimientos'
+      : queryContext || analyticsContext
+        ? 'viajes_propios'
+        : undefined;
+  const previousOperationalPlan = providerQueryContext
+    ? {
+        limite: providerQueryContext.filtros.limite ?? 10,
+        orden: {
+          campo: providerQueryContext.filtros.orden_campo ?? 'fecha',
+          direccion: providerQueryContext.filtros.orden_direccion ?? 'desc'
+        }
+      }
+    : maintenanceQueryContext
+      ? {
+          limite: maintenanceQueryContext.filtros.limite ?? 10,
+          orden: {
+            campo: maintenanceQueryContext.filtros.orden_campo ?? 'fecha',
+            direccion: maintenanceQueryContext.filtros.orden_direccion ?? 'desc'
+          }
+        }
+      : queryContext
+        ? {
+            limite: queryContext.filtros.limite ?? 10,
+            orden: {
+              campo: queryContext.filtros.orden_campo ?? 'fecha',
+              direccion: queryContext.filtros.orden_direccion ?? 'desc'
+            }
+          }
+        : undefined;
+  const queryPlan = buildOperationalQueryPlan({
+    tool,
+    message: parsed.mensaje,
+    parameters: entities,
+    previousSource:
+      previousSource ??
+      (!canUseFleet && canUseProviders && tool === 'consultar_viajes'
+        ? 'viajes_proveedores'
+        : undefined),
+    previous: previousOperationalPlan
+  });
+
+  const ownTripsRequested =
+    (tool === 'consultar_viajes' && queryPlan.fuente === 'viajes_propios') ||
+    normalizeText(entities?.origen_viajes) === 'propios' ||
+    /\b(viajes? propios?|flota propia|mis vehiculos)\b/.test(normalized);
+  if (ownTripsRequested) requireFleetAccess();
+  const providerRequested =
+    (tool === 'consultar_viajes' && queryPlan.fuente === 'viajes_proveedores') ||
+    normalized.includes('proveedor') ||
+    normalizeText(entities?.origen_viajes) === 'proveedores' ||
+    Boolean(entities?.proveedor) ||
+    Boolean(providerQueryContext) ||
+    (!ownTripsRequested && !canUseFleet && canUseProviders && tool === 'consultar_viajes');
+  if (providerRequested) {
+    requireProviderAccess();
+    const result = await providerTripsSummary(
+      propietarioId,
+      parsed.mensaje,
+      normalized,
+      entities,
+      providerQueryContext?.filtros,
+      queryPlan
+    );
+    return {
+      tipo: 'consulta',
+      ...result,
+      sugerencias: ['Solo por cobrar', 'Solo por pagar', 'Cambiar semana']
+    };
+  }
+
+  if (normalized.includes('cierre')) {
+    requireFleetAccess();
+    const result = await closureSummary(propietarioId, parsed.mensaje);
+    return { tipo: 'consulta', ...result, sugerencias: ['Ir a cierre semanal', 'Revisar alertas'] };
+  }
+
   if (tool === 'analizar_operacion') {
+    requireFleetAccess();
+    const current = currentIsoWeek();
+    const analyticsPrevious = analyticsContext?.filtros ??
+      (queryContext
+        ? {
+            metrica: 'valor_a_facturar' as const,
+            agrupar_por: 'vehiculo' as const,
+            operacion: 'suma' as const,
+            orden: 'desc' as const,
+            limite: 5,
+            anio: queryContext.filtros.anio ?? current.anio,
+            ...commonFiltersForAnalytics(queryContext.filtros)
+          }
+        : undefined);
     const basePlan = parseAnalyticsPlan(
       parsed.mensaje,
       normalized,
       entities,
-      analyticsContext?.filtros
+      analyticsPrevious
     );
+    const updatedCommonFilters = await parseTravelContextFilters(
+      propietarioId,
+      parsed.mensaje,
+      normalized,
+      entities,
+      commonFiltersFromAnalytics(basePlan)
+    );
+    const contextualPlan = replaceCommonFiltersInAnalytics(basePlan, updatedCommonFilters);
     const resolved = await resolveAnalyticsConductor(
       propietarioId,
       normalized,
       entities ?? {},
-      basePlan
+      contextualPlan
     );
     if (resolved.ambiguos.length) {
       return {
@@ -3222,16 +4497,56 @@ export const procesarMensajeAsistenteEngine = async (
         detalle: '',
         contexto: {
           tipo: 'analitica_viajes' as const,
-          filtros: basePlan
+          filtros: contextualPlan
         },
         sugerencias: resolved.ambiguos
       };
     }
+    if (queryPlan.comparar_semanas) {
+      return compareAnalyticsWeeks(
+        propietarioId,
+        resolved.plan,
+        queryPlan.comparar_semanas
+      );
+    }
     return analyticsTravelQuery(propietarioId, resolved.plan);
   }
 
+  if (tool === 'consultar_mantenimientos') {
+    requireFleetAccess();
+    const result = await structuredMaintenanceSummary(
+      propietarioId,
+      parsed.mensaje,
+      normalized,
+      entities ?? {},
+      queryPlan,
+      maintenanceQueryContext?.filtros
+    );
+    return { tipo: 'consulta', ...result, sugerencias: ['Cambiar periodo', 'Crear mantenimiento'] };
+  }
+
+  if (tool === 'consultar_viajes') {
+    requireFleetAccess();
+    const result = await structuredTravelSummary(
+      propietarioId,
+      parsed.mensaje,
+      normalized,
+      entities ?? {},
+      queryPlan,
+      commonPreviousFilters
+    );
+    return { tipo: 'consulta', ...result, sugerencias: ['Cambiar periodo', 'Ver viajes'] };
+  }
+
   if (isTravelContinuation(normalized, queryContext)) {
-    const result = await travelSummaryWithFilters(propietarioId, parsed.mensaje, normalized, queryContext?.filtros);
+    requireFleetAccess();
+    const result = await travelSummaryWithFilters(
+      propietarioId,
+      parsed.mensaje,
+      normalized,
+      entities,
+      commonPreviousFilters
+    );
     return { tipo: 'consulta', ...result, sugerencias: ['Cambiar semana', 'Ver viajes'] };
   }
 
@@ -3240,28 +4555,25 @@ export const procesarMensajeAsistenteEngine = async (
     !normalized.includes('viaje') &&
     (normalized.includes('mantenimiento') || normalized.includes('aceite') || normalized.includes('cambio'))
   ) {
+    requireFleetAccess();
     const result = await latestMaintenanceForVehicleList(propietarioId, normalized);
     return { tipo: 'consulta', ...result, sugerencias: ['Ver mantenimientos', 'Crear mantenimiento'] };
   }
 
   if ((normalized.includes('ultimo') || normalized.includes('ultima')) && normalized.includes('viaje')) {
-    const result = await latestTripForVehicleDestination(propietarioId, normalized);
-    return { tipo: 'consulta', ...result, sugerencias: ['Ver viajes', 'Crear viaje'] };
-  }
-
-  if (normalized.includes('proveedor') || normalized.includes('proveedores')) {
-    const result = await pendingProviderTrips(propietarioId);
-    return { tipo: 'consulta', ...result, sugerencias: ['Ver viajes proveedores', 'Copiar resumen'] };
+    requireFleetAccess();
+    const result = await latestTripByEntity(propietarioId, normalized, entities);
+    return {
+      tipo: 'consulta',
+      ...result,
+      sugerencias: 'sugerencias' in result ? result.sugerencias : ['Ver viajes', 'Crear viaje']
+    };
   }
 
   if (normalized.includes('mantenimiento')) {
+    requireFleetAccess();
     const result = await maintenanceSummary(propietarioId, parsed.mensaje, normalized);
     return { tipo: 'consulta', ...result, sugerencias: ['Ver mantenimientos', 'Crear mantenimiento'] };
-  }
-
-  if (normalized.includes('cierre')) {
-    const result = await closureSummary(propietarioId, parsed.mensaje);
-    return { tipo: 'consulta', ...result, sugerencias: ['Ir a cierre semanal', 'Revisar alertas'] };
   }
 
   if (
@@ -3270,6 +4582,7 @@ export const procesarMensajeAsistenteEngine = async (
     normalized.includes('por cobrar') ||
     normalized.includes('cobro')
   ) {
+    requireFleetAccess();
     const result = await pendingOwnTrips(propietarioId);
     return { tipo: 'consulta', ...result, sugerencias: ['Ver viajes', 'Marcar cobrados'] };
   }
@@ -3282,7 +4595,14 @@ export const procesarMensajeAsistenteEngine = async (
     normalized.includes('utilidad') ||
     normalized.includes('ganancia')
   ) {
-    const result = await travelSummaryWithFilters(propietarioId, parsed.mensaje, normalized, queryContext?.filtros);
+    requireFleetAccess();
+    const result = await travelSummaryWithFilters(
+      propietarioId,
+      parsed.mensaje,
+      normalized,
+      entities,
+      commonPreviousFilters
+    );
     return { tipo: 'consulta', ...result, sugerencias: ['Cambiar semana', 'Ver reporte de viajes'] };
   }
 
@@ -3295,6 +4615,9 @@ export const procesarMensajeAsistenteEngine = async (
 export const __testing = {
   assistantRecordId,
   billingPreviewFields,
+  catalogMatchesByName,
+  destinationSearchFromMessage,
+  latestTripSubjectFromMessage,
   capacityFieldMatches,
   extractClientFields,
   extractConductorFields,
@@ -3304,7 +4627,11 @@ export const __testing = {
   openCreateFormAction,
   parseAnalyticsPlan,
   parseGuidesNormalized,
+  parseMoneyValue,
   parseNamedMoneyValue,
+  parseProviderPaymentFilter,
+  parseRequestedCount,
   parseStructuredDate,
-  parseWeek
+  parseWeek,
+  rankTipoMantenimientoMatches
 };

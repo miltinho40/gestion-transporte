@@ -253,6 +253,32 @@ body {
   gap: 0.5rem;
 }
 
+.viaje-summary-compact > div {
+  border: 1px solid #9dccac;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  text-align: center;
+}
+
+.viaje-summary-compact > div:nth-child(3) {
+  border-color: #9bbdf9;
+}
+
+.viaje-summary-compact span,
+.viaje-summary-compact strong {
+  display: block;
+}
+
+.viaje-summary-compact strong {
+  color: #198754;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.viaje-cost-field:has(#galones_diesel) {
+  display: none;
+}
+
 .viaje-summary-card {
   border: 1px solid var(--app-border);
   border-radius: 6px;

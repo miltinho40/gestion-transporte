@@ -10,10 +10,16 @@
 
     <nav class="nav-list">
       @if (hasPermission('asistente')) {
-        <a routerLink="/app/asistente" routerLinkActive="active">
+        <a routerLink="/app/asistente" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
           <svg lucideSparkles size="17"></svg>
           Asistente
         </a>
+        @if (canReviewAssistant()) {
+          <a routerLink="/app/asistente/evaluaciones" routerLinkActive="active">
+            <svg lucideClipboardList size="17"></svg>
+            Evaluaciones IA
+          </a>
+        }
       }
       @if (hasPermission('dashboard')) {
         <a routerLink="/app/dashboard" routerLinkActive="active">

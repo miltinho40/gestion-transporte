@@ -1,12 +1,23 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
 import { createRateLimitMiddleware } from '../../middlewares/rate-limit.middleware.js';
-import { requirePropietarioContextOrSuperAdmin, requireRoles } from '../../middlewares/roles.middleware.js';
-import { validateBody } from '../../middlewares/validate.middleware.js';
-import { asistenteMensajeSchema } from './asistente.schema.js';
 import {
+  requirePropietarioContextOrSuperAdmin,
+  requireRoles,
+  requireSuperAdmin
+} from '../../middlewares/roles.middleware.js';
+import { validateBody } from '../../middlewares/validate.middleware.js';
+import {
+  asistenteEvaluacionSchema,
+  asistenteMensajeSchema,
+  asistenteRevisionSchema
+} from './asistente.schema.js';
+import {
+  evaluarRespuestaAsistenteController,
+  listarEvaluacionesAsistenteController,
   obtenerConversacionAsistenteController,
-  procesarMensajeAsistenteController
+  procesarMensajeAsistenteController,
+  revisarEvaluacionAsistenteController
 } from './asistente.controller.js';
 
 export const asistenteRouter = Router();
@@ -23,9 +34,26 @@ asistenteRouter.get(
   requireRoles('admin', 'operador', 'supervisor', 'consulta'),
   obtenerConversacionAsistenteController
 );
+asistenteRouter.get(
+  '/evaluaciones',
+  requireSuperAdmin,
+  listarEvaluacionesAsistenteController
+);
 asistenteRouter.post(
   '/mensaje',
   requireRoles('admin', 'operador', 'supervisor', 'consulta'),
   validateBody(asistenteMensajeSchema),
   procesarMensajeAsistenteController
+);
+asistenteRouter.put(
+  '/mensajes/:id/evaluacion',
+  requireRoles('admin', 'operador', 'supervisor', 'consulta'),
+  validateBody(asistenteEvaluacionSchema),
+  evaluarRespuestaAsistenteController
+);
+asistenteRouter.patch(
+  '/evaluaciones/:id/revision',
+  requireSuperAdmin,
+  validateBody(asistenteRevisionSchema),
+  revisarEvaluacionAsistenteController
 );

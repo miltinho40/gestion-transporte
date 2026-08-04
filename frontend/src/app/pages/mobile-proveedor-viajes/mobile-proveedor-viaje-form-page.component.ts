@@ -124,7 +124,9 @@ export class MobileProveedorViajeFormPageComponent implements OnDestroy {
           if (viaje) {
             this.fillForm(viaje, { duplicate: this.duplicating });
           } else {
+            this.applyAssistantPrefill();
             this.syncCatalogInputs();
+            this.recalculateFinancials();
           }
 
           this.loading.set(false);
@@ -138,6 +140,11 @@ export class MobileProveedorViajeFormPageComponent implements OnDestroy {
   }
 
   goBack() {
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+    if (returnUrl) {
+      void this.router.navigateByUrl(returnUrl);
+      return;
+    }
     void this.router.navigate(['/movil/viajes-proveedores']);
   }
 
@@ -244,7 +251,12 @@ export class MobileProveedorViajeFormPageComponent implements OnDestroy {
       request.subscribe({
         next: () => {
           this.saving.set(false);
-          void this.router.navigate(['/movil/viajes-proveedores']);
+          const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+          if (returnUrl) {
+            void this.router.navigateByUrl(returnUrl);
+          } else {
+            void this.router.navigate(['/movil/viajes-proveedores']);
+          }
         },
         error: (err) => {
           this.saving.set(false);
@@ -303,6 +315,23 @@ export class MobileProveedorViajeFormPageComponent implements OnDestroy {
       estado: value.estado,
       observaciones: value.observaciones || null
     };
+  }
+
+  private applyAssistantPrefill() {
+    const query = this.route.snapshot.queryParamMap;
+    if (query.get('new') !== '1') return;
+
+    this.form.patchValue({
+      cliente_id: query.get('cliente_id') ?? '',
+      proveedor_id: query.get('proveedor_id') ?? '',
+      tarifa_ruta_id: query.get('tarifa_ruta_id') ?? '',
+      fecha_salida: query.get('fecha_salida') ?? todayInputDate(),
+      fecha_llegada:
+        query.get('fecha_llegada') ?? addDaysInputDate(todayInputDate(), 1),
+      numeros_guia_remision: query.get('numeros_guia_remision') ?? '',
+      precio_viaje: Number(query.get('precio_viaje')) || 0,
+      viaticos: Number(query.get('viaticos')) || 0
+    });
   }
 
   private syncCatalogInputs() {

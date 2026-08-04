@@ -115,6 +115,8 @@ model Propietario {
   viajes_proveedor          ViajeProveedor[]
   conversaciones_asistente  ConversacionAsistente[]
   preferencias_asistente    PreferenciaAsistente[]
+  evaluaciones_asistente    EvaluacionAsistente[]
+  ejemplos_asistente        EjemploAsistente[]
   sesiones_usuario          SesionUsuario[]
 
   @@map("propietarios")
@@ -153,6 +155,8 @@ model Usuario {
   auditoria_eventos        AuditoriaEvento[]
   conversaciones_asistente ConversacionAsistente[]
   preferencias_asistente   PreferenciaAsistente[]
+  evaluaciones_asistente   EvaluacionAsistente[]   @relation("EvaluacionesAsistenteUsuario")
+  evaluaciones_revisadas   EvaluacionAsistente[]   @relation("EvaluacionesAsistenteRevisor")
   sesiones                 SesionUsuario[]
 
   @@map("usuarios")
@@ -258,11 +262,12 @@ model ConversacionAsistente {
   created_at        DateTime @default(now()) @db.Timestamptz(6)
   updated_at        DateTime @updatedAt @db.Timestamptz(6)
 
-  propietario Propietario                     @relation(fields: [propietario_id], references: [id], onDelete: Cascade)
-  usuario     Usuario                         @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
-  mensajes    MensajeAsistente[]
-  borradores  BorradorAsistente[]
-  ejecuciones EjecucionHerramientaAsistente[]
+  propietario  Propietario                     @relation(fields: [propietario_id], references: [id], onDelete: Cascade)
+  usuario      Usuario                         @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+  mensajes     MensajeAsistente[]
+  borradores   BorradorAsistente[]
+  ejecuciones  EjecucionHerramientaAsistente[]
+  evaluaciones EvaluacionAsistente[]
 
   @@index([propietario_id, usuario_id, ultimo_mensaje_at])
   @@index([usuario_id, estado])
@@ -278,9 +283,68 @@ model MensajeAsistente {
   created_at      DateTime @default(now()) @db.Timestamptz(6)
 
   conversacion ConversacionAsistente @relation(fields: [conversacion_id], references: [id], onDelete: Cascade)
+  evaluacion   EvaluacionAsistente?
 
   @@index([conversacion_id, created_at])
   @@map("mensajes_asistente")
+}
+
+model EvaluacionAsistente {
+  id                  BigInt    @id @default(autoincrement())
+  mensaje_id          BigInt    @unique
+  conversacion_id     BigInt
+  propietario_id      BigInt
+  usuario_id          BigInt
+  revisado_por_id     BigInt?
+  calificacion        String    @db.VarChar(20)
+  correccion          String?   @db.Text
+  estado_revision     String    @default("pendiente") @db.VarChar(20)
+  mensaje_usuario     String?   @db.Text
+  respuesta_asistente String?   @db.Text
+  herramienta         String?   @db.VarChar(80)
+  parametros          Json?
+  proveedor           String?   @db.VarChar(20)
+  modelo              String?   @db.VarChar(100)
+  confianza           Float?
+  duracion_ms         Int?
+  tokens_entrada      Int?
+  tokens_salida       Int?
+  tokens_total        Int?
+  revisado_at         DateTime? @db.Timestamptz(6)
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime  @updatedAt @db.Timestamptz(6)
+
+  mensaje      MensajeAsistente      @relation(fields: [mensaje_id], references: [id], onDelete: Cascade)
+  conversacion ConversacionAsistente @relation(fields: [conversacion_id], references: [id], onDelete: Cascade)
+  propietario  Propietario           @relation(fields: [propietario_id], references: [id], onDelete: Cascade)
+  usuario      Usuario               @relation("EvaluacionesAsistenteUsuario", fields: [usuario_id], references: [id], onDelete: Cascade)
+  revisado_por Usuario?              @relation("EvaluacionesAsistenteRevisor", fields: [revisado_por_id], references: [id], onDelete: SetNull)
+  ejemplo       EjemploAsistente?
+
+  @@index([propietario_id, calificacion, created_at])
+  @@index([propietario_id, estado_revision, created_at])
+  @@index([usuario_id, created_at])
+  @@index([conversacion_id, created_at])
+  @@map("evaluaciones_asistente")
+}
+
+model EjemploAsistente {
+  id                    BigInt    @id @default(autoincrement())
+  evaluacion_id         BigInt    @unique
+  propietario_id        BigInt
+  mensaje_usuario       String    @db.Text
+  correccion            String    @db.Text
+  herramienta_esperada  String    @db.VarChar(80)
+  parametros_esperados  Json?
+  activo                Boolean   @default(true)
+  created_at            DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime  @updatedAt @db.Timestamptz(6)
+
+  evaluacion  EvaluacionAsistente @relation(fields: [evaluacion_id], references: [id], onDelete: Cascade)
+  propietario Propietario         @relation(fields: [propietario_id], references: [id], onDelete: Cascade)
+
+  @@index([propietario_id, activo, updated_at])
+  @@map("ejemplos_asistente")
 }
 
 model BorradorAsistente {

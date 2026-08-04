@@ -1,0 +1,270 @@
+<section class="evaluation-page">
+  <header class="evaluation-heading">
+    <div>
+      <h1>Evaluaciones IA</h1>
+      <p>Control global de calidad de las respuestas del asistente.</p>
+    </div>
+    <button
+      type="button"
+      class="btn btn-outline-secondary evaluation-icon-btn"
+      (click)="load()"
+      [disabled]="loading()"
+      title="Actualizar"
+      aria-label="Actualizar evaluaciones"
+    >
+      <svg lucideRefreshCw size="17"></svg>
+    </button>
+  </header>
+
+  @if (error() || notice()) {
+    <button
+      type="button"
+      class="alert evaluation-alert"
+      [class.alert-danger]="error()"
+      [class.alert-success]="notice()"
+      (click)="closeMessages()"
+    >
+      {{ error() ?? notice() }}
+    </button>
+  }
+
+  <div class="evaluation-summary-grid">
+    <div class="evaluation-summary-card">
+      <span>Evaluaciones</span>
+      <strong>{{ summary().total }}</strong>
+    </div>
+    <div class="evaluation-summary-card evaluation-summary-positive">
+      <span>Respuestas correctas</span>
+      <strong>{{ summary().porcentaje_correctas }}%</strong>
+      <small>{{ summary().correctas }} respuestas</small>
+    </div>
+    <div class="evaluation-summary-card evaluation-summary-negative">
+      <span>Respuestas incorrectas</span>
+      <strong>{{ summary().incorrectas }}</strong>
+    </div>
+    <div class="evaluation-summary-card evaluation-summary-warning">
+      <span>Pendientes de revisión</span>
+      <strong>{{ summary().pendientes_revision }}</strong>
+    </div>
+    <div class="evaluation-summary-card">
+      <span>Ejemplos activos</span>
+      <strong>{{ summary().ejemplos_activos }}</strong>
+      <small>
+        {{ summary().casos_dinamicos_correctos }} pasan ·
+        {{ summary().porcentaje_casos_dinamicos }}%
+      </small>
+    </div>
+    <div class="evaluation-summary-card">
+      <span>Tiempo promedio</span>
+      <strong>{{ formatDuration(summary().duracion_promedio_ms) }}</strong>
+    </div>
+    <div class="evaluation-summary-card">
+      <span>Tokens utilizados</span>
+      <strong>{{ summary().tokens_total }}</strong>
+      <small>{{ summary().tokens_entrada }} entrada · {{ summary().tokens_salida }} salida</small>
+      <small>
+        @if (summary().tarifa_costo_configurada) {
+          Costo estimado: ${{ summary().costo_estimado_usd }}
+        } @else {
+          Costo pendiente de configurar
+        }
+      </small>
+    </div>
+  </div>
+
+  <div class="evaluation-filters">
+    <label class="evaluation-search">
+      <span>Buscar</span>
+      <div class="input-group">
+        <span class="input-group-text"><svg lucideSearch size="15"></svg></span>
+        <input
+          class="form-control"
+          type="search"
+          placeholder="Pregunta, respuesta, usuario, herramienta..."
+          [ngModel]="search()"
+          (ngModelChange)="setSearch($event)"
+        />
+      </div>
+    </label>
+    <label>
+      <span>Calificación</span>
+      <select class="form-select" [ngModel]="rating()" (ngModelChange)="rating.set($event); applyFilters()">
+        <option value="todas">Todas</option>
+        <option value="correcta">Correctas</option>
+        <option value="incorrecta">Incorrectas</option>
+      </select>
+    </label>
+    <label>
+      <span>Revisión</span>
+      <select
+        class="form-select"
+        [ngModel]="reviewState()"
+        (ngModelChange)="reviewState.set($event); applyFilters()"
+      >
+        <option value="todos">Todos</option>
+        <option value="pendiente">Pendientes</option>
+        <option value="revisada">Revisadas</option>
+        <option value="descartada">Descartadas</option>
+      </select>
+    </label>
+    <label>
+      <span>Desde</span>
+      <input class="form-control" type="date" [ngModel]="from()" (ngModelChange)="from.set($event); applyFilters()" />
+    </label>
+    <label>
+      <span>Hasta</span>
+      <input class="form-control" type="date" [ngModel]="to()" (ngModelChange)="to.set($event); applyFilters()" />
+    </label>
+    <button
+      type="button"
+      class="btn btn-outline-secondary evaluation-clear-btn"
+      (click)="clearFilters()"
+      title="Limpiar filtros"
+      aria-label="Limpiar filtros"
+    >
+      <svg lucideX size="17"></svg>
+    </button>
+  </div>
+
+  <div class="evaluation-table-panel">
+    <div class="table-responsive">
+      <table class="table align-middle evaluation-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Propietario</th>
+            <th>Usuario</th>
+            <th>Pregunta</th>
+            <th>Respuesta y corrección</th>
+            <th>Procesamiento</th>
+            <th>Calificación</th>
+            <th>Revisión</th>
+            <th class="text-end">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of rows(); track row.id) {
+            <tr>
+              <td class="evaluation-date">
+                {{ row.created_at | date: 'yyyy-MM-dd' }}
+                <small>{{ row.created_at | date: 'HH:mm' }} · {{ row.conversacion.canal }}</small>
+              </td>
+              <td>
+                <strong>{{ row.propietario.nombre }}</strong>
+              </td>
+              <td>
+                <strong>{{ row.usuario.nombre }}</strong>
+                <small>{{ row.usuario.email }}</small>
+              </td>
+              <td class="evaluation-copy" [title]="row.mensaje_usuario ?? ''">
+                {{ row.mensaje_usuario || 'Pregunta no disponible' }}
+              </td>
+              <td class="evaluation-copy">
+                <span [title]="row.respuesta_asistente ?? ''">
+                  {{ row.respuesta_asistente || 'Respuesta no disponible' }}
+                </span>
+                @if (row.correccion) {
+                  <small class="evaluation-correction">Esperado: {{ row.correccion }}</small>
+                }
+              </td>
+              <td>
+                <strong class="text-capitalize">{{ formatTool(row.herramienta) }}</strong>
+                <small>{{ row.proveedor || 'reglas' }}{{ row.modelo ? ' · ' + row.modelo : '' }}</small>
+                <small>{{ formatDuration(row.duracion_ms) }} · {{ row.tokens_total || 0 }} tokens</small>
+              </td>
+              <td>
+                <span
+                  class="evaluation-badge"
+                  [class.evaluation-badge-positive]="row.calificacion === 'correcta'"
+                  [class.evaluation-badge-negative]="row.calificacion === 'incorrecta'"
+                >
+                  {{ row.calificacion === 'correcta' ? 'Correcta' : 'Incorrecta' }}
+                </span>
+              </td>
+              <td>
+                <span class="evaluation-state evaluation-state-{{ row.estado_revision }}">
+                  {{ row.estado_revision }}
+                </span>
+                @if (row.revisado_por) {
+                  <small>{{ row.revisado_por.nombre }}</small>
+                }
+                @if (row.ejemplo?.activo) {
+                  <small class="text-success">Ejemplo: {{ formatTool(row.ejemplo?.herramienta_esperada) }}</small>
+                }
+              </td>
+              <td>
+                <div class="evaluation-actions">
+                  @if (row.estado_revision !== 'revisada') {
+                    <button
+                      type="button"
+                      class="btn btn-outline-success evaluation-icon-btn"
+                      (click)="review(row, 'revisada')"
+                      [disabled]="reviewingId() === row.id"
+                      title="Marcar como revisada"
+                      aria-label="Marcar como revisada"
+                    >
+                      <svg lucideCheck size="15"></svg>
+                    </button>
+                  }
+                  @if (row.estado_revision !== 'descartada') {
+                    <button
+                      type="button"
+                      class="btn btn-outline-danger evaluation-icon-btn"
+                      (click)="review(row, 'descartada')"
+                      [disabled]="reviewingId() === row.id"
+                      title="Descartar evaluación"
+                      aria-label="Descartar evaluación"
+                    >
+                      <svg lucideX size="15"></svg>
+                    </button>
+                  }
+                  @if (row.estado_revision !== 'pendiente') {
+                    <button
+                      type="button"
+                      class="btn btn-outline-secondary evaluation-icon-btn"
+                      (click)="review(row, 'pendiente')"
+                      [disabled]="reviewingId() === row.id"
+                      title="Devolver a pendientes"
+                      aria-label="Devolver a pendientes"
+                    >
+                      <svg lucideRotateCcw size="15"></svg>
+                    </button>
+                  }
+                </div>
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="9" class="evaluation-empty">
+                @if (loading()) {
+                  Cargando evaluaciones...
+                } @else if (hasActiveFilters()) {
+                  No hay respuestas evaluadas que coincidan con estos filtros.
+                } @else {
+                  <div class="evaluation-empty-content">
+                    <strong>Aún no hay respuestas evaluadas</strong>
+                    <span>
+                      Las preguntas aparecen aquí después de calificar una respuesta del asistente
+                      con pulgar arriba o pulgar abajo.
+                    </span>
+                    <a class="btn btn-outline-primary" routerLink="/app/asistente">
+                      <svg lucideMessageSquare size="16"></svg>
+                      Ir al asistente
+                    </a>
+                  </div>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <app-pagination-controls
+      [meta]="pagination()"
+      [loading]="loading()"
+      [pageSizeOptions]="[10, 25, 50, 100]"
+      (pageChange)="changePage($event)"
+      (limitChange)="changeLimit($event)"
+    />
+  </div>
+</section>

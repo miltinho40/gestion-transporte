@@ -8,6 +8,8 @@ import {
   LucideMicOff,
   LucideSend,
   LucideSparkles,
+  LucideThumbsDown,
+  LucideThumbsUp,
   LucideVolume2,
   LucideVolumeX
 } from '@lucide/angular';
@@ -22,7 +24,7 @@ interface AssistantCard {
 }
 
 interface AssistantDraft {
-  tipo: 'viaje' | 'mantenimiento' | 'cliente' | 'vehiculo' | 'conductor' | 'preferencia';
+  tipo: 'viaje' | 'viaje_proveedor' | 'mantenimiento' | 'cliente' | 'vehiculo' | 'conductor' | 'preferencia';
   titulo: string;
   campos: Record<string, string>;
   advertencias: string[];
@@ -36,7 +38,7 @@ interface AssistantAction {
 }
 
 interface AssistantQueryContext {
-  tipo: 'viajes' | 'analitica_viajes';
+  tipo: 'viajes' | 'analitica_viajes' | 'viajes_proveedor' | 'mantenimientos';
   filtros: Record<string, string | number | boolean | null>;
 }
 
@@ -57,10 +59,17 @@ interface AssistantResponse {
   contexto?: AssistantQueryContext;
   sugerencias: string[];
   conversacion_id?: string;
+  mensaje_id?: string;
+}
+
+interface AssistantEvaluation {
+  calificacion: 'correcta' | 'incorrecta';
+  correccion?: string | null;
 }
 
 interface ChatMessage {
   id: number | string;
+  messageId?: string;
   role: 'user' | 'assistant';
   text: string;
   cards?: AssistantCard[];
@@ -68,6 +77,8 @@ interface ChatMessage {
   draft?: AssistantDraft;
   actions?: AssistantAction[];
   suggestions?: string[];
+  evaluation?: AssistantEvaluation | null;
+  feedbackSaving?: boolean;
 }
 
 interface PersistedAssistantMessage {
@@ -75,6 +86,7 @@ interface PersistedAssistantMessage {
   rol: 'usuario' | 'asistente';
   contenido: string;
   metadata?: Partial<AssistantResponse> | null;
+  evaluacion?: AssistantEvaluation | null;
 }
 
 interface PersistedAssistantConversation {
@@ -123,6 +135,8 @@ declare global {
     LucideMicOff,
     LucideSend,
     LucideSparkles,
+    LucideThumbsDown,
+    LucideThumbsUp,
     LucideVolume2,
     LucideVolumeX
   ],
@@ -251,6 +265,43 @@ export class AsistentePageComponent {
     }
   }
 
+  async rateMessage(message: ChatMessage, rating: AssistantEvaluation['calificacion']) {
+    if (!message.messageId || message.feedbackSaving) return;
+
+    let correction: string | null = null;
+    if (rating === 'incorrecta') {
+      correction = await this.dialog.textPrompt({
+        title: 'Ayúdanos a mejorar',
+        text: 'Indica qué respuesta o acción esperabas. Puedes dejarlo vacío.',
+        label: 'Corrección opcional',
+        placeholder: 'Ejemplo: debía buscar los viajes del conductor Darwin...',
+        confirmText: 'Enviar evaluación',
+        value: message.evaluation?.correccion ?? '',
+        maxLength: 1200
+      });
+      if (correction === null) return;
+    }
+
+    this.updateMessage(message.id, { feedbackSaving: true });
+    this.api
+      .put<AssistantEvaluation>(`/asistente/mensajes/${message.messageId}/evaluacion`, {
+        calificacion: rating,
+        correccion: rating === 'incorrecta' ? correction : null
+      })
+      .subscribe({
+        next: (evaluation) => {
+          this.updateMessage(message.id, {
+            evaluation,
+            feedbackSaving: false
+          });
+        },
+        error: (err) => {
+          this.updateMessage(message.id, { feedbackSaving: false });
+          this.error.set(err?.error?.message ?? 'No se pudo guardar la evaluación.');
+        }
+      });
+  }
+
   async runAction(action: AssistantAction) {
     if (action.operacion === 'guardar' || action.operacion === 'editar') {
       const draft = this.currentDraftContext?.draft;
@@ -266,6 +317,8 @@ export class AsistentePageComponent {
       const defaultCreateTitle =
         draft.tipo === 'viaje'
           ? 'Guardar viaje'
+          : draft.tipo === 'viaje_proveedor'
+            ? 'Guardar viaje de proveedor'
           : draft.tipo === 'mantenimiento'
             ? 'Guardar mantenimiento'
             : draft.tipo === 'cliente'
@@ -310,6 +363,8 @@ export class AsistentePageComponent {
               ? 'Confirmo aplicar los cambios.'
               : draft.tipo === 'viaje'
                 ? 'Confirmo guardar el viaje.'
+                : draft.tipo === 'viaje_proveedor'
+                  ? 'Confirmo guardar el viaje de proveedor.'
                 : draft.tipo === 'mantenimiento'
                   ? 'Confirmo guardar el mantenimiento.'
                   : draft.tipo === 'cliente'
@@ -326,15 +381,21 @@ export class AsistentePageComponent {
     const isMobile = this.router.url.startsWith('/movil');
     const editId = action.query['edit'] ?? action.query['editId'];
     const route =
-      isMobile && action.route === '/app/viajes' && editId
+      isMobile && action.route === '/app/reportes' && editId
         ? `/movil/viajes/${editId}/editar`
+        : isMobile && action.route === '/app/proveedores/transporte' && editId
+          ? `/movil/viajes-proveedores/${editId}/editar`
+          : isMobile && action.route === '/app/proveedores/transporte' && action.query['new'] === '1'
+            ? '/movil/viajes-proveedores/nuevo'
+            : isMobile && action.route === '/app/proveedores/transporte'
+              ? '/movil/viajes-proveedores'
         : isMobile && action.route === '/app/mantenimientos' && editId
           ? `/movil/mantenimientos/${editId}/editar`
-          : isMobile && action.route === '/app/viajes'
+          : isMobile && action.route === '/app/reportes'
             ? '/movil/viajes/nuevo'
             : isMobile && action.route === '/app/mantenimientos'
               ? '/movil/mantenimientos/nuevo'
-              : action.route;
+          : action.route;
     const returnUrl = isMobile ? '/movil/asistente' : '/app/asistente';
     const queryParams = editId
       ? { returnUrl }
@@ -375,6 +436,8 @@ export class AsistentePageComponent {
             : undefined;
         this.currentQueryContext = response.contexto ?? this.currentQueryContext;
         this.pushMessage({
+          id: response.mensaje_id,
+          messageId: response.mensaje_id,
           role: 'assistant',
           text: response.respuesta,
           cards: response.cards,
@@ -409,9 +472,18 @@ export class AsistentePageComponent {
       });
   }
 
-  private pushMessage(message: Omit<ChatMessage, 'id'>) {
-    this.messages.update((current) => [...current, { ...message, id: this.nextId++ }]);
+  private pushMessage(message: Omit<ChatMessage, 'id'> & { id?: number | string }) {
+    this.messages.update((current) => [
+      ...current,
+      { ...message, id: message.id ?? this.nextId++ }
+    ]);
     setTimeout(() => this.messagesEnd?.nativeElement.scrollIntoView({ behavior: 'smooth' }), 0);
+  }
+
+  private updateMessage(id: ChatMessage['id'], changes: Partial<ChatMessage>) {
+    this.messages.update((current) =>
+      current.map((message) => (message.id === id ? { ...message, ...changes } : message))
+    );
   }
 
   private activeDraftContext(): AssistantContext | undefined {
@@ -444,13 +516,15 @@ export class AsistentePageComponent {
 
           const history = conversation.mensajes.map((message) => ({
             id: message.id,
+            messageId: message.rol === 'asistente' ? message.id : undefined,
             role: message.rol === 'usuario' ? ('user' as const) : ('assistant' as const),
             text: message.contenido,
             cards: message.metadata?.cards,
             detail: message.metadata?.detalle,
             draft: message.metadata?.draft,
             actions: message.metadata?.actions,
-            suggestions: message.metadata?.sugerencias
+            suggestions: message.metadata?.sugerencias,
+            evaluation: message.evaluacion
           }));
           this.messages.set(history.length ? history : [this.welcomeMessage()]);
         },

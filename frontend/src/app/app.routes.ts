@@ -10,6 +10,10 @@ const loadAcceptInvitationPage = () =>
   );
 const loadAsistentePage = () =>
   import('./pages/asistente/asistente-page.component').then((m) => m.AsistentePageComponent);
+const loadAsistenteEvaluacionesPage = () =>
+  import('./pages/asistente-evaluaciones/asistente-evaluaciones-page.component').then(
+    (m) => m.AsistenteEvaluacionesPageComponent
+  );
 const loadChangePasswordPage = () =>
   import('./pages/change-password/change-password-page.component').then(
     (m) => m.ChangePasswordPageComponent
@@ -42,7 +46,6 @@ const loadUtilityReportPage = () =>
   import('./pages/utility-report/utility-report-page.component').then(
     (m) => m.UtilityReportPageComponent
   );
-const loadViajesPage = () => import('./pages/viajes/viajes-page.component').then((m) => m.ViajesPageComponent);
 const loadWeeklyClosurePage = () =>
   import('./pages/weekly-closure/weekly-closure-page.component').then(
     (m) => m.WeeklyClosurePageComponent
@@ -177,6 +180,11 @@ export const routes: Routes = [
     canActivateChild: [authGuard],
     children: [
       { path: 'asistente', loadComponent: loadAsistentePage },
+      {
+        path: 'asistente/evaluaciones',
+        canActivate: [superAdminGuard],
+        loadComponent: loadAsistenteEvaluacionesPage
+      },
       { path: 'dashboard', loadComponent: loadDashboardPage },
       { path: 'cambiar-clave', loadComponent: loadChangePasswordPage },
       {
@@ -770,7 +778,8 @@ export const routes: Routes = [
       },
       {
         path: 'viajes',
-        loadComponent: loadViajesPage,
+        redirectTo: 'reportes',
+        pathMatch: 'full',
         data: {
           title: 'Viajes',
           description: 'Viajes, fletes, gastos y estado de cobro.',

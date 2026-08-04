@@ -1,254 +1,50 @@
-import { Component, OnDestroy, inject, signal } from '@angular/core';
+import { Component, OnDestroy, inject, output, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, ParamMap, Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   LucideCalculator,
-  LucideCheck,
-  LucideCopy,
-  LucidePencil,
   LucidePlus,
-  LucideRefreshCw,
   LucideSave,
-  LucideSearch,
   LucideTrash2
 } from '@lucide/angular';
 import { Subscription, forkJoin, map, of, switchMap } from 'rxjs';
 import { ApiService } from '../../core/api.service';
-import { formatDateOnly } from '../../core/date-only';
-import { isPaginatedResponse, PaginatedResponse, PaginationMeta } from '../../core/pagination';
-import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
-import { DialogService } from '../../shared/dialog.service';
-import { PaginationControlsComponent } from '../../shared/pagination-controls.component';
-
-type EstadoViaje = 'programado' | 'en_curso' | 'completado' | 'cancelado';
-type ViajeCatalogField = 'cliente_id' | 'vehiculo_id' | 'conductor_id' | 'tarifa_ruta_id' | 'tipo_gasto_id';
-
-interface SelectOption {
-  value: string;
-  label: string;
-}
-
-interface BasicOption {
-  id: string;
-  nombre: string;
-  activo?: boolean;
-}
-
-interface ClienteOption extends BasicOption {
-  ruc_cedula: string;
-  porcentaje_comision: string | number;
-}
-
-interface VehiculoOption {
-  id: string;
-  placa: string;
-  marca: string;
-  modelo?: string | null;
-}
-
-interface ConductorOption extends BasicOption {
-  cedula: string;
-}
-
-interface TarifaRutaOption {
-  id: string;
-  precio: string | number;
-  capacidad?: string | null;
-  toneladas?: string | number | null;
-  ruta: {
-    id: string;
-    origen: string;
-    destino: string;
-    distancia_km: string | number;
-  };
-  tipo_carga: {
-    nombre: string;
-  };
-}
-
-interface TipoGastoOption extends BasicOption {}
-
-interface ViajeRow {
-  id: string;
-  cliente_id: string;
-  vehiculo_id: string;
-  conductor_id: string;
-  tarifa_ruta_id: string;
-  cliente?: ClienteOption;
-  vehiculo?: VehiculoOption;
-  conductor?: ConductorOption;
-  tarifa_ruta?: TarifaRutaOption;
-  fecha_salida: string;
-  fecha_llegada?: string | null;
-  descripcion_carga?: string | null;
-  peso_carga_kg?: string | number | null;
-  numeros_guia_remision: string[];
-  precio_flete: string | number;
-  porcentaje_comision_aplicado: string | number;
-  valor_comision: string | number;
-  precio_real_flete: string | number;
-  galones_diesel: string | number;
-  costo_diesel: string | number;
-  costo_peajes: string | number;
-  costo_estimado_gastos: string | number;
-  viaticos?: string | number | null;
-  costo_real_gastos?: string | number | null;
-  cobrado: boolean;
-  retorno: boolean;
-  fecha_cobro?: string | null;
-  soporte_cobro?: string | null;
-  sin_factura_cobro?: boolean;
-  estado: EstadoViaje;
-  observaciones?: string | null;
-}
-
-type ViajesListResponse = ViajeRow[] | PaginatedResponse<ViajeRow>;
-
-interface CalculoViaje {
-  distancia_km: string | number;
-  precio_flete: string | number;
-  porcentaje_comision: string | number;
-  valor_comision: string | number;
-  precio_real_flete: string | number;
-  precio_galon_diesel: string | number;
-  galones_diesel: string | number;
-  costo_diesel: string | number;
-  costo_peajes: string | number;
-  costo_estimado_gastos: string | number;
-}
-
-interface GastoViajeItem {
-  id?: string;
-  tipo_gasto_id: string;
-  tipo_gasto_nombre: string;
-  descripcion: string | null;
-  monto: number;
-  es_estimado: boolean;
-}
-
-interface ViajeDisplayRow {
-  row: ViajeRow;
-  weekLabel: string;
-  weekTitle: string;
-  weekClass: string;
-}
-
-interface ViajesListState {
-  page: number;
-  limit: number;
-  search: string;
-  cliente: string;
-  vehiculo: string;
-  cobrado: string;
-  semana: string;
-}
-
-const toDateInputValue = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-
-  return `${year}-${month}-${day}`;
-};
-
-const todayInputDate = () => toDateInputValue(new Date());
-
-const dateInputValue = (value?: string | null) => {
-  if (!value) return '';
-  return String(value).slice(0, 10);
-};
-
-const dateOnlyParts = (value?: string | null) => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? '').trim());
-  if (!match) return null;
-
-  return {
-    year: Number(match[1]),
-    month: Number(match[2]),
-    day: Number(match[3])
-  };
-};
-
-const addDaysInputDate = (value: string, days: number) => {
-  const parts = dateOnlyParts(value);
-  if (!parts) return value;
-
-  const date = new Date(parts.year, parts.month - 1, parts.day);
-  date.setDate(date.getDate() + days);
-  return toDateInputValue(date);
-};
-
-const isoWeekInfo = (value?: string | null) => {
-  const parts = dateOnlyParts(value);
-  if (!parts) {
-    return { key: 'sin-fecha', label: 'Sin fecha', title: 'Sin fecha', week: null, year: null };
-  }
-
-  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
-  const day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - day);
-
-  const weekYear = date.getUTCFullYear();
-  const yearStart = new Date(Date.UTC(weekYear, 0, 1));
-  const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-
-  return {
-    key: `${weekYear}-${week}`,
-    label: `Sem ${week}`,
-    title: `Semana ${week} - ${weekYear}`,
-    week,
-    year: weekYear
-  };
-};
-
-const dateSortValue = (value?: string | null) => {
-  const parts = dateOnlyParts(value);
-  if (!parts) return Number.MAX_SAFE_INTEGER;
-
-  return Date.UTC(parts.year, parts.month - 1, parts.day);
-};
-
-const numberValue = (value: unknown) => {
-  const parsed = Number(value ?? 0);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const searchText = (...values: unknown[]) =>
-  values
-    .filter((value) => value !== null && value !== undefined && value !== '')
-    .join(' ')
-    .toLowerCase();
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
-
-const splitGuiasRemision = (value: unknown) =>
-  String(value ?? '')
-    .split(/[\n,;-]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+import {
+  type CalculoViaje,
+  type ClienteOption,
+  type ConductorOption,
+  type EstadoViaje,
+  type GastoViajeItem,
+  type SelectOption,
+  type TarifaRutaOption,
+  type TipoGastoOption,
+  type ViajeCatalogField,
+  type ViajeRow,
+  type VehiculoOption
+} from './viaje-editor.models';
+import {
+  addDaysInputDate,
+  dateInputValue,
+  numberValue,
+  roundMoney,
+  splitGuiasRemision,
+  todayInputDate
+} from './viaje-editor.utils';
 
 @Component({
-  selector: 'app-viajes-page',
+  selector: 'app-viaje-editor-modal',
   imports: [
     FormsModule,
     ReactiveFormsModule,
     LucideCalculator,
-    LucideCheck,
-    LucideCopy,
-    LucidePencil,
     LucidePlus,
-    LucideRefreshCw,
     LucideSave,
-    LucideSearch,
-    LucideTrash2,
-    AutoDismissAlertDirective,
-    PaginationControlsComponent
+    LucideTrash2
   ],
-  templateUrl: './viajes-page.component.html'
+  templateUrl: './viaje-editor-modal.component.html'
 })
-export class ViajesPageComponent implements OnDestroy {
+export class ViajeEditorModalComponent implements OnDestroy {
   private readonly api = inject(ApiService);
-  private readonly dialog = inject(DialogService);
   private readonly fb = inject(FormBuilder);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -256,14 +52,6 @@ export class ViajesPageComponent implements OnDestroy {
   private pendingEditId: string | null = null;
   private pendingDuplicateId: string | null = null;
   private pendingCreate = false;
-  private filterTimer: ReturnType<typeof setTimeout> | null = null;
-  private syncingFiltersFromUrl = false;
-  private listStateBeforeForm: ViajesListState | null = null;
-
-  readonly rows = signal<ViajeRow[]>([]);
-  readonly pagination = signal<PaginationMeta | null>(null);
-  readonly page = signal(1);
-  readonly limit = signal(50);
   readonly clientes = signal<ClienteOption[]>([]);
   readonly vehiculos = signal<VehiculoOption[]>([]);
   readonly conductores = signal<ConductorOption[]>([]);
@@ -273,17 +61,10 @@ export class ViajesPageComponent implements OnDestroy {
   readonly deletedGastoIds = signal<string[]>([]);
   readonly loading = signal(false);
   readonly saving = signal(false);
-  readonly deletingId = signal<string | null>(null);
-  readonly markingCobroId = signal<string | null>(null);
   readonly formOpen = signal(false);
   readonly editingRow = signal<ViajeRow | null>(null);
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
-  readonly search = signal('');
-  readonly filterClienteTerm = signal('');
-  readonly filterVehiculoTerm = signal('');
-  readonly filterCobrado = signal('false');
-  readonly filterSemanaTerm = signal('');
   readonly calculating = signal(false);
   readonly catalogInput = signal<Record<ViajeCatalogField, string>>({
     cliente_id: '',
@@ -293,6 +74,7 @@ export class ViajesPageComponent implements OnDestroy {
     tipo_gasto_id: ''
   });
   readonly activeCatalogField = signal<ViajeCatalogField | null>(null);
+  readonly saved = output<void>();
 
   private precioRealManual = false;
   private costoRealManual = false;
@@ -336,13 +118,9 @@ export class ViajesPageComponent implements OnDestroy {
   constructor() {
     this.sub.add(
       this.route.queryParamMap.subscribe((params) => {
-        const filtersChanged = this.applyFiltersFromQueryParams(params);
         this.pendingCreate = params.has('new');
         this.pendingEditId = params.get('edit') ?? params.get('editId');
         this.pendingDuplicateId = params.get('duplicate') ?? params.get('duplicateId');
-        if (filtersChanged) {
-          this.load();
-        }
         this.openPendingCreate();
         this.openPendingEdit();
         this.openPendingDuplicate();
@@ -363,9 +141,6 @@ export class ViajesPageComponent implements OnDestroy {
   }
 
   ngOnDestroy() {
-    if (this.filterTimer) {
-      clearTimeout(this.filterTimer);
-    }
     this.sub.unsubscribe();
   }
 
@@ -375,7 +150,6 @@ export class ViajesPageComponent implements OnDestroy {
 
     this.sub.add(
       forkJoin({
-        viajes: this.api.get<ViajesListResponse>('/viajes', this.listParams()),
         clientes: this.api.get<ClienteOption[]>('/clientes', { activo: true, solo_propios: true }),
         vehiculos: this.api.get<VehiculoOption[]>('/vehiculos', { solo_propios: true }),
         conductores: this.api.get<ConductorOption[]>('/conductores', {
@@ -388,8 +162,7 @@ export class ViajesPageComponent implements OnDestroy {
         }),
         tiposGasto: this.api.get<TipoGastoOption[]>('/tipos-gasto-viaje', { activo: true })
       }).subscribe({
-        next: ({ viajes, clientes, vehiculos, conductores, tarifasRuta, tiposGasto }) => {
-          this.setViajesResponse(viajes);
+        next: ({ clientes, vehiculos, conductores, tarifasRuta, tiposGasto }) => {
           this.clientes.set(clientes);
           this.vehiculos.set(vehiculos);
           this.conductores.set(conductores);
@@ -402,84 +175,11 @@ export class ViajesPageComponent implements OnDestroy {
           this.loading.set(false);
         },
         error: (err) => {
-          this.error.set(err?.error?.message ?? 'No se pudieron cargar los viajes.');
+          this.error.set(err?.error?.message ?? 'No se pudieron cargar los catálogos del viaje.');
           this.loading.set(false);
         }
       })
     );
-  }
-
-  filteredRows() {
-    return this.rows()
-      .sort((left, right) => {
-        const dateDiff = dateSortValue(this.fechaSemanaViaje(right)) - dateSortValue(this.fechaSemanaViaje(left));
-        return dateDiff || Number(right.id) - Number(left.id);
-      });
-  }
-
-  changePage(page: number) {
-    const meta = this.pagination();
-    if (!meta || page < 1 || page > meta.total_pages || page === this.page()) return;
-
-    this.page.set(page);
-    this.syncFiltersToQueryParams();
-    this.load();
-  }
-
-  changeLimit(limit: number) {
-    if (limit === this.limit()) return;
-
-    this.limit.set(limit);
-    this.page.set(1);
-    this.syncFiltersToQueryParams();
-    this.load();
-  }
-
-  setSearch(value: string) {
-    this.search.set(value);
-    this.scheduleFilterLoad();
-  }
-
-  setFilterCliente(value: string) {
-    this.filterClienteTerm.set(value);
-    this.scheduleFilterLoad();
-  }
-
-  setFilterVehiculo(value: string) {
-    this.filterVehiculoTerm.set(value);
-    this.scheduleFilterLoad();
-  }
-
-  setFilterSemana(value: string) {
-    this.filterSemanaTerm.set(value);
-    this.scheduleFilterLoad();
-  }
-
-  setFilterCobrado(value: string) {
-    this.filterCobrado.set(value);
-    this.page.set(1);
-    this.syncFiltersToQueryParams();
-    this.load();
-  }
-
-  displayRows(): ViajeDisplayRow[] {
-    let lastWeekKey = '';
-    let weekIndex = -1;
-
-    return this.filteredRows().map((row) => {
-      const week = isoWeekInfo(this.fechaSemanaViaje(row));
-      if (week.key !== lastWeekKey) {
-        weekIndex += 1;
-        lastWeekKey = week.key;
-      }
-
-      return {
-        row,
-        weekLabel: week.label,
-        weekTitle: week.title,
-        weekClass: weekIndex % 2 === 0 ? 'viaje-week-green' : 'viaje-week-white'
-      };
-    });
   }
 
   openCreate() {
@@ -530,7 +230,6 @@ export class ViajesPageComponent implements OnDestroy {
   }
 
   openEdit(row: ViajeRow) {
-    this.captureListStateBeforeForm();
     this.editingRow.set(row);
     this.form.reset({
       cliente_id: String(row.cliente_id),
@@ -573,7 +272,6 @@ export class ViajesPageComponent implements OnDestroy {
   }
 
   openDuplicate(row: ViajeRow) {
-    this.captureListStateBeforeForm();
     this.editingRow.set(null);
     this.form.reset({
       cliente_id: String(row.cliente_id),
@@ -623,7 +321,6 @@ export class ViajesPageComponent implements OnDestroy {
     this.deletedGastoIds.set([]);
     this.saving.set(false);
     this.error.set(null);
-    this.restoreListStateAfterForm();
     if (returnUrl) {
       void this.router.navigateByUrl(returnUrl);
       return;
@@ -882,12 +579,12 @@ export class ViajesPageComponent implements OnDestroy {
             this.saving.set(false);
             this.formOpen.set(false);
             this.message.set(row ? 'Viaje actualizado.' : 'Viaje creado.');
-            this.restoreListStateAfterForm();
+            this.saved.emit();
             if (returnUrl) {
               void this.router.navigateByUrl(returnUrl);
               return;
             }
-            this.load();
+            this.clearReturnQuery();
           },
           error: (err) => {
             this.error.set(err?.error?.message ?? 'No se pudo guardar el viaje.');
@@ -897,6 +594,7 @@ export class ViajesPageComponent implements OnDestroy {
     );
   }
 
+  /* List actions are handled by ReportsPageComponent.
   async marcarCobrado(row: ViajeRow) {
     if (row.cobrado || row.estado === 'cancelado') return;
 
@@ -966,6 +664,7 @@ export class ViajesPageComponent implements OnDestroy {
     );
   }
 
+  */
   private loadGastos(viajeId: string, options: { duplicate?: boolean } = {}) {
     this.sub.add(
       this.api.get<any[]>(`/viajes/${viajeId}/gastos`).subscribe({
@@ -1041,69 +740,6 @@ export class ViajesPageComponent implements OnDestroy {
 
   money(value: unknown) {
     return numberValue(value).toFixed(2);
-  }
-
-  dateOnly(value: unknown) {
-    return formatDateOnly(value);
-  }
-
-  estadoLabel(estado: EstadoViaje) {
-    const labels: Record<EstadoViaje, string> = {
-      programado: 'Programado',
-      en_curso: 'En curso',
-      completado: 'Completado',
-      cancelado: 'Cancelado'
-    };
-
-    return labels[estado] ?? estado;
-  }
-
-  rutaLabel(tarifa?: TarifaRutaOption) {
-    if (!tarifa) return '-';
-    return `${tarifa.ruta.origen} - ${tarifa.ruta.destino}`;
-  }
-
-  clienteFilterLabel(cliente: ClienteOption) {
-    return `${cliente.nombre} - ${cliente.ruc_cedula}`;
-  }
-
-  vehiculoFilterLabel(vehiculo: VehiculoOption) {
-    return [vehiculo.placa, vehiculo.marca].filter(Boolean).join(' - ');
-  }
-
-  private clienteSearchText(row: ViajeRow) {
-    return searchText(
-      row.cliente ? this.clienteFilterLabel(row.cliente) : null,
-      row.cliente?.nombre,
-      row.cliente?.ruc_cedula,
-      row.cliente_id
-    );
-  }
-
-  private vehiculoSearchText(row: ViajeRow) {
-    return searchText(
-      row.vehiculo ? this.vehiculoFilterLabel(row.vehiculo) : null,
-      row.vehiculo?.placa,
-      row.vehiculo?.marca,
-      row.vehiculo?.modelo,
-      row.vehiculo_id
-    );
-  }
-
-  private fechaSemanaViaje(row: ViajeRow) {
-    return row.fecha_llegada || row.fecha_salida;
-  }
-
-  private matchesSemanaFilter(row: ViajeRow, rawTerm: string) {
-    const week = isoWeekInfo(this.fechaSemanaViaje(row));
-    const term = rawTerm.replace(/^sem(?:ana)?\s*/i, '').trim();
-
-    if (!term || week.week === null || week.year === null) return false;
-    if (/^\d+$/.test(term)) return week.week === Number(term);
-
-    return [week.key, `${week.week}-${week.year}`, week.label, week.title]
-      .map((value) => value.toLowerCase())
-      .some((value) => value.includes(term));
   }
 
   tarifaLabel(tarifa: TarifaRutaOption) {
@@ -1182,6 +818,25 @@ export class ViajesPageComponent implements OnDestroy {
 
   private openPendingEdit() {
     if (!this.pendingEditId) return;
+    const id = this.pendingEditId;
+    this.pendingEditId = null;
+    this.sub.add(
+      this.api.get<ViajeRow>(`/viajes/${id}`).subscribe({
+        next: (response) => {
+          this.openEdit(response);
+          this.clearEditQuery();
+        },
+        error: () => {
+          this.error.set('No se encontró el viaje solicitado.');
+          this.clearEditQuery();
+        }
+      })
+    );
+  }
+
+  /* Legacy list lookup retired with the old trips page.
+  private legacyOpenPendingEdit() {
+    if (!this.pendingEditId) return;
 
     const row = this.rows().find((item) => String(item.id) === this.pendingEditId);
     if (!row) {
@@ -1208,6 +863,9 @@ export class ViajesPageComponent implements OnDestroy {
     this.openEdit(row);
     this.clearEditQuery();
   }
+
+  }
+  */
 
   private openPendingCreate() {
     if (!this.pendingCreate) return;
@@ -1250,6 +908,25 @@ export class ViajesPageComponent implements OnDestroy {
 
   private openPendingDuplicate() {
     if (!this.pendingDuplicateId) return;
+    const id = this.pendingDuplicateId;
+    this.pendingDuplicateId = null;
+    this.sub.add(
+      this.api.get<ViajeRow>(`/viajes/${id}`).subscribe({
+        next: (response) => {
+          this.openDuplicate(response);
+          this.clearEditQuery();
+        },
+        error: () => {
+          this.error.set('No se encontró el viaje solicitado.');
+          this.clearEditQuery();
+        }
+      })
+    );
+  }
+
+  /* Legacy list lookup retired with the old trips page.
+  private legacyOpenPendingDuplicate() {
+    if (!this.pendingDuplicateId) return;
 
     const row = this.rows().find((item) => String(item.id) === this.pendingDuplicateId);
     if (!row) {
@@ -1277,6 +954,9 @@ export class ViajesPageComponent implements OnDestroy {
     this.clearEditQuery();
   }
 
+  }
+  */
+
   private clearEditQuery() {
     void this.router.navigate([], {
       relativeTo: this.route,
@@ -1301,33 +981,6 @@ export class ViajesPageComponent implements OnDestroy {
     });
   }
 
-  private captureListStateBeforeForm() {
-    this.listStateBeforeForm = {
-      page: this.page(),
-      limit: this.limit(),
-      search: this.search(),
-      cliente: this.filterClienteTerm(),
-      vehiculo: this.filterVehiculoTerm(),
-      cobrado: this.filterCobrado(),
-      semana: this.filterSemanaTerm()
-    };
-  }
-
-  private restoreListStateAfterForm() {
-    const state = this.listStateBeforeForm;
-    this.listStateBeforeForm = null;
-    if (!state) return;
-
-    this.page.set(state.page);
-    this.limit.set(state.limit);
-    this.search.set(state.search);
-    this.filterClienteTerm.set(state.cliente);
-    this.filterVehiculoTerm.set(state.vehiculo);
-    this.filterCobrado.set(state.cobrado);
-    this.filterSemanaTerm.set(state.semana);
-    this.syncFiltersToQueryParams();
-  }
-
   private editReturnUrl() {
     const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
     return returnUrl?.startsWith('/app/') ? returnUrl : null;
@@ -1344,96 +997,4 @@ export class ViajesPageComponent implements OnDestroy {
     });
   }
 
-  private applyFiltersFromQueryParams(params: ParamMap) {
-    if (this.syncingFiltersFromUrl) return false;
-
-    const nextPage = Math.max(Number(params.get('page') ?? 1), 1);
-    const nextLimit = Math.max(Number(params.get('limit') ?? 50), 1);
-    const nextSearch = params.get('q') ?? '';
-    const nextCliente = params.get('cliente') ?? '';
-    const nextVehiculo = params.get('vehiculo') ?? '';
-    const cobradoParam = params.get('cobrado');
-    const nextCobrado = cobradoParam === 'todos' ? '' : cobradoParam ?? 'false';
-    const nextSemana = params.get('semana') ?? '';
-    let changed = false;
-
-    const setIfChanged = <T>(current: T, next: T, setter: (value: T) => void) => {
-      if (current === next) return;
-      setter(next);
-      changed = true;
-    };
-
-    setIfChanged(this.page(), nextPage, (value) => this.page.set(value));
-    setIfChanged(this.limit(), nextLimit, (value) => this.limit.set(value));
-    setIfChanged(this.search(), nextSearch, (value) => this.search.set(value));
-    setIfChanged(this.filterClienteTerm(), nextCliente, (value) => this.filterClienteTerm.set(value));
-    setIfChanged(this.filterVehiculoTerm(), nextVehiculo, (value) => this.filterVehiculoTerm.set(value));
-    setIfChanged(this.filterCobrado(), nextCobrado, (value) => this.filterCobrado.set(value));
-    setIfChanged(this.filterSemanaTerm(), nextSemana, (value) => this.filterSemanaTerm.set(value));
-
-    return changed;
-  }
-
-  private syncFiltersToQueryParams() {
-    this.syncingFiltersFromUrl = true;
-    void this.router
-      .navigate([], {
-        relativeTo: this.route,
-        queryParams: {
-          q: this.search().trim() || null,
-          cliente: this.filterClienteTerm().trim() || null,
-          vehiculo: this.filterVehiculoTerm().trim() || null,
-          cobrado: this.filterCobrado() || 'todos',
-          semana: this.filterSemanaTerm().trim() || null,
-          page: this.page() > 1 ? this.page() : null,
-          limit: this.limit() !== 50 ? this.limit() : null
-        },
-        queryParamsHandling: 'merge',
-        replaceUrl: true
-      })
-      .finally(() => {
-        this.syncingFiltersFromUrl = false;
-      });
-  }
-
-  private setViajesResponse(response: ViajesListResponse) {
-    if (isPaginatedResponse(response)) {
-      this.rows.set(response.data);
-      this.pagination.set(response.meta);
-      return;
-    }
-
-    this.rows.set(response);
-    this.pagination.set(null);
-  }
-
-  private listParams() {
-    const semana = this.filterSemanaTerm()
-      .trim()
-      .replace(/^sem(?:ana)?\s*/i, '')
-      .trim();
-
-    return {
-      page: this.page(),
-      limit: this.limit(),
-      search: this.search().trim() || undefined,
-      cliente_search: this.filterClienteTerm().trim() || undefined,
-      vehiculo_search: this.filterVehiculoTerm().trim() || undefined,
-      cobrado: this.filterCobrado() || undefined,
-      numero_semana: /^\d+$/.test(semana) ? Number(semana) : undefined,
-      anio_semana: /^\d+$/.test(semana) ? new Date().getFullYear() : undefined
-    };
-  }
-
-  private scheduleFilterLoad() {
-    if (this.filterTimer) {
-      clearTimeout(this.filterTimer);
-    }
-
-    this.filterTimer = setTimeout(() => {
-      this.page.set(1);
-      this.syncFiltersToQueryParams();
-      this.load();
-    }, 350);
-  }
 }

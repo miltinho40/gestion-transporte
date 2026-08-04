@@ -113,6 +113,37 @@
                 }
               </div>
             }
+
+            @if (message.role === 'assistant' && message.messageId) {
+              <div class="assistant-feedback" aria-label="Evaluar respuesta">
+                <span>¿Te sirvió esta respuesta?</span>
+                <button
+                  type="button"
+                  class="btn assistant-feedback-btn"
+                  [class.active-positive]="message.evaluation?.calificacion === 'correcta'"
+                  [disabled]="message.feedbackSaving"
+                  (click)="rateMessage(message, 'correcta')"
+                  title="Respuesta correcta"
+                  aria-label="Marcar respuesta como correcta"
+                >
+                  <svg lucideThumbsUp size="14"></svg>
+                </button>
+                <button
+                  type="button"
+                  class="btn assistant-feedback-btn"
+                  [class.active-negative]="message.evaluation?.calificacion === 'incorrecta'"
+                  [disabled]="message.feedbackSaving"
+                  (click)="rateMessage(message, 'incorrecta')"
+                  title="Respuesta incorrecta"
+                  aria-label="Marcar respuesta como incorrecta"
+                >
+                  <svg lucideThumbsDown size="14"></svg>
+                </button>
+                @if (message.evaluation) {
+                  <small>Evaluación guardada</small>
+                }
+              </div>
+            }
           </div>
         </article>
       }

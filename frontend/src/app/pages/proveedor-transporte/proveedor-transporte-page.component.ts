@@ -12,6 +12,7 @@ import {
   LucideTrash2
 } from '@lucide/angular';
 import { debounceTime, forkJoin } from 'rxjs';
+import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
 import { isPaginatedResponse, PaginatedResponse, PaginationMeta } from '../../core/pagination';
@@ -122,6 +123,8 @@ export class ProveedorTransportePageComponent {
   private readonly dialog = inject(DialogService);
   private readonly fb = inject(FormBuilder);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
@@ -226,8 +229,25 @@ export class ProveedorTransportePageComponent {
   });
 
   constructor() {
+    const query = this.route.snapshot.queryParamMap;
+    this.selectedClientIds.set(query.get('cliente_ids')?.split(',').filter(Boolean) ?? []);
+    this.selectedProviderIds.set(query.get('proveedor_ids')?.split(',').filter(Boolean) ?? []);
+    this.filters.patchValue(
+      {
+        search: query.get('search') ?? '',
+        cobrado: query.get('cobrado') ?? '',
+        pagado_proveedor: query.get('pagado_proveedor') ?? '',
+        numero_semana: query.get('numero_semana') ?? '',
+        anio_semana: Number(query.get('anio_semana')) || new Date().getFullYear()
+      },
+      { emitEvent: false }
+    );
     this.loadCatalogs();
     this.load();
+    if (query.get('new') === '1') {
+      this.openCreate();
+      this.applyAssistantPrefill();
+    }
     this.filters.valueChanges
       .pipe(debounceTime(350), takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
@@ -263,6 +283,15 @@ export class ProveedorTransportePageComponent {
         this.clientes.set(clientes);
         this.proveedores.set(proveedores);
         this.tarifasRuta.set(tarifasRuta);
+        if (this.formOpen() && this.route.snapshot.queryParamMap.get('new') === '1') {
+          const cliente = clientes.find((item) => item.id === this.form.controls.cliente_id.value);
+          const proveedor = proveedores.find((item) => item.id === this.form.controls.proveedor_id.value);
+          const tarifa = tarifasRuta.find((item) => item.id === this.form.controls.tarifa_ruta_id.value);
+          this.clienteInput.set(cliente ? this.clienteLabel(cliente) : '');
+          this.proveedorInput.set(proveedor ? this.proveedorLabel(proveedor) : '');
+          this.tarifaInput.set(tarifa ? this.tarifaLabel(tarifa) : '');
+          this.recalculateFinancials();
+        }
       },
       error: (err) => {
         this.error.set(err?.error?.message ?? 'No se pudieron cargar los catálogos.');
@@ -375,6 +404,8 @@ export class ProveedorTransportePageComponent {
     this.formOpen.set(false);
     this.editingRow.set(null);
     this.saving.set(false);
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+    if (returnUrl) void this.router.navigateByUrl(returnUrl);
   }
 
   save() {
@@ -421,6 +452,20 @@ export class ProveedorTransportePageComponent {
     const cliente = this.findCatalogMatch(this.clientes(), value, (item) => this.clienteLabel(item));
     this.form.controls.cliente_id.setValue(cliente?.id ?? '');
     this.recalculateFinancials();
+  }
+
+  private applyAssistantPrefill() {
+    const query = this.route.snapshot.queryParamMap;
+    this.form.patchValue({
+      cliente_id: query.get('cliente_id') ?? '',
+      proveedor_id: query.get('proveedor_id') ?? '',
+      tarifa_ruta_id: query.get('tarifa_ruta_id') ?? '',
+      fecha_salida: query.get('fecha_salida') ?? todayInputDate(),
+      fecha_llegada: query.get('fecha_llegada') ?? tomorrowInputDate(),
+      numeros_guia_remision: query.get('numeros_guia_remision') ?? '',
+      precio_viaje: Number(query.get('precio_viaje')) || 0,
+      viaticos: Number(query.get('viaticos')) || 0
+    });
   }
 
   setProveedorInput(value: string) {

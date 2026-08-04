@@ -24,6 +24,7 @@ import {
   type MultiSelectFilterValue
 } from '../../shared/multi-select-filter.component';
 import { PaginationControlsComponent } from '../../shared/pagination-controls.component';
+import { ViajeEditorModalComponent } from '../viajes/viaje-editor-modal.component';
 
 type ExportFormat = 'xlsx' | 'pdf';
 
@@ -115,7 +116,8 @@ const weekOptions = Array.from({ length: 53 }, (_, index) => index + 1);
     LucideTrash2,
     AutoDismissAlertDirective,
     MultiSelectFilterComponent,
-    PaginationControlsComponent
+    PaginationControlsComponent,
+    ViajeEditorModalComponent
   ],
   templateUrl: './reports-page.component.html'
 })
@@ -545,31 +547,36 @@ export class ReportsPageComponent {
   }
 
   editTrip(row: ReporteViajeItem) {
-    const returnUrl = this.reportReturnUrl();
-
-    void this.router.navigate(['/app/viajes'], {
+    void this.router.navigate([], {
+      relativeTo: this.route,
       queryParams: {
-        edit: row.id,
-        returnUrl
-      }
+        edit: row.id
+      },
+      queryParamsHandling: 'merge'
     });
   }
 
   newTrip() {
-    const returnUrl = this.reportReturnUrl();
-    void this.router.navigate(['/app/viajes'], {
-      queryParams: { new: '1', returnUrl }
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { new: '1' },
+      queryParamsHandling: 'merge'
     });
   }
 
   duplicateTrip(row: ReporteViajeItem) {
-    const returnUrl = this.reportReturnUrl();
-    void this.router.navigate(['/app/viajes'], {
+    void this.router.navigate([], {
+      relativeTo: this.route,
       queryParams: {
-        duplicate: row.id,
-        returnUrl
-      }
+        duplicate: row.id
+      },
+      queryParamsHandling: 'merge'
     });
+  }
+
+  onTripSaved() {
+    this.message.set('Viaje guardado correctamente.');
+    this.loadTravelReport();
   }
 
   async deleteTrip(row: ReporteViajeItem) {
@@ -681,23 +688,6 @@ export class ReportsPageComponent {
       cobrado: this.travelForm.controls.cobrado.value,
       search: this.travelForm.controls.search.value.trim()
     };
-  }
-
-  private reportReturnUrl() {
-    return this.router.serializeUrl(
-      this.router.createUrlTree(['/app/reportes'], {
-        queryParams: {
-          anio: this.travelForm.controls.anio.value,
-          q: this.travelForm.controls.search.value.trim() || null,
-          semanas: this.selectedWeeks().join(',') || null,
-          vehiculos: this.selectedVehicleIds().join(',') || null,
-          clientes: this.selectedClientIds().join(',') || null,
-          cobrado: this.travelForm.controls.cobrado.value || 'todos',
-          page: this.travelPage() > 1 ? this.travelPage() : null,
-          limit: this.travelLimit() !== 50 ? this.travelLimit() : null
-        }
-      })
-    );
   }
 
   private download(path: string, params: Record<string, string | number | boolean>) {

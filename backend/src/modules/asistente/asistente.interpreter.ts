@@ -30,9 +30,18 @@ export interface AssistantInterpretation {
   };
 }
 
+export interface AssistantInterpretationExample {
+  mensaje: string;
+  correccion: string;
+  herramienta: AssistantToolName;
+  parametros: AssistantExtractedParameters;
+}
+
 export const assistantParameterNames = [
   'fecha_salida',
   'fecha_mantenimiento',
+  'fecha_desde',
+  'fecha_hasta',
   'cliente',
   'vehiculo',
   'conductor',
@@ -49,6 +58,8 @@ export const assistantParameterNames = [
   'anio',
   'limite',
   'estado_cobro',
+  'estado_pago',
+  'origen_viajes',
   'proveedor',
   'ruc_cedula',
   'telefono',
@@ -75,7 +86,8 @@ export const assistantParameterNames = [
   'metrica',
   'agrupar_por',
   'operacion',
-  'orden'
+  'orden',
+  'campo_orden'
 ] as const;
 
 export type AssistantParameterName = (typeof assistantParameterNames)[number];
@@ -125,23 +137,22 @@ const modelInterpretationSchema = z.object({
 
 const toolDescriptions: Record<AssistantToolName, string> = {
   interpretar_solicitud: 'Solicitud general, ambigua o fuera de las capacidades actuales.',
-  consultar_viajes: 'Consultar viajes propios, facturacion, utilidad o historial.',
-  consultar_viajes_pendientes: 'Consultar viajes propios pendientes o por cobrar.',
-  consultar_viajes_proveedor: 'Consultar viajes realizados por proveedores.',
+  consultar_viajes: 'Consultar viajes propios o de proveedores, estados, facturacion e historial.',
   consultar_mantenimientos: 'Consultar mantenimientos, aceite o historial del vehiculo.',
-  consultar_cierre_semanal: 'Consultar un cierre o resumen semanal.',
-  analizar_operacion: 'Analizar y comparar metricas de viajes por vehiculo, cliente, conductor o destino.',
+  analizar_operacion: 'Analizar cierres y comparar metricas operativas por vehiculo, cliente, conductor o destino.',
   abrir_formulario: 'Abrir un formulario vacio para crear un viaje, cliente, vehiculo o conductor.',
   preparar_cliente: 'Preparar el borrador de un cliente nuevo y completar sus datos.',
   preparar_vehiculo: 'Preparar el borrador de un vehiculo nuevo y completar sus datos.',
   preparar_conductor: 'Preparar el borrador de un conductor nuevo y completar sus datos.',
   preparar_viaje: 'Preparar el borrador de un viaje propio nuevo.',
+  preparar_viaje_proveedor: 'Abrir la creacion de un viaje realizado por un proveedor.',
   preparar_mantenimiento: 'Preparar el borrador de un mantenimiento nuevo.',
   preparar_edicion: 'Preparar la edicion de un viaje o mantenimiento existente.',
   preparar_preferencia: 'Proponer guardar u olvidar una preferencia controlada del usuario.',
   consultar_preferencias: 'Listar las preferencias activas del usuario.',
   cancelar_borrador: 'Cancelar el borrador activo.',
   aplicar_borrador: 'Aplicar un borrador confirmado.',
+  aplicar_viaje_proveedor: 'Guardar un viaje de proveedor previamente confirmado.',
   aplicar_preferencia: 'Guardar o desactivar una preferencia confirmada.'
 };
 
@@ -196,10 +207,14 @@ const availableToolsForModel = (user: JwtPayload) =>
       (tool) =>
         tool.name !== 'cancelar_borrador' &&
         tool.name !== 'aplicar_borrador' &&
+        tool.name !== 'aplicar_viaje_proveedor' &&
         tool.name !== 'aplicar_preferencia'
     );
 
-const interpretationInstructions = (tools: AssistantToolDefinition[]) => `
+const interpretationInstructions = (
+  tools: AssistantToolDefinition[],
+  examples: AssistantInterpretationExample[] = []
+) => `
 Eres el interprete de un sistema ecuatoriano de gestion de transporte.
 Tu unica tarea es clasificar la solicitud y convertirla en un mensaje canonico
 en espanol para un motor determinista. No respondas al usuario y no ejecutes acciones.
@@ -216,9 +231,19 @@ Reglas:
 - Usa el contexto previo solo para completar referencias conversacionales.
 - No inventes datos, identificadores, precios ni fechas.
 - Si faltan datos, conserva la solicitud; el motor determinista preguntara lo necesario.
+- En viajes de proveedores distingue estado_cobro (cobrado/por cobrar al cliente)
+  de estado_pago (pagado/por pagar al proveedor).
+- Todas las consultas de viajes propios, pendientes o de proveedores usan consultar_viajes.
+  Extrae origen_viajes=propios o proveedores y conserva esa distincion en canonical_message.
+- Las consultas de cierre semanal usan analizar_operacion.
+- Las consultas de lectura operativa se resuelven solo con consultar_viajes,
+  consultar_mantenimientos o analizar_operacion.
 - Una solicitud de crear o editar solo prepara un borrador, nunca guarda directamente.
 - Si el usuario pide solamente abrir el modal, formulario o pantalla de un registro
   nuevo, usa abrir_formulario. No prepares un borrador ni solicites datos.
+- Tambien usa abrir_formulario para solicitudes genericas como "puedes crear un nuevo
+  viaje" cuando no incluyan datos del registro. Si incluye cliente, ruta, vehiculo,
+  fecha u otros campos, prepara el borrador correspondiente.
 - Si la solicitud no encaja con seguridad, usa interpretar_solicitud.
 - Para "recuerda que...", "memoriza...", "olvida..." o reglas con "habitual",
   "normalmente" y "predeterminado" usa preparar_preferencia.
@@ -228,6 +253,7 @@ Reglas:
 - Las preferencias solo pueden ser propuestas; el backend pedira confirmacion antes de guardarlas.
 - canonical_message debe ser autosuficiente y coherente con la herramienta elegida.
 - Si eliges preparar_viaje, inicia canonical_message con "Crear viaje".
+- Para crear o registrar un viaje de proveedor usa preparar_viaje_proveedor, nunca preparar_viaje.
 - Si eliges preparar_mantenimiento, inicia canonical_message con "Crear mantenimiento".
 - Si eliges preparar_cliente, inicia canonical_message con "Crear cliente".
 - Para clientes usa cliente como nombre y extrae ruc_cedula, telefono, email,
@@ -240,6 +266,16 @@ Reglas:
   fecha_nacimiento, numero_licencia, fecha_caducidad_licencia, sueldo_semanal y estado.
 - Para preguntas analiticas usa analizar_operacion y extrae metrica, agrupar_por,
   operacion, orden, limite, semana, anio y estado_cobro.
+- Para listados extrae limite, orden y campo_orden. campo_orden puede ser fecha,
+  valor_a_facturar, precio_viaje, utilidad o costo.
+- Extrae fecha_desde y fecha_hasta en formato YYYY-MM-DD cuando el usuario indique
+  un rango explicito. "Ultimos" ordena por fecha descendente y "primeros" ascendente.
+- operacion puede ser suma, promedio, conteo, maximo o minimo. agrupar_por puede
+  ser vehiculo, cliente, conductor, destino, proveedor o tipo_mantenimiento.
+- Para preguntas sobre el ultimo viaje usa consultar_viajes y extrae todos los
+  filtros mencionados: conductor, cliente, vehiculo o placa y destino.
+- En "cual fue el ultimo viaje de Darwin", Darwin es un posible conductor;
+  extraelo en conductor y deja que el backend valide la coincidencia.
 - Metricas permitidas: valor_a_facturar, precio_viaje, utilidad_viajes,
   viaticos, cantidad_viajes y pago_conductor.
 - Agrupaciones permitidas: vehiculo, cliente, conductor y destino.
@@ -257,23 +293,53 @@ capacidad=7000, viaticos=135.
 
 Herramientas disponibles:
 ${tools.map((tool) => `- ${tool.name}: ${toolDescriptions[tool.name]}`).join('\n')}
+
+Ejemplos aprobados del propietario actual:
+${
+  examples.length
+    ? examples
+        .map(
+          (example, index) =>
+            `${index + 1}. Solicitud: ${example.mensaje}\n` +
+            `   Correccion esperada: ${example.correccion}\n` +
+            `   Herramienta: ${example.herramienta}\n` +
+            `   Parametros: ${JSON.stringify(example.parametros)}`
+        )
+        .join('\n')
+    : 'No hay ejemplos aprobados para esta cuenta.'
+}
 `.trim();
 
 export const interpretAssistantMessageWithClient = async (
   user: JwtPayload,
   input: AsistenteMensajeInput,
-  client: AssistantModelClient
+  client: AssistantModelClient,
+  examples: AssistantInterpretationExample[] = []
 ): Promise<AssistantInterpretation> => {
   const tools = availableToolsForModel(user);
   const allowedNames = tools.map((tool) => tool.name);
+  const canUseFleet = Boolean(user.es_super_admin || user.es_propietario);
+  const canUseProviders = Boolean(user.es_super_admin || user.es_intermediario);
+  const allowedExamples = examples.filter((example) => {
+    if (!allowedNames.includes(example.herramienta)) return false;
+    const text = `${example.mensaje} ${example.correccion}`.toLowerCase();
+    const providerExample = text.includes('proveedor');
+    if (providerExample && !canUseProviders) return false;
+    if (example.herramienta === 'consultar_viajes' && !providerExample && !canUseFleet) return false;
+    return true;
+  });
 
   const response = await client.responses.create({
     model: env.OPENAI_MODEL,
-    instructions: interpretationInstructions(tools),
+    instructions: interpretationInstructions(tools, allowedExamples),
     input: JSON.stringify({
       fecha_actual: dateInEcuador(),
       zona_horaria: 'America/Guayaquil',
       canal: input.canal,
+      capacidades: {
+        flota_propia: Boolean(user.es_super_admin || user.es_propietario),
+        intermediacion: Boolean(user.es_super_admin || user.es_intermediario)
+      },
       mensaje: input.mensaje,
       contexto: input.contexto ?? null
     }),
@@ -340,6 +406,15 @@ export const interpretAssistantMessageWithClient = async (
     return rulesInterpretation(input, 'herramienta_no_permitida');
   }
 
+  const source = parsed.parameters.find((parameter) => parameter.name === 'origen_viajes')?.value;
+  const normalizedSource = String(source ?? '').trim().toLowerCase();
+  if (
+    (normalizedSource === 'propios' && !user.es_super_admin && user.es_propietario === false) ||
+    (normalizedSource === 'proveedores' && !user.es_super_admin && user.es_intermediario === false)
+  ) {
+    return rulesInterpretation(input, 'alcance_no_permitido');
+  }
+
   if (parsed.confidence < env.OPENAI_MIN_CONFIDENCE) {
     return rulesInterpretation(input, 'confianza_baja');
   }
@@ -366,7 +441,8 @@ export const interpretAssistantMessageWithClient = async (
 
 export const interpretAssistantMessage = async (
   user: JwtPayload,
-  input: AsistenteMensajeInput
+  input: AsistenteMensajeInput,
+  examples: AssistantInterpretationExample[] = []
 ): Promise<AssistantInterpretation> => {
   if (input.contexto?.confirmar || input.contexto?.draft) {
     return rulesInterpretation(input);
@@ -384,7 +460,8 @@ export const interpretAssistantMessage = async (
     return await interpretAssistantMessageWithClient(
       user,
       input,
-      getOpenAIClient()
+      getOpenAIClient(),
+      examples
     );
   } catch {
     return rulesInterpretation(input, 'servicio_openai_no_disponible');

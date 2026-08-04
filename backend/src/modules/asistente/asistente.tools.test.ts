@@ -14,7 +14,7 @@ describe('herramientas del asistente', () => {
         mensaje: 'Muéstrame viajes por cobrar',
         canal: 'web'
       }).name,
-      'consultar_viajes_pendientes'
+      'consultar_viajes'
     );
     assert.equal(
       selectAssistantTool({
@@ -32,10 +32,31 @@ describe('herramientas del asistente', () => {
     );
     assert.equal(
       selectAssistantTool({
+        mensaje: 'Crea un viaje de proveedor a Vinces',
+        canal: 'web'
+      }).name,
+      'preparar_viaje_proveedor'
+    );
+    assert.equal(
+      selectAssistantTool({
         mensaje: 'Puedes abrir el modal de un nuevo viaje',
         canal: 'web'
       }).name,
       'abrir_formulario'
+    );
+    assert.equal(
+      selectAssistantTool({
+        mensaje: '¿Puedes crear un nuevo viaje?',
+        canal: 'web'
+      }).name,
+      'abrir_formulario'
+    );
+    assert.equal(
+      selectAssistantTool({
+        mensaje: 'Crea un viaje para Transpalfra a Vinces mañana',
+        canal: 'web'
+      }).name,
+      'preparar_viaje'
     );
     assert.equal(
       selectAssistantTool({
@@ -79,6 +100,13 @@ describe('herramientas del asistente', () => {
       }).name,
       'analizar_operacion'
     );
+    assert.equal(
+      selectAssistantTool({
+        mensaje: 'Cual fue el ultimo viaje de Darwin?',
+        canal: 'web'
+      }).name,
+      'consultar_viajes'
+    );
   });
 
   it('mantiene el contexto de una consulta analitica', () => {
@@ -102,6 +130,27 @@ describe('herramientas del asistente', () => {
         }
       }).name,
       'analizar_operacion'
+    );
+  });
+
+  it('mantiene el contexto de viajes de proveedores en preguntas de seguimiento', () => {
+    assert.equal(
+      selectAssistantTool({
+        mensaje: 'Ahora solo los pendientes de pago',
+        canal: 'web',
+        contexto: {
+          consulta: {
+            tipo: 'viajes_proveedor',
+            filtros: {
+              proveedor_id: '8',
+              proveedor_nombre: 'TRANSPORTES ACME',
+              semana: 26,
+              anio: 2026
+            }
+          }
+        }
+      }).name,
+      'consultar_viajes'
     );
   });
 
@@ -163,7 +212,33 @@ describe('herramientas del asistente', () => {
           }
         }
       }).name,
-      'preparar_viaje'
+      'abrir_formulario'
+    );
+  });
+
+  it('sale del analisis cuando se solicita un listado de viajes', () => {
+    assert.equal(
+      selectAssistantTool({
+        mensaje: 'Muéstrame los viajes de la semana 23',
+        canal: 'web',
+        contexto: {
+          consulta: {
+            tipo: 'analitica_viajes',
+            filtros: {
+              metrica: 'valor_a_facturar',
+              agrupar_por: 'vehiculo',
+              operacion: 'suma',
+              orden: 'desc',
+              limite: 5,
+              semana: 22,
+              anio: 2026,
+              cliente_id: '10',
+              cliente_nombre: 'JIMMY CALDERON'
+            }
+          }
+        }
+      }).name,
+      'consultar_viajes'
     );
   });
 
@@ -250,7 +325,7 @@ describe('herramientas del asistente', () => {
         },
         action: {
           label: 'Guardar viaje',
-          route: '/app/viajes',
+          route: '/app/reportes',
           query: {},
           operacion: 'guardar'
         }
@@ -259,6 +334,42 @@ describe('herramientas del asistente', () => {
 
     assert.equal(tool.name, 'aplicar_borrador');
     assert.equal(tool.requiresConfirmation, true);
+  });
+
+  it('confirma un viaje de proveedor con una escritura de intermediario', () => {
+    const tool = selectAssistantTool({
+      mensaje: 'Confirmo guardar el viaje de proveedor',
+      canal: 'web',
+      contexto: {
+        confirmar: true,
+        draft: {
+          tipo: 'viaje_proveedor',
+          titulo: 'Borrador',
+          campos: {},
+          advertencias: []
+        },
+        action: {
+          label: 'Guardar viaje de proveedor',
+          route: '/app/proveedores/transporte',
+          query: {},
+          operacion: 'guardar'
+        }
+      }
+    });
+
+    assert.equal(tool.name, 'aplicar_viaje_proveedor');
+    assert.doesNotThrow(() =>
+      assertAssistantToolAllowed(
+        tool,
+        {
+          usuario_id: '10',
+          propietario_id: '20',
+          es_propietario: false,
+          es_intermediario: true
+        },
+        true
+      )
+    );
   });
 
   it('rechaza escrituras sin confirmacion', () => {
@@ -282,25 +393,23 @@ describe('herramientas del asistente', () => {
     );
   });
 
-  it('impide herramientas de flota a un intermediario sin flota', () => {
+  it('delega el alcance de la consulta general al motor seguro', () => {
     const tool = selectAssistantTool({
       mensaje: 'Muéstrame viajes de la semana 23',
       canal: 'web'
     });
 
-    assert.throws(
-      () =>
-        assertAssistantToolAllowed(
-          tool,
-          {
-            usuario_id: '10',
-            propietario_id: '20',
-            es_propietario: false,
-            es_intermediario: true
-          },
-          false
-        ),
-      (error) => error instanceof AppError && error.statusCode === 403
+    assert.doesNotThrow(() =>
+      assertAssistantToolAllowed(
+        tool,
+        {
+          usuario_id: '10',
+          propietario_id: '20',
+          es_propietario: false,
+          es_intermediario: true
+        },
+        false
+      )
     );
   });
 
@@ -318,6 +427,35 @@ describe('herramientas del asistente', () => {
           propietario_id: '20',
           es_propietario: false,
           es_intermediario: true
+        },
+        false
+      )
+    );
+  });
+
+  it('permite preparar viajes de proveedores solo al intermediario', () => {
+    const tool = assistantToolCatalog.preparar_viaje_proveedor;
+
+    assert.doesNotThrow(() =>
+      assertAssistantToolAllowed(
+        tool,
+        {
+          usuario_id: '10',
+          propietario_id: '20',
+          es_propietario: false,
+          es_intermediario: true
+        },
+        false
+      )
+    );
+    assert.throws(() =>
+      assertAssistantToolAllowed(
+        tool,
+        {
+          usuario_id: '11',
+          propietario_id: '20',
+          es_propietario: true,
+          es_intermediario: false
         },
         false
       )
