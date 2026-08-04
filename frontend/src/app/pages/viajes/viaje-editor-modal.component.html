@@ -1,0 +1,305 @@
+@if (formOpen()) {
+  <div class="modal d-block" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-viajes">
+      <div class="modal-content border-0 shadow">
+        <form [formGroup]="form" (ngSubmit)="save()">
+          <div class="modal-header">
+            <div>
+              <h2 class="modal-title h5 mb-0">
+                @if (editingRow()) {
+                  Editar Viaje
+                } @else {
+                  Nuevo Viaje
+                }
+              </h2>
+              <span class="text-secondary small">Completa los datos del viaje, costos y gastos.</span>
+            </div>
+            <button type="button" class="btn-close" aria-label="Cerrar" (click)="closeForm()"></button>
+          </div>
+
+          <div class="modal-body">
+            @if (error()) {
+              <div class="alert alert-danger mb-3">{{ error() }}</div>
+            }
+
+            <div class="viaje-form-stack">
+              <div class="viaje-top-grid">
+                @for (field of ['cliente_id', 'vehiculo_id', 'conductor_id']; track field) {
+                  <div>
+                    <label class="form-label" [for]="field">
+                      {{ field === 'cliente_id' ? 'Cliente' : field === 'vehiculo_id' ? 'Vehículo' : 'Conductor' }}
+                      <span class="text-danger">*</span>
+                    </label>
+                    <div class="catalog-combobox">
+                      <input
+                        [id]="field"
+                        class="form-control"
+                        type="search"
+                        autocomplete="off"
+                        [placeholder]="'Buscar ' + (field === 'cliente_id' ? 'cliente' : field === 'vehiculo_id' ? 'vehículo' : 'conductor') + '...'"
+                        [ngModel]="catalogInputValue($any(field))"
+                        [ngModelOptions]="{ standalone: true }"
+                        (focus)="openCatalog($any(field))"
+                        (blur)="closeCatalogSoon($any(field))"
+                        (ngModelChange)="setCatalogInput($any(field), $event)"
+                      />
+                      @if (catalogOpen($any(field))) {
+                        <div class="catalog-options shadow-sm">
+                          @for (option of limitedCatalogOptions($any(field)); track option.value) {
+                            <button
+                              type="button"
+                              class="catalog-option"
+                              (mousedown)="selectCatalogOption($any(field), option, $event)"
+                            >
+                              {{ option.label }}
+                            </button>
+                          } @empty {
+                            <span class="catalog-empty">Sin coincidencias</span>
+                          }
+                        </div>
+                      }
+                    </div>
+                  </div>
+                }
+
+                <div class="viaje-field-date-130">
+                  <label class="form-label" for="fecha_salida">Fecha salida <span class="text-danger">*</span></label>
+                  <input id="fecha_salida" class="form-control" type="date" formControlName="fecha_salida" (change)="onFechaSalidaChange()" />
+                </div>
+                <div class="viaje-field-date-130">
+                  <label class="form-label" for="fecha_llegada">Fecha llegada</label>
+                  <input id="fecha_llegada" class="form-control" type="date" formControlName="fecha_llegada" (change)="onFechaLlegadaChange()" />
+                </div>
+              </div>
+
+              <div class="viaje-middle-grid">
+                <div>
+                  <label class="form-label" for="tarifa_ruta_id">Tarifa Ruta <span class="text-danger">*</span></label>
+                  <div class="catalog-combobox">
+                    <input
+                      id="tarifa_ruta_id"
+                      class="form-control"
+                      type="search"
+                      autocomplete="off"
+                      placeholder="Buscar tarifa ruta..."
+                      [ngModel]="catalogInputValue('tarifa_ruta_id')"
+                      [ngModelOptions]="{ standalone: true }"
+                      (focus)="openCatalog('tarifa_ruta_id')"
+                      (blur)="closeCatalogSoon('tarifa_ruta_id')"
+                      (ngModelChange)="setCatalogInput('tarifa_ruta_id', $event)"
+                    />
+                    @if (catalogOpen('tarifa_ruta_id')) {
+                      <div class="catalog-options shadow-sm">
+                        @for (option of limitedCatalogOptions('tarifa_ruta_id'); track option.value) {
+                          <button type="button" class="catalog-option" (mousedown)="selectCatalogOption('tarifa_ruta_id', option, $event)">
+                            {{ option.label }}
+                          </button>
+                        } @empty {
+                          <span class="catalog-empty">Sin coincidencias</span>
+                        }
+                      </div>
+                    }
+                  </div>
+                </div>
+                <div class="viaje-field-state">
+                  <label class="form-label" for="estado">Estado <span class="text-danger">*</span></label>
+                  <select id="estado" class="form-select" formControlName="estado">
+                    <option value="programado">Programado</option>
+                    <option value="en_curso">En curso</option>
+                    <option value="completado">Completado</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="form-label" for="descripcion_carga">Descripción de carga</label>
+                  <textarea
+                    id="descripcion_carga"
+                    class="form-control viaje-textarea-compact"
+                    rows="1"
+                    placeholder="Descripción de la carga..."
+                    formControlName="descripcion_carga"
+                  ></textarea>
+                </div>
+              </div>
+
+              <div class="viaje-third-grid">
+                <div>
+                  <label class="form-label" for="numeros_guia_remision">Guías de remisión</label>
+                  <textarea
+                    id="numeros_guia_remision"
+                    class="form-control viaje-textarea-compact"
+                    rows="1"
+                    placeholder="Separadas por coma, guion o línea"
+                    formControlName="numeros_guia_remision"
+                  ></textarea>
+                </div>
+                <div class="viaje-field-number">
+                  <label class="form-label" for="peso_carga_kg">Peso kg</label>
+                  <input id="peso_carga_kg" class="form-control" type="number" min="0" step="0.01" formControlName="peso_carga_kg" />
+                </div>
+                <div class="viaje-field-fixed-120">
+                  <label class="form-label d-block" for="cobrado">Cobrado</label>
+                  <div class="form-check form-switch viaje-switch-box">
+                    <input id="cobrado" class="form-check-input" type="checkbox" formControlName="cobrado" />
+                    <label class="form-check-label" for="cobrado">
+                      @if (form.controls.cobrado.value) {
+                        Sí
+                      } @else {
+                        No
+                      }
+                    </label>
+                  </div>
+                </div>
+
+                <div class="viaje-field-fixed-120">
+                  <label class="form-label d-block" for="retorno">Retorno</label>
+                  <div class="form-check form-switch viaje-switch-box">
+                    <input id="retorno" class="form-check-input" type="checkbox" formControlName="retorno" />
+                    <label class="form-check-label" for="retorno">
+                      @if (form.controls.retorno.value) {
+                        Sí
+                      } @else {
+                        No
+                      }
+                    </label>
+                  </div>
+                </div>
+
+                <div class="viaje-field-date-130">
+                  <label class="form-label" for="fecha_cobro">Fecha cobro</label>
+                  <input id="fecha_cobro" class="form-control" type="date" formControlName="fecha_cobro" />
+                </div>
+              </div>
+
+              <hr class="my-4" />
+
+              <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+                <div>
+                  <h3 class="h6 mb-1">Flete y costos</h3>
+                  <p class="text-secondary small mb-0">Los valores se calculan al seleccionar cliente, vehículo y tarifa.</p>
+                </div>
+                @if (calculating()) {
+                  <span class="badge text-bg-light d-inline-flex align-items-center gap-1">
+                    <svg lucideCalculator size="14"></svg>
+                    Calculando
+                  </span>
+                }
+              </div>
+
+              <div class="viaje-costos-grid">
+                <div class="viaje-cost-field">
+                  <label class="form-label" for="precio_flete">Precio viaje</label>
+                  <input id="precio_flete" class="form-control" type="number" min="0.01" step="0.01" formControlName="precio_flete" (input)="onPrecioFleteChanged()" />
+                </div>
+                <div class="viaje-cost-field">
+                  <label class="form-label" for="precio_real_flete">A facturar</label>
+                  <input id="precio_real_flete" class="form-control" type="number" min="0" step="0.01" formControlName="precio_real_flete" (input)="onPrecioRealChanged()" />
+                </div>
+                <div class="viaje-cost-field">
+                  <label class="form-label" for="viaticos">Viáticos</label>
+                  <input id="viaticos" class="form-control" type="number" min="0" step="0.01" formControlName="viaticos" (input)="onCostoRealChanged()" />
+                </div>
+                <div class="viaje-cost-field">
+                  <label class="form-label" for="galones_diesel">Galones diésel</label>
+                  <input id="galones_diesel" class="form-control" type="number" min="0" step="0.01" formControlName="galones_diesel" (input)="onCalculationInputChanged()" />
+                </div>
+                <div class="viaje-cost-field">
+                  <label class="form-label" for="costo_diesel">Costo diésel</label>
+                  <input id="costo_diesel" class="form-control" type="number" readonly formControlName="costo_diesel" />
+                </div>
+                <div class="viaje-cost-field">
+                  <label class="form-label" for="costo_peajes">Peajes</label>
+                  <input id="costo_peajes" class="form-control" type="number" readonly formControlName="costo_peajes" />
+                </div>
+                <div class="viaje-cost-field">
+                  <label class="form-label" for="costo_estimado_gastos">Gastos estimados</label>
+                  <input id="costo_estimado_gastos" class="form-control" type="number" readonly formControlName="costo_estimado_gastos" />
+                </div>
+              </div>
+
+              <hr class="my-4" />
+
+              <div class="viaje-gastos-layout">
+                <section>
+                  <h3 class="h6 mb-2">Gastos adicionales</h3>
+                  <div class="viaje-gasto-form-grid mb-3" [formGroup]="gastoForm">
+                    <div class="catalog-combobox">
+                      <input
+                        class="form-control"
+                        type="search"
+                        placeholder="Tipo de gasto..."
+                        [ngModel]="catalogInputValue('tipo_gasto_id')"
+                        [ngModelOptions]="{ standalone: true }"
+                        (focus)="openCatalog('tipo_gasto_id')"
+                        (blur)="closeCatalogSoon('tipo_gasto_id')"
+                        (ngModelChange)="setCatalogInput('tipo_gasto_id', $event)"
+                      />
+                      @if (catalogOpen('tipo_gasto_id')) {
+                        <div class="catalog-options shadow-sm">
+                          @for (option of limitedCatalogOptions('tipo_gasto_id'); track option.value) {
+                            <button type="button" class="catalog-option" (mousedown)="selectCatalogOption('tipo_gasto_id', option, $event)">
+                              {{ option.label }}
+                            </button>
+                          }
+                        </div>
+                      }
+                    </div>
+                    <input class="form-control" type="number" min="0.01" step="0.01" placeholder="Monto" formControlName="monto" />
+                    <input class="form-control" placeholder="Descripción" formControlName="descripcion" />
+                    <button type="button" class="btn btn-outline-primary" (click)="addGasto()">
+                      <svg lucidePlus size="14"></svg>
+                      Agregar
+                    </button>
+                  </div>
+
+                  @if (gastos().length) {
+                    <div class="table-responsive border rounded">
+                      <table class="table table-sm align-middle mb-0">
+                        <thead><tr><th>Tipo</th><th>Monto</th><th>Descripción</th><th></th></tr></thead>
+                        <tbody>
+                          @for (gasto of gastos(); track gasto.id ?? $index; let index = $index) {
+                            <tr>
+                              <td>{{ gasto.tipo_gasto_nombre }}</td>
+                              <td>$ {{ money(gasto.monto) }}</td>
+                              <td>{{ gasto.descripcion || '-' }}</td>
+                              <td class="text-end">
+                                <button type="button" class="btn btn-outline-danger btn-sm" title="Quitar gasto" (click)="removeGasto(index)">
+                                  <svg lucideTrash2 size="14"></svg>
+                                </button>
+                              </td>
+                            </tr>
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  }
+                </section>
+
+                <aside class="viaje-summary-stack viaje-summary-compact">
+                  <div><span>Viáticos</span><strong>$ {{ money(form.controls.viaticos.value) }}</strong></div>
+                  <div><span>Gastos adicionales</span><strong>$ {{ money(totalGastosRealesAdicionales()) }}</strong></div>
+                  <div><span>Total gastos</span><strong>$ {{ money(totalGastosReales()) }}</strong></div>
+                  <div><span>Utilidad</span><strong>$ {{ money(utilidadViaje()) }}</strong></div>
+                </aside>
+              </div>
+
+              <div>
+                <label class="form-label" for="observaciones">Observaciones</label>
+                <textarea id="observaciones" class="form-control" rows="2" formControlName="observaciones"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeForm()">Cancelar</button>
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">
+              <svg lucideSave size="15"></svg>
+              {{ saving() ? 'Guardando...' : 'Guardar' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop show"></div>
+}

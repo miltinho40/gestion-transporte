@@ -1,0 +1,116 @@
+<section class="mobile-mantenimientos">
+  <header class="mobile-page-heading">
+    <div>
+      <h1>Mantenimientos</h1>
+      <p>{{ totalCount() }} registros</p>
+    </div>
+    <a class="btn btn-primary add-button" routerLink="/movil/mantenimientos/nuevo" aria-label="Nuevo mantenimiento">
+      <svg lucidePlus size="20"></svg>
+    </a>
+  </header>
+
+  @if (message()) {
+    <div class="alert alert-success py-2" [appAutoDismissAlert]="message()">{{ message() }}</div>
+  }
+
+  @if (error()) {
+    <div class="alert alert-danger py-2" [appAutoDismissAlert]="error()">{{ error() }}</div>
+  }
+
+  <div class="mobile-filter-card">
+    <div class="search-box">
+      <svg lucideSearch size="17"></svg>
+      <input
+        type="search"
+        placeholder="Buscar placa, tipo, repuesto..."
+        [ngModel]="search()"
+        (ngModelChange)="setSearch($event)"
+      />
+    </div>
+
+    <div class="filter-row">
+      <select class="form-select form-select-sm" [ngModel]="estado()" (ngModelChange)="setEstado($event)">
+        <option value="">Todos</option>
+        <option value="realizado">Realizados</option>
+        <option value="programado">Programados</option>
+        <option value="vencido">Vencidos</option>
+        <option value="cancelado">Cancelados</option>
+      </select>
+
+      <button type="button" class="btn btn-outline-secondary btn-sm refresh-button" (click)="load()">
+        <svg lucideRefreshCw size="15"></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="mantenimientos-list">
+    @for (row of filteredRows(); track row.id) {
+      <article class="mantenimiento-card" [class.cancelado]="row.estado === 'cancelado'">
+        <div class="card-top">
+          <div>
+            <span class="date-pill">{{ dateOnly(row.fecha_mantenimiento) }}</span>
+            <h2>{{ vehiculoLabel(row) }}</h2>
+            <p>{{ tipoLabel(row) }}</p>
+          </div>
+          <span class="state-pill" [class]="badgeClass(row)">{{ estadoLabel(row.estado) }}</span>
+        </div>
+
+        @if (row.descripcion) {
+          <div class="description">{{ row.descripcion }}</div>
+        }
+
+        <div class="money-grid">
+          <div>
+            <span>Total</span>
+            <strong>$ {{ money(row.costo_total) }}</strong>
+          </div>
+          <div>
+            <span>Km actual</span>
+            <strong>{{ row.kilometraje_actual_vehiculo }}</strong>
+          </div>
+          <div>
+            <span>Próx. km</span>
+            <strong>{{ row.proximo_mantenimiento_km ?? '-' }}</strong>
+          </div>
+        </div>
+
+        <div class="card-actions">
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm icon-action"
+            (click)="duplicate(row)"
+            title="Duplicar"
+            aria-label="Duplicar"
+          >
+            <svg lucideCopy size="16"></svg>
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline-primary btn-sm icon-action"
+            (click)="edit(row)"
+            title="Editar"
+            aria-label="Editar"
+          >
+            <svg lucidePencil size="16"></svg>
+          </button>
+        </div>
+      </article>
+    } @empty {
+      <div class="empty-state">
+        @if (loading()) {
+          Cargando mantenimientos...
+        } @else {
+          No hay mantenimientos para mostrar.
+        }
+      </div>
+    }
+  </div>
+
+  <app-pagination-controls
+    [meta]="pagination()"
+    [loading]="loading()"
+    [pageSizeOptions]="[10, 25, 50]"
+    (pageChange)="changePage($event)"
+    (limitChange)="changeLimit($event)"
+  />
+</section>

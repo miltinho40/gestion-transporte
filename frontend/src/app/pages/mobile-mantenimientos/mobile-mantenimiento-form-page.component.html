@@ -1,0 +1,175 @@
+<section class="mobile-mantenimiento-form">
+  <header class="form-header">
+    <button type="button" class="icon-button" aria-label="Volver" (click)="goBack()">
+      <svg lucideArrowLeft size="20"></svg>
+    </button>
+    <div>
+      <h1>{{ editing ? 'Editar mantenimiento' : duplicating ? 'Duplicar mantenimiento' : 'Nuevo mantenimiento' }}</h1>
+      <p>Registro rápido para móvil</p>
+    </div>
+  </header>
+
+  @if (error()) {
+    <div class="alert alert-danger py-2" [appAutoDismissAlert]="error()">{{ error() }}</div>
+  }
+
+  <form [formGroup]="form" (ngSubmit)="save()" class="form-stack">
+    <section class="form-section">
+      <h2>Datos</h2>
+
+      <label class="mobile-field">
+        <span>Vehículo</span>
+        <input
+          class="form-control"
+          type="search"
+          list="mobile-mantenimiento-vehiculos"
+          autocomplete="off"
+          [ngModel]="catalogInputValue('vehiculo_id')"
+          [ngModelOptions]="{ standalone: true }"
+          (ngModelChange)="setCatalogInput('vehiculo_id', $event)"
+        />
+      </label>
+      <datalist id="mobile-mantenimiento-vehiculos">
+        @for (option of catalogOptions('vehiculo_id'); track option.value) {
+          <option [value]="option.label"></option>
+        }
+      </datalist>
+
+      <label class="mobile-field">
+        <span>Tipo mantenimiento</span>
+        <input
+          class="form-control"
+          type="search"
+          list="mobile-mantenimiento-tipos"
+          autocomplete="off"
+          [ngModel]="catalogInputValue('tipo_mantenimiento_id')"
+          [ngModelOptions]="{ standalone: true }"
+          (ngModelChange)="setCatalogInput('tipo_mantenimiento_id', $event)"
+        />
+      </label>
+      <datalist id="mobile-mantenimiento-tipos">
+        @for (option of catalogOptions('tipo_mantenimiento_id'); track option.value) {
+          <option [value]="option.label"></option>
+        }
+      </datalist>
+
+      <div class="two-columns">
+        <label class="mobile-field">
+          <span>Fecha</span>
+          <input
+            class="form-control"
+            type="date"
+            formControlName="fecha_mantenimiento"
+            (change)="recalculateProximoMantenimiento()"
+          />
+        </label>
+        <label class="mobile-field">
+          <span>Km actual</span>
+          <input
+            class="form-control"
+            type="number"
+            min="0"
+            step="1"
+            formControlName="kilometraje_actual_vehiculo"
+            (input)="recalculateProximoMantenimiento()"
+          />
+        </label>
+      </div>
+
+      <label class="mobile-field">
+        <span>Descripción</span>
+        <textarea class="form-control" rows="2" formControlName="descripcion"></textarea>
+      </label>
+    </section>
+
+    <section class="form-section">
+      <h2>Costos</h2>
+
+      <label class="mobile-field">
+        <span>Mano de obra</span>
+        <input class="form-control" type="number" min="0" step="0.01" formControlName="costo_mano_obra" />
+      </label>
+
+      <div class="repuesto-box" [formGroup]="repuestoForm">
+        <label class="mobile-field">
+          <span>Repuesto</span>
+          <input class="form-control" type="text" formControlName="nombre_repuesto" />
+        </label>
+
+        <div class="two-columns">
+          <label class="mobile-field">
+            <span>Cantidad</span>
+            <input class="form-control" type="number" min="0.01" step="0.01" formControlName="cantidad" />
+          </label>
+          <label class="mobile-field">
+            <span>Costo unitario</span>
+            <input class="form-control" type="number" min="0" step="0.01" formControlName="costo_unitario" />
+          </label>
+        </div>
+
+        <button type="button" class="btn btn-outline-primary w-100" (click)="addRepuesto()">
+          <svg lucidePlus size="16"></svg>
+          Agregar repuesto ($ {{ money(repuestoFormTotal()) }})
+        </button>
+      </div>
+
+      @if (repuestos().length) {
+        <div class="repuestos-list">
+          @for (repuesto of repuestos(); track $index; let index = $index) {
+            <div class="repuesto-item">
+              <div>
+                <strong>{{ repuesto.nombre_repuesto }}</strong>
+                <span>{{ repuesto.cantidad }} x $ {{ money(repuesto.costo_unitario) }}</span>
+              </div>
+              <button type="button" class="btn btn-outline-danger btn-sm" (click)="removeRepuesto(index)" aria-label="Quitar repuesto">
+                <svg lucideTrash2 size="15"></svg>
+              </button>
+            </div>
+          }
+        </div>
+      }
+
+      <div class="summary-grid">
+        <div>
+          <span>Repuestos</span>
+          <strong>$ {{ money(repuestosTotal()) }}</strong>
+        </div>
+        <div>
+          <span>Total</span>
+          <strong>$ {{ money(totalMantenimiento()) }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="form-section">
+      <h2>Seguimiento</h2>
+
+      <div class="two-columns">
+        <label class="mobile-field">
+          <span>Próx. km</span>
+          <input class="form-control" type="number" min="0" step="1" formControlName="proximo_mantenimiento_km" />
+        </label>
+        <label class="mobile-field">
+          <span>Próxima fecha</span>
+          <input class="form-control" type="date" formControlName="proximo_mantenimiento_fecha" />
+        </label>
+      </div>
+
+      <label class="switch-row">
+        <span>Actualizar km del vehículo</span>
+        <input class="form-check-input" type="checkbox" formControlName="actualizar_kilometraje_vehiculo" />
+      </label>
+    </section>
+
+    <div class="save-bar">
+      <button type="submit" class="btn btn-primary" [disabled]="saving() || loading()">
+        <svg lucideSave size="18"></svg>
+        @if (saving()) {
+          Guardando...
+        } @else {
+          Guardar mantenimiento
+        }
+      </button>
+    </div>
+  </form>
+</section>

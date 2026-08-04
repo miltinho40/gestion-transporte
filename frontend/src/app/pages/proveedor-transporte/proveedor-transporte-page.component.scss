@@ -1,0 +1,167 @@
+.provider-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.provider-summary-grid article {
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+  padding: 12px 14px;
+  min-height: 82px;
+}
+
+.provider-summary-grid span {
+  display: block;
+  color: var(--app-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.provider-summary-grid strong {
+  color: var(--app-text);
+  font-size: clamp(1.15rem, 1.6vw, 1.55rem);
+  line-height: 1.1;
+}
+
+.summary-green {
+  background: #e8f7ed !important;
+  border-color: #a9dfbd !important;
+}
+
+.summary-blue {
+  background: #e2f3fb !important;
+  border-color: #99d8f5 !important;
+}
+
+.summary-red {
+  background: #fde9e9 !important;
+  border-color: #f4b4b4 !important;
+}
+
+.provider-search-row {
+  display: block;
+}
+
+.provider-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(190px, 1fr) 90px 95px 120px 130px auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.provider-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--app-muted);
+  font-size: 0.82rem;
+}
+
+.provider-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+}
+
+.legend-pending {
+  background: #fff3df;
+}
+
+.legend-balanced {
+  background: #e2f3fb;
+}
+
+.legend-risk {
+  background: #fde9e9;
+}
+
+.week-input,
+.year-input {
+  min-width: 0;
+}
+
+.select-column {
+  width: 44px;
+}
+
+.actions-column {
+  width: 140px;
+}
+
+.actions-cell .btn {
+  width: 32px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.guide-input {
+  width: 300px;
+}
+
+.provider-form-result {
+  border: 1px solid #99d8f5;
+  border-radius: 8px;
+  background: #e2f3fb;
+  color: #17324d;
+  padding: 10px 12px;
+  font-weight: 600;
+}
+
+.provider-row-pending-cobro:not(.provider-row-cancelado) > td {
+  background: #fff3df;
+}
+
+.provider-row-balanced:not(.provider-row-cancelado) > td {
+  background: #e2f3fb;
+}
+
+.provider-row-paid-uncollected:not(.provider-row-cancelado) > td {
+  background: #fde9e9;
+}
+
+.provider-row-cancelado > td {
+  color: #b42318;
+}
+
+.provider-table th,
+.provider-table td {
+  white-space: nowrap;
+}
+
+.provider-table td:nth-child(5) {
+  min-width: 190px;
+}
+
+@media (max-width: 1300px) {
+  .provider-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .provider-filter-bar {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .provider-summary-grid,
+  .provider-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .guide-input {
+    width: 240px;
+  }
+}

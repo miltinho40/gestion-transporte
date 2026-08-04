@@ -1,0 +1,57 @@
+<div class="mobile-shell">
+  <header class="mobile-topbar">
+    <div class="brand">
+      <span class="brand-icon"><svg lucideTruck size="20"></svg></span>
+      <div>
+        <strong>Transporte</strong>
+        <span>{{ auth.contexto()?.propietario_nombre ?? 'Superadmin' }}</span>
+      </div>
+    </div>
+    <button type="button" class="icon-button" aria-label="Salir" (click)="logout()">
+      <svg lucideLogOut size="20"></svg>
+    </button>
+  </header>
+
+  <main class="mobile-content">
+    <router-outlet />
+  </main>
+
+  <nav class="mobile-nav" aria-label="Navegación móvil">
+    @if (hasPermission('asistente')) {
+      <a routerLink="/movil/asistente" routerLinkActive="active">
+        <svg lucideSparkles size="20"></svg>
+        <span>Asist.</span>
+      </a>
+    }
+    @if (canOwnFleet('viajes')) {
+      <a routerLink="/movil/viajes" routerLinkActive="active">
+        <svg lucideClipboardList size="20"></svg>
+        <span>Viajes</span>
+      </a>
+    }
+    @if (canIntermediario('proveedor_viajes')) {
+      <a routerLink="/movil/viajes-proveedores" routerLinkActive="active">
+        <svg lucideHandshake size="20"></svg>
+        <span>Prov.</span>
+      </a>
+    }
+    @if (canOwnFleet('mantenimientos')) {
+      <a routerLink="/movil/mantenimientos" routerLinkActive="active">
+        <svg lucideWrench size="20"></svg>
+        <span>Mant.</span>
+      </a>
+    }
+    @if (canOwnFleet('cierre_semanal')) {
+      <a routerLink="/movil/cierre-semanal" routerLinkActive="active">
+        <svg lucideCalendarDays size="20"></svg>
+        <span>Cierre</span>
+      </a>
+    }
+    @if (hasPermission('tarifas_ruta')) {
+      <a routerLink="/movil/precios" routerLinkActive="active">
+        <svg lucideDollarSign size="20"></svg>
+        <span>Precios</span>
+      </a>
+    }
+  </nav>
+</div>

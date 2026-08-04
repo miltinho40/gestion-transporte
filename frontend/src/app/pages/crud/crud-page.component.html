@@ -1,13 +1,15 @@
-@if (config(); as cfg) {
+﻿@if (config(); as cfg) {
   <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
     <div>
       <h1 class="h3 mb-1">{{ cfg.title }}</h1>
       <p class="text-secondary mb-0">{{ cfg.description }}</p>
     </div>
-    <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
-      <svg lucidePlus size="17"></svg>
-      Nuevo
-    </button>
+    @if (cfg.createEnabled !== false && !isReadOnly()) {
+      <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-2" (click)="openCreate()">
+        <svg lucidePlus size="17"></svg>
+        Nuevo
+      </button>
+    }
   </div>
 
   @if (error() && !formOpen()) {
@@ -15,7 +17,7 @@
   }
 
   @if (message()) {
-    <div class="alert alert-success">{{ message() }}</div>
+    <div class="alert alert-success" [appAutoDismissAlert]="message()">{{ message() }}</div>
   }
 
   <div class="card border-0 shadow-sm">
@@ -27,9 +29,9 @@
         <input
           class="form-control"
           type="search"
-          placeholder="Buscar en resultados"
+          placeholder="Buscar"
           [ngModel]="search()"
-          (ngModelChange)="search.set($event)"
+          (ngModelChange)="setSearch($event)"
         />
       </div>
       <button type="button" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2" (click)="load()">
@@ -42,7 +44,7 @@
       <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
-            @for (column of cfg.columns; track column.path) {
+            @for (column of visibleColumns(cfg.columns); track column.path) {
               <th>{{ column.label }}</th>
             }
             <th class="text-end actions-column">Acciones</th>
@@ -50,11 +52,11 @@
         </thead>
         <tbody>
           @for (row of filteredRows(); track row['id'] ?? $index) {
-            <tr>
-              @for (column of cfg.columns; track column.path) {
+            <tr [class.crud-row-disabled]="rowDisabled(row)">
+              @for (column of visibleColumns(cfg.columns); track column.path) {
                 <td>
                   @if (column.type === 'date') {
-                    {{ dateValue(row, column.path) | date: 'yyyy-MM-dd' }}
+                    {{ dateValue(row, column.path) }}
                   } @else if (column.type === 'money') {
                     $ {{ textValue(row, column) }}
                   } @else if (column.type === 'hoursTime') {
@@ -74,26 +76,46 @@
                   }
                 </td>
               }
-              <td class="text-end">
+              <td class="text-end actions-cell">
                 <div class="btn-group btn-group-sm">
-                  <button type="button" class="btn btn-outline-secondary" (click)="openEdit(row)" title="Editar">
-                    <svg lucidePencil size="15"></svg>
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-outline-danger"
-                    (click)="delete(row)"
-                    [disabled]="deletingId() === idOf(row)"
-                    title="Eliminar o desactivar"
-                  >
-                    <svg lucideTrash2 size="15"></svg>
-                  </button>
+                  @if (cfg.duplicateEnabled && canMutateRow(cfg, row)) {
+                    <button type="button" class="btn btn-outline-secondary" (click)="openDuplicate(row)" title="Duplicar">
+                      <svg lucideCopy size="15"></svg>
+                    </button>
+                  }
+                  @if (cfg.passwordResetEnabled) {
+                    <button
+                      type="button"
+                      class="btn btn-outline-secondary"
+                      (click)="resetPassword(row)"
+                      [disabled]="resettingPasswordId() === idOf(row)"
+                      title="Resetear clave"
+                    >
+                      <svg lucideKeyRound size="15"></svg>
+                    </button>
+                  }
+                  @if (canMutateRow(cfg, row)) {
+                    <button type="button" class="btn btn-outline-secondary" (click)="openEdit(row)" title="Editar">
+                      <svg lucidePencil size="15"></svg>
+                    </button>
+                  }
+                  @if (cfg.deleteEnabled !== false && canMutateRow(cfg, row)) {
+                    <button
+                      type="button"
+                      class="btn btn-outline-danger"
+                      (click)="delete(row)"
+                      [disabled]="deletingId() === idOf(row)"
+                      [title]="rowDisabled(row) ? 'Eliminar definitivamente' : 'Eliminar o desactivar'"
+                    >
+                      <svg lucideTrash2 size="15"></svg>
+                    </button>
+                  }
                 </div>
               </td>
             </tr>
           } @empty {
             <tr>
-              <td [attr.colspan]="cfg.columns.length + 1" class="text-center text-secondary py-4">
+              <td [attr.colspan]="visibleColumns(cfg.columns).length + 1" class="text-center text-secondary py-4">
                 @if (loading()) {
                   Cargando datos...
                 } @else {
@@ -105,6 +127,13 @@
         </tbody>
       </table>
     </div>
+
+    <app-pagination-controls
+      [meta]="pagination()"
+      [loading]="loading()"
+      (pageChange)="changePage($event)"
+      (limitChange)="changeLimit($event)"
+    />
   </div>
 
   @if (formOpen()) {

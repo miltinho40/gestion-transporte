@@ -6,6 +6,7 @@ import { parseBigIntId } from '../../utils/ids.js';
 import {
   assertCanWriteScopedRecord,
   resolveReadScope,
+  resolveReadScopeWithOwnOverride,
   resolveWriteOwnerId
 } from '../../utils/ownership-scope.js';
 import type {
@@ -17,13 +18,31 @@ import type {
 interface ListFilters {
   search?: unknown;
   activo?: unknown;
+  solo_propios?: unknown;
 }
+
+const mapTipoCarga = <
+  T extends {
+    propietario_id: bigint | null;
+    propietario?: { nombre: string } | null;
+  }
+>(
+  tipo: T
+) => ({
+  ...tipo,
+  global: tipo.propietario_id === null,
+  origen: tipo.propietario_id === null ? 'Global' : 'Propio',
+  propietario_nombre: tipo.propietario?.nombre ?? null
+});
 
 const buildWhere = (
   user: JwtPayload | undefined,
   filters: ListFilters
 ): Prisma.TipoCargaWhereInput => {
-  const scope = resolveReadScope(user);
+  const scope = resolveReadScopeWithOwnOverride(
+    user,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
   const where: Prisma.TipoCargaWhereInput = {};
 
   if (!scope.all) {
@@ -66,10 +85,19 @@ const ensureNombreAvailable = async (
 };
 
 export const listTiposCarga = async (user: JwtPayload | undefined, filters: ListFilters) => {
-  return prisma.tipoCarga.findMany({
+  const tipos = await prisma.tipoCarga.findMany({
     where: buildWhere(user, filters),
+    include: {
+      propietario: {
+        select: {
+          nombre: true
+        }
+      }
+    },
     orderBy: [{ activo: 'desc' }, { propietario_id: 'asc' }, { nombre: 'asc' }]
   });
+
+  return tipos.map(mapTipoCarga);
 };
 
 export const getTipoCargaById = async (user: JwtPayload | undefined, idInput: unknown) => {
@@ -79,12 +107,19 @@ export const getTipoCargaById = async (user: JwtPayload | undefined, idInput: un
     where: {
       id,
       ...(scope.all ? {} : { OR: [{ propietario_id: null }, { propietario_id: scope.propietarioId }] })
+    },
+    include: {
+      propietario: {
+        select: {
+          nombre: true
+        }
+      }
     }
   });
 
   if (!tipo) throw new AppError('Tipo de carga no encontrado', 404);
 
-  return tipo;
+  return mapTipoCarga(tipo);
 };
 
 export const createTipoCarga = async (
@@ -94,14 +129,23 @@ export const createTipoCarga = async (
   const propietarioId = resolveWriteOwnerId(user, input.global);
   await ensureNombreAvailable(propietarioId, input.nombre);
 
-  return prisma.tipoCarga.create({
+  const tipo = await prisma.tipoCarga.create({
     data: {
       propietario_id: propietarioId,
       nombre: input.nombre,
       descripcion: input.descripcion,
       activo: input.activo ?? true
+    },
+    include: {
+      propietario: {
+        select: {
+          nombre: true
+        }
+      }
     }
   });
+
+  return mapTipoCarga(tipo);
 };
 
 export const updateTipoCarga = async (
@@ -115,10 +159,19 @@ export const updateTipoCarga = async (
 
   if (input.nombre) await ensureNombreAvailable(current.propietario_id, input.nombre, id);
 
-  return prisma.tipoCarga.update({
+  const tipo = await prisma.tipoCarga.update({
     where: { id },
-    data: input
+    data: input,
+    include: {
+      propietario: {
+        select: {
+          nombre: true
+        }
+      }
+    }
   });
+
+  return mapTipoCarga(tipo);
 };
 
 export const updateEstadoTipoCarga = async (
@@ -130,10 +183,19 @@ export const updateEstadoTipoCarga = async (
   const current = await getTipoCargaById(user, id);
   assertCanWriteScopedRecord(user, current.propietario_id);
 
-  return prisma.tipoCarga.update({
+  const tipo = await prisma.tipoCarga.update({
     where: { id },
-    data: { activo: input.activo }
+    data: { activo: input.activo },
+    include: {
+      propietario: {
+        select: {
+          nombre: true
+        }
+      }
+    }
   });
+
+  return mapTipoCarga(tipo);
 };
 
 export const deactivateTipoCarga = async (user: JwtPayload | undefined, idInput: unknown) => {
@@ -141,8 +203,17 @@ export const deactivateTipoCarga = async (user: JwtPayload | undefined, idInput:
   const current = await getTipoCargaById(user, id);
   assertCanWriteScopedRecord(user, current.propietario_id);
 
-  return prisma.tipoCarga.update({
+  const tipo = await prisma.tipoCarga.update({
     where: { id },
-    data: { activo: false }
+    data: { activo: false },
+    include: {
+      propietario: {
+        select: {
+          nombre: true
+        }
+      }
+    }
   });
+
+  return mapTipoCarga(tipo);
 };

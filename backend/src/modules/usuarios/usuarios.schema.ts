@@ -8,7 +8,7 @@ const dateOnlySchema = z
 export const usuarioCreateSchema = z.object({
   nombre: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(150).toLowerCase(),
-  password: z.string().min(8).max(100),
+  password: z.string().min(8).max(100).optional(),
   fecha_nacimiento: dateOnlySchema.optional().nullable(),
   es_super_admin: z.boolean().optional(),
   activo: z.boolean().optional()

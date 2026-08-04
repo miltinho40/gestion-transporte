@@ -43,6 +43,12 @@ const viajeInclude = {
       ruta: true,
       tipo_carga: true
     }
+  },
+  gastos_viaje: {
+    include: {
+      tipo_gasto: true
+    },
+    orderBy: { id: 'asc' }
   }
 } satisfies Prisma.ViajeInclude;
 
@@ -108,6 +114,39 @@ const addMoney = (
   return toMoney(left).plus(toMoney(right)).toDecimalPlaces(2);
 };
 
+const normalizeText = (value: unknown) => {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+};
+
+const isRetornoGastoViaje = (value: unknown) => normalizeText(value) === 'RETORNO';
+
+const viajeFechaEntrega = (viaje: { fecha_salida: Date; fecha_llegada: Date | null }) =>
+  viaje.fecha_llegada ?? viaje.fecha_salida;
+
+const isSundayDate = (value: Date) => value.getUTCDay() === 0;
+
+const buildViajeSemanaWhere = (fechaInicio: Date, fechaFin: Date): Prisma.ViajeWhereInput => ({
+  OR: [
+    {
+      fecha_llegada: {
+        gte: fechaInicio,
+        lte: fechaFin
+      }
+    },
+    {
+      fecha_llegada: null,
+      fecha_salida: {
+        gte: fechaInicio,
+        lte: fechaFin
+      }
+    }
+  ]
+});
+
 export const getIsoWeekRange = (anio: number, numeroSemana: number) => {
   const jan4 = new Date(Date.UTC(anio, 0, 4));
   const jan4Day = jan4.getUTCDay() || 7;
@@ -121,6 +160,17 @@ export const getIsoWeekRange = (anio: number, numeroSemana: number) => {
   fechaFin.setUTCDate(fechaInicio.getUTCDate() + 6);
 
   return { fechaInicio, fechaFin };
+};
+
+const todayUtcDateOnly = () => {
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+};
+
+const assertSemanaTerminada = (fechaFin: Date) => {
+  if (todayUtcDateOnly() <= fechaFin) {
+    throw new AppError('No se pueden generar gastos porque la semana aun no termina', 400);
+  }
 };
 
 export const getBonusConfig = async (propietarioId: bigint) => {
@@ -177,6 +227,213 @@ export const calculateBonificacion = (
   }
 
   return bonificacion;
+};
+
+export const calculatePagoSemanalConductor = (values: {
+  sueldo: Prisma.Decimal;
+  bono: Prisma.Decimal;
+  retornos: Prisma.Decimal;
+  domingos: Prisma.Decimal;
+}) =>
+  values.sueldo
+    .plus(values.bono)
+    .plus(values.retornos)
+    .plus(values.domingos)
+    .toDecimalPlaces(2);
+
+export const getPagosSemanalesConductores = async (
+  propietarioId: bigint | null,
+  anio: number,
+  numeroSemana: number,
+  conductorId?: bigint
+) => {
+  const { fechaInicio, fechaFin } = getIsoWeekRange(anio, numeroSemana);
+  const ownerFilter = propietarioId ? { propietario_id: propietarioId } : {};
+  const conductorFilter = conductorId ? { conductor_id: conductorId } : {};
+  const [viajes, gastosGenerados] = await Promise.all([
+    prisma.viaje.findMany({
+      where: {
+        ...ownerFilter,
+        ...conductorFilter,
+        estado: { not: EstadoViaje.CANCELADO },
+        ...buildViajeSemanaWhere(fechaInicio, fechaFin)
+      },
+      select: {
+        propietario_id: true,
+        conductor_id: true,
+        fecha_salida: true,
+        fecha_llegada: true,
+        precio_flete: true,
+        retorno: true,
+        conductor: {
+          select: {
+            id: true,
+            propietario_id: true,
+            nombre: true,
+            cedula: true,
+            sueldo_semanal: true
+          }
+        },
+        gastos_viaje: {
+          select: {
+            monto: true,
+            tipo_gasto: { select: { nombre: true } }
+          }
+        }
+      },
+      orderBy: [{ conductor_id: 'asc' }, { fecha_llegada: 'asc' }, { id: 'asc' }]
+    }),
+    prisma.gastoSemanalVehiculo.findMany({
+      where: {
+        ...ownerFilter,
+        anio,
+        numero_semana: numeroSemana,
+        tipo: {
+          in: [
+            TipoGastoSemanalVehiculo.SUELDO_CONDUCTOR,
+            TipoGastoSemanalVehiculo.BONIFICACION_CONDUCTOR
+          ]
+        },
+        conductor_id: conductorId ?? { not: null }
+      },
+      select: {
+        conductor_id: true,
+        tipo: true,
+        monto: true,
+        conductor: {
+          select: {
+            id: true,
+            propietario_id: true,
+            nombre: true,
+            cedula: true,
+            sueldo_semanal: true
+          }
+        }
+      }
+    })
+  ]);
+
+  type ConductorPagoGrupo = {
+    conductor: NonNullable<(typeof gastosGenerados)[number]['conductor']>;
+    cantidad_viajes: number;
+    cantidad_retornos: number;
+    cantidad_domingos: number;
+    total_fletes: Prisma.Decimal;
+    retornos: Prisma.Decimal;
+    domingos: Prisma.Decimal;
+    sueldo_generado: Prisma.Decimal;
+    bono_generado: Prisma.Decimal;
+    tiene_sueldo_generado: boolean;
+    tiene_bono_generado: boolean;
+  };
+  const grupos = new Map<string, ConductorPagoGrupo>();
+  const getGrupo = (
+    conductor: ConductorPagoGrupo['conductor']
+  ) => {
+    const key = conductor.id.toString();
+    const current = grupos.get(key) ?? {
+      conductor,
+      cantidad_viajes: 0,
+      cantidad_retornos: 0,
+      cantidad_domingos: 0,
+      total_fletes: zeroMoney(),
+      retornos: zeroMoney(),
+      domingos: zeroMoney(),
+      sueldo_generado: zeroMoney(),
+      bono_generado: zeroMoney(),
+      tiene_sueldo_generado: false,
+      tiene_bono_generado: false
+    };
+    grupos.set(key, current);
+    return current;
+  };
+
+  for (const viaje of viajes) {
+    const grupo = getGrupo(viaje.conductor);
+    const gastoRetorno = viaje.gastos_viaje
+      .filter((gasto) => isRetornoGastoViaje(gasto.tipo_gasto.nombre))
+      .reduce((total, gasto) => addMoney(total, gasto.monto), zeroMoney());
+    const fechaEntrega = viaje.fecha_llegada ?? viaje.fecha_salida;
+
+    grupo.cantidad_viajes += 1;
+    grupo.total_fletes = addMoney(grupo.total_fletes, viaje.precio_flete);
+    if (viaje.retorno) {
+      grupo.cantidad_retornos += 1;
+      grupo.retornos = addMoney(grupo.retornos, gastoRetorno);
+    }
+    if (isSundayDate(fechaEntrega)) {
+      grupo.cantidad_domingos += 1;
+      grupo.domingos = addMoney(grupo.domingos, gastoRetorno);
+    }
+  }
+
+  for (const gasto of gastosGenerados) {
+    if (!gasto.conductor) continue;
+    const grupo = getGrupo(gasto.conductor);
+    if (gasto.tipo === TipoGastoSemanalVehiculo.SUELDO_CONDUCTOR) {
+      grupo.tiene_sueldo_generado = true;
+      grupo.sueldo_generado = addMoney(grupo.sueldo_generado, gasto.monto);
+    } else {
+      grupo.tiene_bono_generado = true;
+      grupo.bono_generado = addMoney(grupo.bono_generado, gasto.monto);
+    }
+  }
+
+  const propietarios = [...new Set(
+    [...grupos.values()].map((grupo) => grupo.conductor.propietario_id.toString())
+  )];
+  const configuraciones = new Map<string, Awaited<ReturnType<typeof getBonusConfig>>>();
+  await Promise.all(
+    propietarios.map(async (id) => {
+      configuraciones.set(id, await getBonusConfig(BigInt(id)));
+    })
+  );
+
+  return [...grupos.values()]
+    .map((grupo) => {
+      const config = configuraciones.get(grupo.conductor.propietario_id.toString());
+      const sueldo = grupo.tiene_sueldo_generado
+        ? grupo.sueldo_generado
+        : grupo.cantidad_viajes
+          ? toMoney(grupo.conductor.sueldo_semanal)
+          : zeroMoney();
+      const bono = grupo.tiene_bono_generado
+        ? grupo.bono_generado
+        : grupo.cantidad_viajes && config
+          ? calculateBonificacion(grupo.total_fletes, config)
+          : zeroMoney();
+      const total = calculatePagoSemanalConductor({
+        sueldo,
+        bono,
+        retornos: grupo.retornos,
+        domingos: grupo.domingos
+      });
+
+      return {
+        conductor: grupo.conductor,
+        semana: {
+          anio,
+          numero_semana: numeroSemana,
+          fecha_inicio: fechaInicio,
+          fecha_fin: fechaFin
+        },
+        cantidad_viajes: grupo.cantidad_viajes,
+        cantidad_retornos: grupo.cantidad_retornos,
+        cantidad_domingos: grupo.cantidad_domingos,
+        total_fletes: grupo.total_fletes,
+        sueldo,
+        bono,
+        retornos: grupo.retornos,
+        domingos: grupo.domingos,
+        total,
+        sueldo_generado: grupo.tiene_sueldo_generado,
+        bono_generado: grupo.tiene_bono_generado
+      };
+    })
+    .sort((left, right) => {
+      const totalCompare = right.total.comparedTo(left.total);
+      return totalCompare || left.conductor.nombre.localeCompare(right.conductor.nombre);
+    });
 };
 
 const buildVehiculoMini = (vehiculo: {
@@ -250,6 +507,13 @@ const createConductorGrupo = (conductor: ReturnType<typeof buildConductorMini>) 
 const formatViajeCierre = (viaje: ViajeCierre, numeroSemana?: number) => {
   const costoRealGastos = toMoney(viaje.costo_real_gastos);
   const utilidad = toMoney(viaje.precio_real_flete).minus(costoRealGastos).toDecimalPlaces(2);
+  const gastosViajeTotal = viaje.gastos_viaje
+    .reduce((total, gasto) => total.plus(toMoney(gasto.monto)), zeroMoney())
+    .toDecimalPlaces(2);
+  const retornoGastosViaje = viaje.gastos_viaje
+    .filter((gasto) => isRetornoGastoViaje(gasto.tipo_gasto.nombre))
+    .reduce((total, gasto) => total.plus(toMoney(gasto.monto)), zeroMoney())
+    .toDecimalPlaces(2);
   const destino = viaje.tarifa_ruta.ruta.destino;
   const descripcionCarga = viaje.descripcion_carga?.trim() || 'carga';
   const guias = viaje.numeros_guia_remision.length
@@ -279,11 +543,15 @@ const formatViajeCierre = (viaje: ViajeCierre, numeroSemana?: number) => {
     descripcion_carga: viaje.descripcion_carga,
     numeros_guia_remision: viaje.numeros_guia_remision,
     precio_flete: viaje.precio_flete,
+    retorno_gastos_viaje: retornoGastosViaje,
     precio_real_flete: viaje.precio_real_flete,
+    viaticos: viaje.viaticos,
     costo_estimado_gastos: viaje.costo_estimado_gastos,
     costo_real_gastos: viaje.costo_real_gastos,
+    gastos_viaje_total: gastosViajeTotal,
     utilidad,
     cobrado: viaje.cobrado,
+    retorno: viaje.retorno,
     estado: prismaToApiEstadoViaje[viaje.estado],
     leyenda_facturacion: numeroSemana
       ? `1 viaje a ${destino}-${descripcionCarga} en sem#${numeroSemana}, guia #${guias}`
@@ -415,27 +683,30 @@ const assertConductorForGeneratedType = (
 const buildCierreData = async (
   propietarioId: bigint,
   anio: number,
-  numeroSemana: number
+  numeroSemana: number,
+  vehiculoIdInput: unknown
 ) => {
+  const vehiculoId = parseBigIntId(vehiculoIdInput, 'vehiculo_id');
   const { fechaInicio, fechaFin } = getIsoWeekRange(anio, numeroSemana);
+  const vehiculoSeleccionado = await ensureVehiculo(propietarioId, vehiculoId);
+  const vehiculoSeleccionadoMini = buildVehiculoMini(vehiculoSeleccionado);
   const [config, viajes, mantenimientos, gastosSemanales] = await Promise.all([
     getBonusConfig(propietarioId),
     prisma.viaje.findMany({
       where: {
         propietario_id: propietarioId,
+        vehiculo_id: vehiculoId,
         estado: { not: EstadoViaje.CANCELADO },
-        fecha_salida: {
-          gte: fechaInicio,
-          lte: fechaFin
-        }
+        ...buildViajeSemanaWhere(fechaInicio, fechaFin)
       },
       include: viajeInclude,
-      orderBy: [{ fecha_salida: 'asc' }, { id: 'asc' }]
+      orderBy: [{ fecha_llegada: 'asc' }, { fecha_salida: 'asc' }, { id: 'asc' }]
     }),
     prisma.mantenimiento.findMany({
       where: {
         propietario_id: propietarioId,
-        estado: { not: EstadoMantenimiento.CANCELADO },
+        vehiculo_id: vehiculoId,
+        estado: EstadoMantenimiento.REALIZADO,
         fecha_mantenimiento: {
           gte: fechaInicio,
           lte: fechaFin
@@ -447,6 +718,7 @@ const buildCierreData = async (
     prisma.gastoSemanalVehiculo.findMany({
       where: {
         propietario_id: propietarioId,
+        vehiculo_id: vehiculoId,
         anio,
         numero_semana: numeroSemana
       },
@@ -458,6 +730,8 @@ const buildCierreData = async (
   const vehiculos = new Map<string, ReturnType<typeof createVehiculoGrupo>>();
   const conductores = new Map<string, ReturnType<typeof createConductorGrupo>>();
   const gastosPorConductorTipo = new Map<string, GastoSemanalCierre>();
+  const viajesDetalle: ReturnType<typeof formatViajeCierre>[] = [];
+  const mantenimientosDetalle: ReturnType<typeof formatMantenimientoCierre>[] = [];
   const totales = {
     ...createTotalesViajes(),
     mantenimientos: zeroMoney(),
@@ -479,6 +753,8 @@ const buildCierreData = async (
     return grupo;
   };
 
+  getVehiculoGrupo(vehiculoSeleccionadoMini);
+
   const getConductorGrupo = (conductor: ReturnType<typeof buildConductorMini>) => {
     const key = conductor.id.toString();
     let grupo = conductores.get(key);
@@ -496,6 +772,7 @@ const buildCierreData = async (
     const vehiculoGrupo = getVehiculoGrupo(viajeFormat.vehiculo);
     const conductorGrupo = getConductorGrupo(viajeFormat.conductor);
 
+    viajesDetalle.push(viajeFormat);
     vehiculoGrupo.viajes.push(viajeFormat);
     conductorGrupo.viajes.push(viajeFormat);
     addViajeToTotales(vehiculoGrupo.totales, viaje);
@@ -524,6 +801,7 @@ const buildCierreData = async (
     const mantenimientoFormat = formatMantenimientoCierre(mantenimiento);
     const vehiculoGrupo = getVehiculoGrupo(mantenimientoFormat.vehiculo);
 
+    mantenimientosDetalle.push(mantenimientoFormat);
     vehiculoGrupo.mantenimientos.push(mantenimientoFormat);
     vehiculoGrupo.totales.mantenimientos = addMoney(
       vehiculoGrupo.totales.mantenimientos,
@@ -607,13 +885,17 @@ const buildCierreData = async (
       fecha_inicio: fechaInicio,
       fecha_fin: fechaFin
     },
+    vehiculo: vehiculoSeleccionadoMini,
     configuracion_bonificacion: config,
     resumen: {
       cantidad_viajes: viajes.length,
       cantidad_mantenimientos: mantenimientos.length,
       cantidad_gastos_semanales: gastosSemanales.length,
+      cantidad_gastos_generados: gastosSemanales.filter((gasto) => gasto.es_generado).length,
       totales
     },
+    viajes: viajesDetalle,
+    mantenimientos: mantenimientosDetalle,
     vehiculos: [...vehiculos.values()]
       .map((grupo) => ({
         ...grupo,
@@ -642,6 +924,604 @@ const buildCierreData = async (
       .sort((a, b) => a.conductor.nombre.localeCompare(b.conductor.nombre)),
     conductores_operativos: conductoresOperativos
   };
+};
+
+type CierreData = Awaited<ReturnType<typeof buildCierreData>>;
+
+const moneyString = (value: number | string | Prisma.Decimal | null | undefined) =>
+  toMoney(value).toFixed(2);
+
+const dateOnlyString = (value: Date) => value.toISOString().slice(0, 10);
+
+const buildCierreMetrics = (cierre: CierreData) => ({
+  cantidad_viajes: cierre.resumen.cantidad_viajes,
+  cantidad_mantenimientos: cierre.resumen.cantidad_mantenimientos,
+  cantidad_gastos_semanales: cierre.resumen.cantidad_gastos_semanales,
+  total_precio_flete: toMoney(cierre.resumen.totales.precio_flete),
+  total_precio_real_flete: toMoney(cierre.resumen.totales.precio_real_flete),
+  total_utilidad: toMoney(cierre.resumen.totales.utilidad),
+  total_mantenimientos: toMoney(cierre.resumen.totales.mantenimientos),
+  total_gastos_semanales: toMoney(cierre.resumen.totales.gastos_semanales),
+  total_sueldos: toMoney(cierre.resumen.totales.sueldos_sugeridos),
+  total_bonificaciones: toMoney(cierre.resumen.totales.bonificaciones_sugeridas),
+  resultado_operativo: toMoney(cierre.resumen.totales.resultado_operativo)
+});
+
+const buildCierreSnapshot = (cierre: CierreData) => {
+  const metrics = buildCierreMetrics(cierre);
+
+  return {
+    version: 1,
+    semana: {
+      anio: cierre.semana.anio,
+      numero_semana: cierre.semana.numero_semana,
+      fecha_inicio: dateOnlyString(cierre.semana.fecha_inicio),
+      fecha_fin: dateOnlyString(cierre.semana.fecha_fin)
+    },
+    vehiculo: {
+      id: String(cierre.vehiculo.id),
+      placa: cierre.vehiculo.placa,
+      marca: cierre.vehiculo.marca,
+      modelo: cierre.vehiculo.modelo
+    },
+    resumen: {
+      cantidad_viajes: metrics.cantidad_viajes,
+      cantidad_mantenimientos: metrics.cantidad_mantenimientos,
+      cantidad_gastos_semanales: metrics.cantidad_gastos_semanales,
+      totales: {
+        total_precio_flete: moneyString(metrics.total_precio_flete),
+        total_precio_real_flete: moneyString(metrics.total_precio_real_flete),
+        total_utilidad: moneyString(metrics.total_utilidad),
+        total_mantenimientos: moneyString(metrics.total_mantenimientos),
+        total_gastos_semanales: moneyString(metrics.total_gastos_semanales),
+        total_sueldos: moneyString(metrics.total_sueldos),
+        total_bonificaciones: moneyString(metrics.total_bonificaciones),
+        resultado_operativo: moneyString(metrics.resultado_operativo)
+      }
+    },
+    viajes: cierre.viajes.map((viaje) => ({
+      id: String(viaje.id),
+      fecha_salida: dateOnlyString(viaje.fecha_salida),
+      fecha_llegada: viaje.fecha_llegada ? dateOnlyString(viaje.fecha_llegada) : null,
+      fecha_semana: dateOnlyString(viajeFechaEntrega(viaje)),
+      cliente: viaje.cliente.nombre,
+      ruta: `${viaje.ruta.origen} - ${viaje.ruta.destino}`,
+      precio_flete: moneyString(viaje.precio_flete),
+      precio_real_flete: moneyString(viaje.precio_real_flete),
+      viaticos: moneyString(viaje.viaticos),
+      costo_real_gastos: moneyString(viaje.costo_real_gastos),
+      utilidad: moneyString(viaje.utilidad),
+      retorno: viaje.retorno,
+      estado: viaje.estado
+    })),
+    mantenimientos: cierre.mantenimientos.map((mantenimiento) => ({
+      id: String(mantenimiento.id),
+      fecha_mantenimiento: dateOnlyString(mantenimiento.fecha_mantenimiento),
+      tipo_mantenimiento: mantenimiento.tipo_mantenimiento.nombre,
+      costo_total: moneyString(mantenimiento.costo_total),
+      estado: mantenimiento.estado
+    })),
+    gastos_semanales: cierre.vehiculos.flatMap((grupo) =>
+      grupo.gastos_semanales.map((gasto) => ({
+        id: String(gasto.id),
+        tipo: gasto.tipo,
+        conductor_id: gasto.conductor_id ? String(gasto.conductor_id) : null,
+        monto: moneyString(gasto.monto),
+        es_generado: gasto.es_generado
+      }))
+    ),
+    conductores: cierre.conductores.map((item) => ({
+      id: String(item.conductor.id),
+      nombre: item.conductor.nombre,
+      sueldo_semanal: moneyString(item.sueldo_semanal),
+      bonificacion_sugerida: moneyString(item.bonificacion_sugerida)
+    }))
+  } satisfies Prisma.InputJsonObject;
+};
+
+const saveCierreSemanalSnapshot = async (
+  propietarioId: bigint,
+  cierre: CierreData,
+  cerradoPorUsuarioIdInput?: unknown
+) => {
+  const metrics = buildCierreMetrics(cierre);
+  const snapshot = buildCierreSnapshot(cierre);
+  const cerradoPorUsuarioId =
+    cerradoPorUsuarioIdInput === undefined
+      ? undefined
+      : parseBigIntId(cerradoPorUsuarioIdInput, 'usuario_id');
+  const data = {
+    fecha_inicio: cierre.semana.fecha_inicio,
+    fecha_fin: cierre.semana.fecha_fin,
+    cantidad_viajes: metrics.cantidad_viajes,
+    cantidad_mantenimientos: metrics.cantidad_mantenimientos,
+    cantidad_gastos_semanales: metrics.cantidad_gastos_semanales,
+    total_precio_flete: metrics.total_precio_flete,
+    total_precio_real_flete: metrics.total_precio_real_flete,
+    total_utilidad: metrics.total_utilidad,
+    total_mantenimientos: metrics.total_mantenimientos,
+    total_gastos_semanales: metrics.total_gastos_semanales,
+    total_sueldos: metrics.total_sueldos,
+    total_bonificaciones: metrics.total_bonificaciones,
+    resultado_operativo: metrics.resultado_operativo,
+    cerrado_por_usuario_id: cerradoPorUsuarioId,
+    snapshot
+  };
+
+  return prisma.cierreSemanal.upsert({
+    where: {
+      propietario_id_vehiculo_id_anio_numero_semana: {
+        propietario_id: propietarioId,
+        vehiculo_id: parseBigIntId(cierre.vehiculo.id, 'vehiculo_id'),
+        anio: cierre.semana.anio,
+        numero_semana: cierre.semana.numero_semana
+      }
+    },
+    create: {
+      propietario_id: propietarioId,
+      vehiculo_id: parseBigIntId(cierre.vehiculo.id, 'vehiculo_id'),
+      anio: cierre.semana.anio,
+      numero_semana: cierre.semana.numero_semana,
+      ...data
+    },
+    update: {
+      ...data,
+      cerrado_en: new Date()
+    }
+  });
+};
+
+const countComparisons = [
+  { key: 'cantidad_viajes', label: 'Viajes' },
+  { key: 'cantidad_mantenimientos', label: 'Mantenimientos' },
+  { key: 'cantidad_gastos_semanales', label: 'Gastos semanales' }
+] as const;
+
+const moneyComparisons = [
+  { key: 'total_precio_flete', label: 'Total viajes' },
+  { key: 'total_precio_real_flete', label: 'Valor a facturar' },
+  { key: 'total_utilidad', label: 'Utilidad viajes' },
+  { key: 'total_mantenimientos', label: 'Mantenimientos' },
+  { key: 'total_gastos_semanales', label: 'Gastos semanales' },
+  { key: 'total_sueldos', label: 'Sueldo semanal' },
+  { key: 'total_bonificaciones', label: 'Bono' },
+  { key: 'resultado_operativo', label: 'Ganancia semanal' }
+] as const;
+
+const buildCierreDiferencias = (
+  cierre: Prisma.CierreSemanalGetPayload<{ include: { vehiculo: true } }>,
+  currentMetrics: ReturnType<typeof buildCierreMetrics>
+) => {
+  const diferencias: {
+    campo: string;
+    label: string;
+    valor_cierre: string | number;
+    valor_actual: string | number;
+    diferencia?: string;
+  }[] = [];
+
+  for (const item of countComparisons) {
+    const stored = cierre[item.key];
+    const current = currentMetrics[item.key];
+
+    if (stored !== current) {
+      diferencias.push({
+        campo: item.key,
+        label: item.label,
+        valor_cierre: stored,
+        valor_actual: current
+      });
+    }
+  }
+
+  for (const item of moneyComparisons) {
+    const stored = toMoney(cierre[item.key]);
+    const current = currentMetrics[item.key];
+
+    if (!stored.equals(current)) {
+      diferencias.push({
+        campo: item.key,
+        label: item.label,
+        valor_cierre: moneyString(stored),
+        valor_actual: moneyString(current),
+        diferencia: moneyString(current.minus(stored))
+      });
+    }
+  }
+
+  return diferencias;
+};
+
+const latestDate = (values: (Date | null | undefined)[]) => {
+  const timestamps = values
+    .filter((value): value is Date => value instanceof Date)
+    .map((value) => value.getTime());
+
+  if (!timestamps.length) return null;
+  return new Date(Math.max(...timestamps));
+};
+
+const getGeneratedClosureReference = async (
+  propietarioId: bigint,
+  vehiculoId: bigint,
+  anio: number,
+  numeroSemana: number
+) => {
+  const gastos = await prisma.gastoSemanalVehiculo.findMany({
+    where: {
+      propietario_id: propietarioId,
+      vehiculo_id: vehiculoId,
+      anio,
+      numero_semana: numeroSemana,
+      es_generado: true
+    },
+    select: {
+      created_at: true,
+      updated_at: true
+    }
+  });
+
+  return latestDate(gastos.flatMap((gasto) => [gasto.created_at, gasto.updated_at]));
+};
+
+const shouldCheckLegacyPostClosureChanges = (
+  cierre: Prisma.CierreSemanalGetPayload<{ include: { vehiculo: true } }>,
+  generatedReference: Date | null
+) => {
+  if (!generatedReference) return false;
+  return cierre.cerrado_en.getTime() - generatedReference.getTime() > 60_000;
+};
+
+const buildPostClosureDiferencias = async (
+  propietarioId: bigint,
+  vehiculoId: bigint,
+  fechaInicio: Date,
+  fechaFin: Date,
+  referenceDate: Date
+) => {
+  const [viajes, mantenimientos] = await Promise.all([
+    prisma.viaje.findMany({
+      where: {
+        propietario_id: propietarioId,
+        vehiculo_id: vehiculoId,
+        estado: { not: EstadoViaje.CANCELADO },
+        AND: [
+          buildViajeSemanaWhere(fechaInicio, fechaFin),
+          {
+            OR: [{ created_at: { gt: referenceDate } }, { updated_at: { gt: referenceDate } }]
+          }
+        ]
+      },
+      select: {
+        id: true,
+        created_at: true,
+        updated_at: true
+      }
+    }),
+    prisma.mantenimiento.findMany({
+      where: {
+        propietario_id: propietarioId,
+        vehiculo_id: vehiculoId,
+        estado: EstadoMantenimiento.REALIZADO,
+        fecha_mantenimiento: {
+          gte: fechaInicio,
+          lte: fechaFin
+        },
+        OR: [{ created_at: { gt: referenceDate } }, { updated_at: { gt: referenceDate } }]
+      },
+      select: {
+        id: true,
+        created_at: true,
+        updated_at: true
+      }
+    })
+  ]);
+
+  const countCreated = (items: { created_at: Date }[]) =>
+    items.filter((item) => item.created_at > referenceDate).length;
+  const countUpdated = (items: { created_at: Date; updated_at: Date }[]) =>
+    items.filter((item) => item.created_at <= referenceDate && item.updated_at > referenceDate)
+      .length;
+  const diferencias: {
+    campo: string;
+    label: string;
+    valor_cierre: string | number;
+    valor_actual: string | number;
+  }[] = [];
+
+  if (viajes.length) {
+    diferencias.push({
+      campo: 'viajes_post_cierre',
+      label: 'Viajes posteriores al cierre',
+      valor_cierre: 'Sin cambios',
+      valor_actual: `${countCreated(viajes)} nuevo(s), ${countUpdated(viajes)} modificado(s)`
+    });
+  }
+
+  if (mantenimientos.length) {
+    diferencias.push({
+      campo: 'mantenimientos_post_cierre',
+      label: 'Mantenimientos posteriores al cierre',
+      valor_cierre: 'Sin cambios',
+      valor_actual: `${countCreated(mantenimientos)} nuevo(s), ${countUpdated(mantenimientos)} modificado(s)`
+    });
+  }
+
+  return diferencias;
+};
+
+const buildCierreRevision = async (
+  propietarioId: bigint,
+  cierreData: CierreData,
+  cierreGuardado?: Prisma.CierreSemanalGetPayload<{ include: { vehiculo: true } }> | null
+) => {
+  const vehiculoId = parseBigIntId(cierreData.vehiculo.id, 'vehiculo_id');
+  const cierre =
+    cierreGuardado ??
+    (await prisma.cierreSemanal.findUnique({
+      where: {
+        propietario_id_vehiculo_id_anio_numero_semana: {
+          propietario_id: propietarioId,
+          vehiculo_id: vehiculoId,
+          anio: cierreData.semana.anio,
+          numero_semana: cierreData.semana.numero_semana
+        }
+      },
+      include: {
+        vehiculo: true
+      }
+    }));
+
+  if (!cierre) {
+    return {
+      cerrado: false,
+      requiere_revision: false,
+      diferencias: [],
+      total_diferencias: 0
+    };
+  }
+
+  const currentMetrics = buildCierreMetrics(cierreData);
+  const generatedReference = await getGeneratedClosureReference(
+    propietarioId,
+    vehiculoId,
+    cierreData.semana.anio,
+    cierreData.semana.numero_semana
+  );
+  const postClosureDiferencias = shouldCheckLegacyPostClosureChanges(
+    cierre,
+    generatedReference
+  )
+    ? await buildPostClosureDiferencias(
+        propietarioId,
+        vehiculoId,
+        cierreData.semana.fecha_inicio,
+        cierreData.semana.fecha_fin,
+        generatedReference!
+      )
+    : [];
+  const diferencias = [
+    ...buildCierreDiferencias(cierre, currentMetrics),
+    ...postClosureDiferencias
+  ];
+
+  return {
+    cerrado: true,
+    cierre_id: cierre.id,
+    cerrado_en: cierre.cerrado_en,
+    referencia_cierre: generatedReference,
+    requiere_revision: diferencias.length > 0,
+    diferencias,
+    total_diferencias: diferencias.length
+  };
+};
+
+type CierreRevision = Awaited<ReturnType<typeof buildCierreRevision>>;
+type AssistantAlertSeverity = 'info' | 'advertencia' | 'critica';
+type AssistantAlertType =
+  | 'guias_faltantes'
+  | 'gastos_inconsistentes'
+  | 'utilidad_negativa'
+  | 'retorno_sin_gasto'
+  | 'domingo_sin_gasto'
+  | 'sin_mantenimiento'
+  | 'cierre_con_diferencias'
+  | 'semana_abierta'
+  | 'gastos_no_generados';
+
+const assistantSeverityWeight: Record<AssistantAlertSeverity, number> = {
+  info: 1,
+  advertencia: 3,
+  critica: 6
+};
+
+const buildAssistantAlert = (input: {
+  id: string;
+  tipo: AssistantAlertType;
+  severidad: AssistantAlertSeverity;
+  titulo: string;
+  mensaje: string;
+  accion_sugerida: string;
+  source_type?: 'viaje' | 'mantenimiento' | 'cierre';
+  source_id?: bigint | string | null;
+}) => ({
+  ...input,
+  source_id: input.source_id === undefined || input.source_id === null ? null : String(input.source_id)
+});
+
+const buildCierreAssistant = (cierre: CierreData, revision: CierreRevision) => {
+  const alertas: ReturnType<typeof buildAssistantAlert>[] = [];
+  const semanaTerminada = todayUtcDateOnly() > cierre.semana.fecha_fin;
+
+  if (!semanaTerminada) {
+    alertas.push(
+      buildAssistantAlert({
+        id: 'semana-abierta',
+        tipo: 'semana_abierta',
+        severidad: 'info',
+        titulo: 'Semana abierta',
+        mensaje: 'La semana aun no termina. Puedes revisar valores, pero no conviene generar gastos todavia.',
+        accion_sugerida: 'Revisar y esperar el cierre de la semana.',
+        source_type: 'cierre'
+      })
+    );
+  }
+
+  if (semanaTerminada && cierre.resumen.cantidad_gastos_generados === 0) {
+    alertas.push(
+      buildAssistantAlert({
+        id: 'gastos-no-generados',
+        tipo: 'gastos_no_generados',
+        severidad: 'advertencia',
+        titulo: 'Gastos aun no generados',
+        mensaje: 'La semana ya termino y aun no hay sueldos o bonos generados para este cierre.',
+        accion_sugerida: 'Revisar las alertas y luego generar gastos.',
+        source_type: 'cierre'
+      })
+    );
+  }
+
+  if (revision.requiere_revision) {
+    alertas.push(
+      buildAssistantAlert({
+        id: 'cierre-con-diferencias',
+        tipo: 'cierre_con_diferencias',
+        severidad: 'critica',
+        titulo: 'Cierre con diferencias',
+        mensaje: `El cierre guardado tiene ${revision.total_diferencias} diferencia(s) contra el calculo actual.`,
+        accion_sugerida: 'Revisar diferencias y regenerar gastos si corresponde.',
+        source_type: 'cierre',
+        source_id: revision.cierre_id
+      })
+    );
+  }
+
+  for (const viaje of cierre.viajes) {
+    const guias = Array.isArray(viaje.numeros_guia_remision)
+      ? viaje.numeros_guia_remision.map((guia) => String(guia ?? '').trim()).filter(Boolean)
+      : [];
+    const ruta = `${viaje.ruta.origen} - ${viaje.ruta.destino}`;
+    const expectedCost = toMoney(viaje.viaticos).plus(toMoney(viaje.gastos_viaje_total)).toDecimalPlaces(2);
+    const realCost = toMoney(viaje.costo_real_gastos);
+    const retornoGasto = toMoney(viaje.retorno_gastos_viaje);
+
+    if (!guias.length) {
+      alertas.push(
+        buildAssistantAlert({
+          id: `viaje-${viaje.id}-guias`,
+          tipo: 'guias_faltantes',
+          severidad: 'advertencia',
+          titulo: 'Viaje sin guias',
+          mensaje: `${ruta} no tiene guias de remision registradas.`,
+          accion_sugerida: 'Agregar guias antes de facturar o cerrar la semana.',
+          source_type: 'viaje',
+          source_id: viaje.id
+        })
+      );
+    }
+
+    if (!realCost.equals(expectedCost)) {
+      alertas.push(
+        buildAssistantAlert({
+          id: `viaje-${viaje.id}-gastos`,
+          tipo: 'gastos_inconsistentes',
+          severidad: 'critica',
+          titulo: 'Gastos del viaje no cuadran',
+          mensaje: `${ruta} tiene costo real $ ${moneyString(realCost)}, pero viaticos + gastos suman $ ${moneyString(expectedCost)}.`,
+          accion_sugerida: 'Editar el viaje y recalcular/guardar los gastos reales.',
+          source_type: 'viaje',
+          source_id: viaje.id
+        })
+      );
+    }
+
+    if (toMoney(viaje.utilidad).lt(0)) {
+      alertas.push(
+        buildAssistantAlert({
+          id: `viaje-${viaje.id}-utilidad`,
+          tipo: 'utilidad_negativa',
+          severidad: 'critica',
+          titulo: 'Viaje con utilidad negativa',
+          mensaje: `${ruta} deja una utilidad de $ ${moneyString(viaje.utilidad)}.`,
+          accion_sugerida: 'Revisar precio a facturar, viaticos y gastos del viaje.',
+          source_type: 'viaje',
+          source_id: viaje.id
+        })
+      );
+    }
+
+    if (viaje.retorno && retornoGasto.lte(0)) {
+      alertas.push(
+        buildAssistantAlert({
+          id: `viaje-${viaje.id}-retorno`,
+          tipo: 'retorno_sin_gasto',
+          severidad: 'advertencia',
+          titulo: 'Retorno sin gasto RETORNO',
+          mensaje: `${ruta} esta marcado como retorno, pero no tiene gasto tipo RETORNO.`,
+          accion_sugerida: 'Agregar el gasto de retorno si corresponde.',
+          source_type: 'viaje',
+          source_id: viaje.id
+        })
+      );
+    }
+
+    if (isSundayDate(viajeFechaEntrega(viaje)) && retornoGasto.lte(0)) {
+      alertas.push(
+        buildAssistantAlert({
+          id: `viaje-${viaje.id}-domingo`,
+          tipo: 'domingo_sin_gasto',
+          severidad: 'advertencia',
+          titulo: 'Viaje domingo sin gasto RETORNO',
+          mensaje: `${ruta} tiene entrega domingo y no registra gasto tipo RETORNO.`,
+          accion_sugerida: 'Agregar el valor de domingo si aplica.',
+          source_type: 'viaje',
+          source_id: viaje.id
+        })
+      );
+    }
+  }
+
+  if (cierre.resumen.cantidad_viajes > 0 && cierre.resumen.cantidad_mantenimientos === 0) {
+    alertas.push(
+      buildAssistantAlert({
+        id: 'semana-sin-mantenimiento',
+        tipo: 'sin_mantenimiento',
+        severidad: 'info',
+        titulo: 'Semana sin mantenimientos',
+        mensaje: 'Hay viajes en la semana, pero no se registro ningun mantenimiento para el vehiculo.',
+        accion_sugerida: 'Confirmar que no hubo mantenimiento pendiente de registrar.',
+        source_type: 'cierre'
+      })
+    );
+  }
+
+  const puntaje = alertas.reduce((total, alerta) => total + assistantSeverityWeight[alerta.severidad], 0);
+  const riesgo = puntaje >= 9 ? 'alto' : puntaje >= 4 ? 'medio' : 'bajo';
+  const criticas = alertas.filter((alerta) => alerta.severidad === 'critica').length;
+  const advertencias = alertas.filter((alerta) => alerta.severidad === 'advertencia').length;
+
+  return {
+    disponible: true,
+    riesgo,
+    puntaje,
+    total_alertas: alertas.length,
+    resumen:
+      alertas.length === 0
+        ? 'No se detectaron novedades relevantes para este cierre.'
+        : `Se detectaron ${alertas.length} novedad(es): ${criticas} critica(s), ${advertencias} advertencia(s).`,
+    alertas
+  };
+};
+
+export const __testing = {
+  addViajeToTotales,
+  buildCierreAssistant,
+  buildCierreDiferencias,
+  buildViajeSemanaWhere,
+  createTotalesViajes,
+  formatViajeCierre,
+  isRetornoGastoViaje,
+  viajeFechaEntrega
 };
 
 const upsertGeneratedGasto = async (
@@ -709,18 +1589,66 @@ const upsertGeneratedGasto = async (
 export const getCierreSemanal = async (propietarioIdInput: unknown, input: unknown) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const parsed = cierreSemanalSemanaSchema.parse(input);
-  const cierre = await buildCierreData(propietarioId, parsed.anio, parsed.numero_semana);
+  const cierre = await buildCierreData(
+    propietarioId,
+    parsed.anio,
+    parsed.numero_semana,
+    parsed.vehiculo_id
+  );
+  const revisionCierre = await buildCierreRevision(propietarioId, cierre);
+  const asistenteCierre = buildCierreAssistant(cierre, revisionCierre);
 
   const { conductores_operativos: _internal, ...response } = cierre;
-  return response;
+  return {
+    ...response,
+    revision_cierre: revisionCierre,
+    asistente_cierre: asistenteCierre
+  };
+};
+
+export const snapshotCierreSemanalActual = async (
+  propietarioIdInput: unknown,
+  input: unknown,
+  usuarioIdInput?: unknown
+) => {
+  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const parsed = cierreSemanalSemanaSchema.parse(input);
+  const cierre = await buildCierreData(
+    propietarioId,
+    parsed.anio,
+    parsed.numero_semana,
+    parsed.vehiculo_id
+  );
+
+  return saveCierreSemanalSnapshot(propietarioId, cierre, usuarioIdInput);
 };
 
 export const generarGastosCierreSemanal = async (
   propietarioIdInput: unknown,
-  input: CierreSemanalGenerarGastosInput
+  input: CierreSemanalGenerarGastosInput,
+  usuarioIdInput?: unknown
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
-  const cierre = await buildCierreData(propietarioId, input.anio, input.numero_semana);
+  const cierre = await buildCierreData(
+    propietarioId,
+    input.anio,
+    input.numero_semana,
+    input.vehiculo_id
+  );
+
+  assertSemanaTerminada(cierre.semana.fecha_fin);
+
+  const revisionAntesDeGenerar =
+    cierre.resumen.cantidad_gastos_generados > 0
+      ? await buildCierreRevision(propietarioId, cierre)
+      : null;
+
+  if (
+    cierre.resumen.cantidad_gastos_generados > 0 &&
+    !revisionAntesDeGenerar?.requiere_revision
+  ) {
+    throw new AppError('Los gastos de esta semana ya fueron generados', 409);
+  }
 
   const gastos = await prisma.$transaction(async (tx) => {
     const items: GastoSemanalCierre[] = [];
@@ -764,12 +1692,86 @@ export const generarGastosCierreSemanal = async (
     return items;
   });
 
-  const cierreActualizado = await buildCierreData(propietarioId, input.anio, input.numero_semana);
+  const cierreActualizado = await buildCierreData(
+    propietarioId,
+    input.anio,
+    input.numero_semana,
+    input.vehiculo_id
+  );
+  const cierreGuardado = await saveCierreSemanalSnapshot(
+    propietarioId,
+    cierreActualizado,
+    usuarioIdInput
+  );
   const { conductores_operativos: _internal, ...response } = cierreActualizado;
+  const revisionCierre = {
+    cerrado: true,
+    cierre_id: cierreGuardado.id,
+    cerrado_en: cierreGuardado.cerrado_en,
+    referencia_cierre: null,
+    requiere_revision: false,
+    diferencias: [],
+    total_diferencias: 0
+  };
 
   return {
     gastos_generados: formatGastosSemanales(gastos),
-    cierre: response
+    cierre_guardado: cierreGuardado,
+    cierre: {
+      ...response,
+      revision_cierre: revisionCierre,
+      asistente_cierre: buildCierreAssistant(cierreActualizado, revisionCierre)
+    }
+  };
+};
+
+export const listAnomaliasCierresSemanales = async (propietarioIdInput: unknown) => {
+  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const cierres = await prisma.cierreSemanal.findMany({
+    where: {
+      propietario_id: propietarioId
+    },
+    include: {
+      vehiculo: true
+    },
+    orderBy: [{ cerrado_en: 'desc' }, { anio: 'desc' }, { numero_semana: 'desc' }],
+    take: 50
+  });
+  const items = [];
+
+  for (const cierre of cierres) {
+    const current = await buildCierreData(
+      propietarioId,
+      cierre.anio,
+      cierre.numero_semana,
+      cierre.vehiculo_id
+    );
+    const revision = await buildCierreRevision(propietarioId, current, cierre);
+    const diferencias = revision.diferencias;
+
+    if (!diferencias.length) continue;
+
+    items.push({
+      tipo_alerta: 'cierre_semanal',
+      estado_alerta: 'requiere_revision',
+      cierre_id: cierre.id,
+      cerrado_en: cierre.cerrado_en,
+      semana: {
+        anio: cierre.anio,
+        numero_semana: cierre.numero_semana,
+        fecha_inicio: cierre.fecha_inicio,
+        fecha_fin: cierre.fecha_fin
+      },
+      vehiculo: buildVehiculoMini(cierre.vehiculo),
+      diferencias,
+      total_diferencias: diferencias.length
+    });
+  }
+
+  return {
+    total: items.length,
+    cierres_revisados: cierres.length,
+    items
   };
 };
 

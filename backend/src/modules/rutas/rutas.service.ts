@@ -6,17 +6,23 @@ import { parseBigIntId } from '../../utils/ids.js';
 import {
   assertCanWriteScopedRecord,
   resolveReadScope,
+  resolveReadScopeWithOwnOverride,
   resolveWriteOwnerId
 } from '../../utils/ownership-scope.js';
+import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import type { RutaCreateInput, RutaEstadoInput, RutaUpdateInput } from './rutas.schema.js';
 
 interface ListFilters {
   search?: unknown;
   activa?: unknown;
+  solo_propios?: unknown;
 }
 
 const buildWhere = (user: JwtPayload | undefined, filters: ListFilters): Prisma.RutaWhereInput => {
-  const scope = resolveReadScope(user);
+  const scope = resolveReadScopeWithOwnOverride(
+    user,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
   const where: Prisma.RutaWhereInput = {};
 
   if (!scope.all) {
@@ -41,8 +47,11 @@ const buildWhere = (user: JwtPayload | undefined, filters: ListFilters): Prisma.
   return where;
 };
 
-const buildIncludeRelations = (user: JwtPayload | undefined): Prisma.RutaInclude => {
-  const scope = resolveReadScope(user);
+const buildIncludeRelations = (
+  user: JwtPayload | undefined,
+  ownRequested = false
+): Prisma.RutaInclude => {
+  const scope = resolveReadScopeWithOwnOverride(user, ownRequested);
   const rutaPeajeWhere: Prisma.RutaPeajeWhereInput = scope.all
     ? {}
     : {
@@ -53,6 +62,12 @@ const buildIncludeRelations = (user: JwtPayload | undefined): Prisma.RutaInclude
       };
 
   return {
+    propietario: {
+      select: {
+        id: true,
+        nombre: true
+      }
+    },
     rutas_peajes: {
       where: rutaPeajeWhere,
       include: {
@@ -153,11 +168,39 @@ const syncRutaPeajes = async (
 };
 
 export const listRutas = async (user: JwtPayload | undefined, filters: ListFilters) => {
-  return prisma.ruta.findMany({
-    where: buildWhere(user, filters),
-    include: buildIncludeRelations(user),
-    orderBy: [{ activa: 'desc' }, { propietario_id: 'asc' }, { origen: 'asc' }, { destino: 'asc' }]
-  });
+  const where = buildWhere(user, filters);
+  const include = buildIncludeRelations(
+    user,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
+  const orderBy = [
+    { activa: 'desc' },
+    { propietario_id: 'asc' },
+    { origen: 'asc' },
+    { destino: 'asc' }
+  ] satisfies Prisma.RutaOrderByWithRelationInput[];
+  const pagination = parsePagination(filters as Record<string, unknown>);
+
+  if (!pagination) {
+    return prisma.ruta.findMany({
+      where,
+      include,
+      orderBy
+    });
+  }
+
+  const [data, total] = await prisma.$transaction([
+    prisma.ruta.findMany({
+      where,
+      include,
+      orderBy,
+      skip: pagination.skip,
+      take: pagination.limit
+    }),
+    prisma.ruta.count({ where })
+  ]);
+
+  return buildPaginatedResult(data, total, pagination);
 };
 
 export const getRutaById = async (user: JwtPayload | undefined, idInput: unknown) => {

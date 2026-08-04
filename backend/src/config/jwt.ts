@@ -4,9 +4,15 @@ import { env } from './env.js';
 
 export interface JwtPayload {
   usuario_id: string;
+  sesion_id?: string;
   propietario_id?: string;
   rol?: string;
+  permisos?: string[];
+  permisos_configurados?: boolean;
   es_super_admin?: boolean;
+  requiere_password?: boolean;
+  es_propietario?: boolean;
+  es_intermediario?: boolean;
 }
 
 export const signToken = (payload: JwtPayload) => {

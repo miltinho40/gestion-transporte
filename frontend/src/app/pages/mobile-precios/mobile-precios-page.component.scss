@@ -1,0 +1,174 @@
+.mobile-precios {
+  display: grid;
+  gap: 12px;
+}
+
+.mobile-page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 1.45rem;
+  font-weight: 800;
+}
+
+p {
+  color: var(--app-muted);
+}
+
+.add-button {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.mobile-filter-card,
+.precio-card {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(24, 34, 48, 0.06);
+}
+
+.mobile-filter-card {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.search-box {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--app-muted);
+}
+
+.search-box input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  color: var(--app-text);
+}
+
+.filter-row {
+  display: grid;
+  grid-template-columns: 1fr 42px;
+  gap: 8px;
+}
+
+.refresh-button {
+  display: grid;
+  place-items: center;
+}
+
+.precios-list {
+  display: grid;
+  gap: 10px;
+}
+
+.precio-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.precio-card.inactive {
+  color: #667085;
+}
+
+.card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.card-top h2 {
+  margin: 4px 0 2px;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.state-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #065f46;
+  background: #d1fae5;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.price {
+  flex: 0 0 auto;
+  font-size: 1.08rem;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.info-grid div {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  padding: 8px;
+  background: #fbfdff;
+}
+
+.info-grid span {
+  color: var(--app-muted);
+  font-size: 0.68rem;
+}
+
+.info-grid strong {
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.card-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-actions .icon-action {
+  width: 38px;
+  height: 34px;
+  justify-content: center;
+  padding: 0;
+}
+
+.empty-state {
+  padding: 28px 12px;
+  color: var(--app-muted);
+  text-align: center;
+}

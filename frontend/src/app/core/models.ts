@@ -5,7 +5,11 @@ export interface PropietarioAcceso {
   rol: {
     id: string;
     nombre: string;
+    permisos?: string[];
+    permisos_configurados?: boolean;
   };
+  es_propietario?: boolean;
+  es_intermediario?: boolean;
 }
 
 export interface AuthUser {
@@ -13,6 +17,7 @@ export interface AuthUser {
   nombre: string;
   email: string;
   es_super_admin: boolean;
+  requiere_password?: boolean;
 }
 
 export interface AuthContext {
@@ -20,6 +25,10 @@ export interface AuthContext {
   propietario_nombre: string;
   rol_id: string;
   rol: string;
+  permisos?: string[];
+  permisos_configurados?: boolean;
+  es_propietario?: boolean;
+  es_intermediario?: boolean;
 }
 
 export interface LoginResponse {
@@ -35,6 +44,7 @@ export interface ApiListColumn {
   label: string;
   path: string;
   type?: 'text' | 'date' | 'money' | 'boolean' | 'badge' | 'hoursTime';
+  superAdminOnly?: boolean;
 }
 
 export interface SelectOption {
@@ -64,6 +74,7 @@ export interface CrudFieldConfig {
   createOnly?: boolean;
   payloadPath?: string;
   syncFrom?: string;
+  superAdminOnly?: boolean;
   min?: number;
   max?: number;
   step?: number | string;
@@ -80,4 +91,10 @@ export interface CrudRouteData {
   displayField: string;
   columns: ApiListColumn[];
   fields: CrudFieldConfig[];
+  createEnabled?: boolean;
+  deleteEnabled?: boolean;
+  duplicateEnabled?: boolean;
+  passwordResetEnabled?: boolean;
+  readonlyGlobalRows?: boolean;
+  superAdminReadOnly?: boolean;
 }

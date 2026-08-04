@@ -7,10 +7,17 @@ const dateOnlySchema = z
   .trim()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Debe tener formato YYYY-MM-DD');
 
+const capacidadSchema = z.preprocess((value) => {
+  if (value === null || value === undefined) return null;
+
+  const text = String(value).trim();
+  return text ? text : null;
+}, z.string().max(50).nullable());
+
 const tarifaRutaBaseSchema = z.object({
   ruta_id: idSchema,
   tipo_carga_id: idSchema,
-  capacidad: z.coerce.number().int().positive().optional().nullable(),
+  capacidad: capacidadSchema.optional(),
   toneladas: z.coerce.number().positive().optional().nullable(),
   precio: z.coerce.number().positive(),
   vigente_desde: dateOnlySchema.optional(),

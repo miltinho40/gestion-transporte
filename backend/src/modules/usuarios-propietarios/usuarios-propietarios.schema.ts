@@ -5,12 +5,16 @@ const idSchema = z.union([z.string().min(1), z.number().int().positive()]).trans
 export const usuarioPropietarioCreateSchema = z.object({
   usuario_id: idSchema,
   propietario_id: idSchema,
-  rol_id: idSchema
+  rol_id: idSchema,
+  es_propietario: z.boolean().optional(),
+  es_intermediario: z.boolean().optional()
 });
 
 export const usuarioPropietarioUpdateSchema = z
   .object({
     rol_id: idSchema.optional(),
+    es_propietario: z.boolean().optional(),
+    es_intermediario: z.boolean().optional(),
     activo: z.boolean().optional()
   })
   .refine((value) => Object.keys(value).length > 0, {

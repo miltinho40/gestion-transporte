@@ -1,7 +1,10 @@
 import { Prisma } from '@prisma/client';
+import type { JwtPayload } from '../../config/jwt.js';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { resolveReadScopeWithOwnOverride } from '../../utils/ownership-scope.js';
+import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import type {
   ClienteCreateInput,
   ClienteEstadoInput,
@@ -11,15 +14,31 @@ import type {
 interface ListClientesFilters {
   search?: unknown;
   activo?: unknown;
+  solo_propios?: unknown;
 }
 
+const includePropietario = {
+  propietario: {
+    select: {
+      id: true,
+      nombre: true
+    }
+  }
+} satisfies Prisma.ClienteInclude;
+
 const buildWhere = (
-  propietarioId: bigint,
+  scopeInput: JwtPayload | unknown,
   filters: ListClientesFilters
 ): Prisma.ClienteWhereInput => {
-  const where: Prisma.ClienteWhereInput = {
-    propietario_id: propietarioId
-  };
+  const scope = resolveReadScopeWithOwnOverride(
+    scopeInput,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
+  const where: Prisma.ClienteWhereInput = scope.all
+    ? {}
+    : {
+        propietario_id: scope.propietarioId
+      };
 
   if (typeof filters.search === 'string' && filters.search.trim()) {
     const search = filters.search.trim();
@@ -60,24 +79,49 @@ const ensureRucAvailable = async (
   }
 };
 
-export const listClientes = async (propietarioIdInput: unknown, filters: ListClientesFilters) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+export const listClientes = async (
+  scopeInput: JwtPayload | unknown,
+  filters: ListClientesFilters
+) => {
+  const where = buildWhere(scopeInput, filters);
+  const orderBy = [
+    { activo: 'desc' },
+    { nombre: 'asc' }
+  ] satisfies Prisma.ClienteOrderByWithRelationInput[];
+  const pagination = parsePagination(filters as Record<string, unknown>);
 
-  return prisma.cliente.findMany({
-    where: buildWhere(propietarioId, filters),
-    orderBy: [{ activo: 'desc' }, { nombre: 'asc' }]
-  });
+  if (!pagination) {
+    return prisma.cliente.findMany({
+      where,
+      include: includePropietario,
+      orderBy
+    });
+  }
+
+  const [data, total] = await prisma.$transaction([
+    prisma.cliente.findMany({
+      where,
+      include: includePropietario,
+      orderBy,
+      skip: pagination.skip,
+      take: pagination.limit
+    }),
+    prisma.cliente.count({ where })
+  ]);
+
+  return buildPaginatedResult(data, total, pagination);
 };
 
-export const getClienteById = async (propietarioIdInput: unknown, idInput: unknown) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+export const getClienteById = async (scopeInput: JwtPayload | unknown, idInput: unknown) => {
+  const scope = resolveReadScopeWithOwnOverride(scopeInput, false);
   const id = parseBigIntId(idInput);
 
   const cliente = await prisma.cliente.findFirst({
     where: {
       id,
-      propietario_id: propietarioId
-    }
+      ...(scope.all ? {} : { propietario_id: scope.propietarioId })
+    },
+    include: includePropietario
   });
 
   if (!cliente) {
@@ -152,12 +196,39 @@ export const deactivateCliente = async (propietarioIdInput: unknown, idInput: un
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getClienteById(propietarioId, id);
+  const current = await getClienteById(propietarioId, id);
 
-  return prisma.cliente.update({
-    where: { id },
-    data: {
-      activo: false
-    }
+  if (current.activo) {
+    return prisma.cliente.update({
+      where: { id },
+      data: {
+        activo: false
+      }
+    });
+  }
+
+  const [viajes, viajesProveedor] = await Promise.all([
+    prisma.viaje.count({
+      where: {
+        propietario_id: propietarioId,
+        cliente_id: id
+      }
+    }),
+    prisma.viajeProveedor.count({
+      where: {
+        propietario_id: propietarioId,
+        cliente_id: id
+      }
+    })
+  ]);
+
+  if (viajes > 0 || viajesProveedor > 0) {
+    throw new AppError('El cliente ya esta usado en algunos viajes', 409);
+  }
+
+  await prisma.cliente.delete({
+    where: { id }
   });
+
+  return current;
 };

@@ -1,11 +1,12 @@
-import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { LucideRefreshCw, LucideSearch } from '@lucide/angular';
 import { Subscription } from 'rxjs';
 import { ApiService } from '../../core/api.service';
+import { formatDateOnly } from '../../core/date-only';
 import type { ApiListColumn } from '../../core/models';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 
 interface ResourceRouteData {
   title: string;
@@ -16,7 +17,7 @@ interface ResourceRouteData {
 
 @Component({
   selector: 'app-resource-list-page',
-  imports: [DatePipe, FormsModule, LucideRefreshCw, LucideSearch],
+  imports: [FormsModule, LucideRefreshCw, LucideSearch, AutoDismissAlertDirective],
   templateUrl: './resource-list-page.component.html'
 })
 export class ResourceListPageComponent implements OnDestroy {
@@ -87,7 +88,7 @@ export class ResourceListPageComponent implements OnDestroy {
   }
 
   dateValue(row: Record<string, unknown>, path: string) {
-    return this.value(row, path) as string | number | Date | null | undefined;
+    return formatDateOnly(this.value(row, path));
   }
 
   badgeClass(value: unknown) {

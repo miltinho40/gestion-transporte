@@ -46,7 +46,7 @@
               @for (column of cfg.columns; track column.path) {
                 <td>
                   @if (column.type === 'date') {
-                    {{ dateValue(row, column.path) | date: 'yyyy-MM-dd' }}
+                    {{ dateValue(row, column.path) }}
                   } @else if (column.type === 'money') {
                     $ {{ textValue(row, column) }}
                   } @else if (column.type === 'boolean') {

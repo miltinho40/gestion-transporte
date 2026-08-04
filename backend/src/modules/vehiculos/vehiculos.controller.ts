@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { asyncHandler } from '../../utils/async-handler.js';
+import { mapPaginatedResult } from '../../utils/pagination.js';
 import { serializeResponse } from '../../utils/response.js';
 import { formatVehiculo, formatVehiculos } from './vehiculos.mapper.js';
 import {
@@ -12,12 +13,12 @@ import {
 } from './vehiculos.service.js';
 
 export const listVehiculosController = asyncHandler(async (req: Request, res: Response) => {
-  const vehiculos = await listVehiculos(req.user!.propietario_id, req.query);
-  res.json(serializeResponse(formatVehiculos(vehiculos)));
+  const vehiculos = await listVehiculos(req.user, req.query);
+  res.json(serializeResponse(mapPaginatedResult(vehiculos, formatVehiculos)));
 });
 
 export const getVehiculoController = asyncHandler(async (req: Request, res: Response) => {
-  const vehiculo = await getVehiculoById(req.user!.propietario_id, req.params.id);
+  const vehiculo = await getVehiculoById(req.user, req.params.id);
   res.json(serializeResponse(formatVehiculo(vehiculo)));
 });
 

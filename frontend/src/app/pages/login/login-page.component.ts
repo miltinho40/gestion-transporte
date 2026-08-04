@@ -4,10 +4,11 @@ import { Router } from '@angular/router';
 import { LucideLogIn, LucideTruck } from '@lucide/angular';
 import { AuthService } from '../../core/auth.service';
 import type { PropietarioAcceso } from '../../core/models';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 
 @Component({
   selector: 'app-login-page',
-  imports: [ReactiveFormsModule, LucideLogIn, LucideTruck],
+  imports: [ReactiveFormsModule, LucideLogIn, LucideTruck, AutoDismissAlertDirective],
   templateUrl: './login-page.component.html',
   styleUrl: './login-page.component.scss'
 })
@@ -42,8 +43,17 @@ export class LoginPageComponent {
       next: (response) => {
         this.loading.set(false);
 
-        if (response.contexto) {
-          void this.router.navigate(['/app/dashboard']);
+        if (response.contexto || response.usuario.es_super_admin) {
+          if (response.usuario.requiere_password) {
+            void this.router.navigate(['/app/cambiar-clave'], {
+              queryParams: {
+                obligatorio: '1'
+              }
+            });
+            return;
+          }
+
+          void this.router.navigate([this.startRoute()]);
           return;
         }
 
@@ -60,5 +70,17 @@ export class LoginPageComponent {
         this.error.set(err?.error?.message ?? 'No se pudo iniciar sesión.');
       }
     });
+  }
+
+  private isMobileViewport() {
+    return window.matchMedia('(max-width: 768px)').matches;
+  }
+
+  private startRoute() {
+    if (!this.isMobileViewport()) return '/app/dashboard';
+    if (this.auth.hasOwnFleet()) return '/movil/viajes';
+    if (this.auth.isIntermediary()) return '/movil/viajes-proveedores';
+
+    return '/app/dashboard';
   }
 }

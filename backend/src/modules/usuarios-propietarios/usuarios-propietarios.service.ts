@@ -112,12 +112,16 @@ export const assignUsuarioPropietario = async (input: UsuarioPropietarioCreateIn
     },
     update: {
       rol_id,
+      es_propietario: input.es_propietario ?? true,
+      es_intermediario: input.es_intermediario ?? false,
       activo: true
     },
     create: {
       usuario_id,
       propietario_id,
-      rol_id
+      rol_id,
+      es_propietario: input.es_propietario ?? true,
+      es_intermediario: input.es_intermediario ?? false
     },
     include: includeContext
   });
@@ -144,6 +148,8 @@ export const updateUsuarioPropietario = async (
     where: { id: current.id },
     data: {
       rol_id: input.rol_id ? parseBigIntId(input.rol_id, 'rol_id') : undefined,
+      es_propietario: input.es_propietario,
+      es_intermediario: input.es_intermediario,
       activo: input.activo
     },
     include: includeContext

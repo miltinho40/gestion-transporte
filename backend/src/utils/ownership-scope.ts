@@ -7,7 +7,7 @@ export const resolveReadScope = (user: JwtPayload | undefined) => {
     throw new AppError('Usuario no autenticado', 401);
   }
 
-  if (user.es_super_admin && !user.propietario_id) {
+  if (user.es_super_admin) {
     return {
       all: true,
       propietarioId: undefined
@@ -22,6 +22,44 @@ export const resolveReadScope = (user: JwtPayload | undefined) => {
     all: false,
     propietarioId: parseBigIntId(user.propietario_id, 'propietario_id')
   };
+};
+
+export const resolveReadScopeFromUserOrPropietarioId = (
+  input: JwtPayload | unknown
+) => {
+  if (input && typeof input === 'object' && 'usuario_id' in input) {
+    return resolveReadScope(input as JwtPayload);
+  }
+
+  return {
+    all: false,
+    propietarioId: parseBigIntId(input, 'propietario_id')
+  };
+};
+
+export const resolveReadScopeWithOwnOverride = (
+  input: JwtPayload | unknown,
+  ownRequested: boolean
+) => {
+  if (
+    ownRequested &&
+    input &&
+    typeof input === 'object' &&
+    'usuario_id' in input
+  ) {
+    const user = input as JwtPayload;
+
+    if (!user.propietario_id) {
+      throw new AppError('Debes seleccionar un propietario para esta accion', 400);
+    }
+
+    return {
+      all: false,
+      propietarioId: parseBigIntId(user.propietario_id, 'propietario_id')
+    };
+  }
+
+  return resolveReadScopeFromUserOrPropietarioId(input);
 };
 
 export const resolveWriteOwnerId = (
@@ -56,10 +94,6 @@ export const assertCanWriteScopedRecord = (
       throw new AppError('Solo super admin puede modificar registros globales', 403);
     }
 
-    return;
-  }
-
-  if (user.es_super_admin) {
     return;
   }
 

@@ -1,9 +1,14 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
-import { requirePropietarioContext, requireRoles } from '../../middlewares/roles.middleware.js';
+import {
+  requirePropietarioContext,
+  requirePropietarioOperativo,
+  requireRoles
+} from '../../middlewares/roles.middleware.js';
 import { validateBody } from '../../middlewares/validate.middleware.js';
 import { gastosViajeRouter } from '../gastos-viaje/gastos-viaje.routes.js';
 import {
+  addGuiasViajeController,
   createViajeController,
   calculateViajeController,
   deleteViajeController,
@@ -17,6 +22,7 @@ import {
   viajeCobroSchema,
   viajeCreateSchema,
   viajeEstadoSchema,
+  viajeGuiasSchema,
   viajeUpdateSchema
 } from './viajes.schema.js';
 
@@ -25,7 +31,7 @@ export const viajesRouter = Router();
 const canRead = requireRoles('admin', 'operador', 'supervisor', 'consulta');
 const canWrite = requireRoles('admin', 'operador');
 
-viajesRouter.use(authMiddleware, requirePropietarioContext);
+viajesRouter.use(authMiddleware, requirePropietarioContext, requirePropietarioOperativo);
 
 viajesRouter.get('/', canRead, listViajesController);
 viajesRouter.post('/', canWrite, validateBody(viajeCreateSchema), createViajeController);
@@ -44,5 +50,11 @@ viajesRouter.patch(
   canWrite,
   validateBody(viajeCobroSchema),
   updateCobroViajeController
+);
+viajesRouter.patch(
+  '/:id/guias',
+  canWrite,
+  validateBody(viajeGuiasSchema),
+  addGuiasViajeController
 );
 viajesRouter.delete('/:id', canWrite, deleteViajeController);

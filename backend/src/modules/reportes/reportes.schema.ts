@@ -28,6 +28,44 @@ const booleanQuerySchema = z.preprocess((value) => {
   return value;
 }, z.boolean().optional());
 
+const listFromQuery = (value: unknown) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  const values = Array.isArray(value) ? value : [value];
+
+  return values
+    .flatMap((item) => String(item).split(','))
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const idListSchema = z.preprocess(listFromQuery, z.array(idSchema).optional());
+
+const monthListSchema = z.preprocess(
+  listFromQuery,
+  z.array(z.coerce.number().int().min(1).max(12)).min(1, 'Selecciona al menos un mes').optional()
+);
+
+const weekListSchema = z.preprocess(
+  listFromQuery,
+  z.array(z.coerce.number().int().min(1).max(53)).optional()
+);
+
+export const reporteViajesFiltersSchema = z.object({
+  anio: z.coerce.number().int().min(2000).max(2100),
+  meses: monthListSchema,
+  semanas: weekListSchema,
+  vehiculo_ids: idListSchema,
+  cliente_ids: idListSchema,
+  cobrado: booleanQuerySchema,
+  search: optionalTrimmedString(120)
+});
+
+export const reporteUtilidadFiltersSchema = z.object({
+  anio: z.coerce.number().int().min(2000).max(2100),
+  mes: z.coerce.number().int().min(1).max(12),
+  vehiculo_id: idSchema.optional()
+});
+
 export const reporteMantenimientosFiltersSchema = z
   .object({
     fecha_desde: dateOnlySchema.optional(),
@@ -49,4 +87,6 @@ export const reporteMantenimientosFiltersSchema = z
     }
   );
 
+export type ReporteViajesFilters = z.infer<typeof reporteViajesFiltersSchema>;
+export type ReporteUtilidadFilters = z.infer<typeof reporteUtilidadFiltersSchema>;
 export type ReporteMantenimientosFilters = z.infer<typeof reporteMantenimientosFiltersSchema>;

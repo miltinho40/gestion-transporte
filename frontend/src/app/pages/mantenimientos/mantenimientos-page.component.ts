@@ -1,7 +1,8 @@
-import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
+  LucideCopy,
   LucidePencil,
   LucidePlus,
   LucideRefreshCw,
@@ -12,6 +13,11 @@ import {
 } from '@lucide/angular';
 import { Subscription, forkJoin } from 'rxjs';
 import { ApiService } from '../../core/api.service';
+import { formatDateOnly } from '../../core/date-only';
+import { isPaginatedResponse, PaginatedResponse, PaginationMeta } from '../../core/pagination';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
+import { DialogService } from '../../shared/dialog.service';
+import { PaginationControlsComponent } from '../../shared/pagination-controls.component';
 
 type EstadoMantenimiento = 'programado' | 'realizado' | 'cancelado' | 'vencido';
 type CatalogField = 'vehiculo_id' | 'tipo_mantenimiento_id';
@@ -66,6 +72,8 @@ interface MantenimientoRow {
   repuestos?: RepuestoItem[];
 }
 
+type MantenimientosListResponse = MantenimientoRow[] | PaginatedResponse<MantenimientoRow>;
+
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -104,25 +112,36 @@ const addDaysInput = (dateInput: string, days: number) => {
 @Component({
   selector: 'app-mantenimientos-page',
   imports: [
-    DatePipe,
     FormsModule,
     ReactiveFormsModule,
+    LucideCopy,
     LucidePencil,
     LucidePlus,
     LucideRefreshCw,
     LucideSave,
     LucideSearch,
     LucideTrash2,
-    LucideX
+    LucideX,
+    AutoDismissAlertDirective,
+    PaginationControlsComponent
   ],
   templateUrl: './mantenimientos-page.component.html'
 })
 export class MantenimientosPageComponent implements OnDestroy {
   private readonly api = inject(ApiService);
+  private readonly dialog = inject(DialogService);
   private readonly fb = inject(FormBuilder);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly sub = new Subscription();
+  private pendingCreate = false;
+  private pendingEditId: string | null = null;
+  private filterTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly rows = signal<MantenimientoRow[]>([]);
+  readonly pagination = signal<PaginationMeta | null>(null);
+  readonly page = signal(1);
+  readonly limit = signal(50);
   readonly vehiculos = signal<VehiculoOption[]>([]);
   readonly tiposMantenimiento = signal<TipoMantenimientoOption[]>([]);
   readonly repuestos = signal<RepuestoItem[]>([]);
@@ -134,6 +153,7 @@ export class MantenimientosPageComponent implements OnDestroy {
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly search = signal('');
+  readonly filterPlacaTerm = signal('');
   readonly catalogInput = signal<Record<CatalogField, string>>({
     vehiculo_id: '',
     tipo_mantenimiento_id: ''
@@ -162,10 +182,21 @@ export class MantenimientosPageComponent implements OnDestroy {
   });
 
   constructor() {
+    this.sub.add(
+      this.route.queryParamMap.subscribe((params) => {
+        this.pendingCreate = params.has('new');
+        this.pendingEditId = params.get('edit') ?? params.get('editId');
+        this.openPendingCreate();
+        this.openPendingEdit();
+      })
+    );
     this.load();
   }
 
   ngOnDestroy() {
+    if (this.filterTimer) {
+      clearTimeout(this.filterTimer);
+    }
     this.sub.unsubscribe();
   }
 
@@ -175,15 +206,17 @@ export class MantenimientosPageComponent implements OnDestroy {
 
     this.sub.add(
       forkJoin({
-        mantenimientos: this.api.get<MantenimientoRow[]>('/mantenimientos'),
+        mantenimientos: this.api.get<MantenimientosListResponse>('/mantenimientos', this.listParams()),
         vehiculos: this.api.get<VehiculoOption[]>('/vehiculos'),
         tipos: this.api.get<TipoMantenimientoOption[]>('/tipos-mantenimiento', { activo: true })
       }).subscribe({
         next: ({ mantenimientos, vehiculos, tipos }) => {
-          this.rows.set(mantenimientos);
+          this.setMantenimientosResponse(mantenimientos);
           this.vehiculos.set(vehiculos);
           this.tiposMantenimiento.set(tipos);
           this.syncCatalogInputs();
+          this.openPendingCreate();
+          this.openPendingEdit();
           this.loading.set(false);
         },
         error: (err) => {
@@ -210,6 +243,7 @@ export class MantenimientosPageComponent implements OnDestroy {
       estado: 'realizado',
       actualizar_kilometraje_vehiculo: true
     });
+    this.applyCreatePrefill();
     this.repuestos.set([]);
     this.resetRepuestoForm();
     this.syncCatalogInputs();
@@ -232,7 +266,7 @@ export class MantenimientosPageComponent implements OnDestroy {
       proximo_mantenimiento_km: nullableNumberValue(row.proximo_mantenimiento_km),
       proximo_mantenimiento_fecha: dateInputValue(row.proximo_mantenimiento_fecha),
       estado: row.estado,
-      actualizar_kilometraje_vehiculo: false
+      actualizar_kilometraje_vehiculo: true
     });
     this.repuestos.set(
       (row.repuestos ?? []).map((repuesto) => ({
@@ -251,12 +285,50 @@ export class MantenimientosPageComponent implements OnDestroy {
     this.recalculateTotals();
   }
 
+  openDuplicate(row: MantenimientoRow) {
+    this.editingRow.set(null);
+    this.form.reset({
+      vehiculo_id: String(row.vehiculo_id),
+      tipo_mantenimiento_id: String(row.tipo_mantenimiento_id),
+      fecha_mantenimiento: dateInputValue(row.fecha_mantenimiento),
+      kilometraje_actual_vehiculo: numberValue(row.kilometraje_actual_vehiculo),
+      descripcion: row.descripcion ?? '',
+      costo_mano_obra: numberValue(row.costo_mano_obra),
+      costo_repuestos: numberValue(row.costo_repuestos),
+      costo_total: numberValue(row.costo_total),
+      proximo_mantenimiento_km: nullableNumberValue(row.proximo_mantenimiento_km),
+      proximo_mantenimiento_fecha: dateInputValue(row.proximo_mantenimiento_fecha),
+      estado: row.estado,
+      actualizar_kilometraje_vehiculo: true
+    });
+    this.repuestos.set(
+      (row.repuestos ?? []).map((repuesto) => ({
+        nombre_repuesto: repuesto.nombre_repuesto,
+        cantidad: numberValue(repuesto.cantidad),
+        costo_unitario: numberValue(repuesto.costo_unitario),
+        costo_total: numberValue(repuesto.costo_total)
+      }))
+    );
+    this.resetRepuestoForm();
+    this.syncCatalogInputs();
+    this.formOpen.set(true);
+    this.message.set(null);
+    this.error.set(null);
+    this.recalculateTotals();
+  }
+
   closeForm() {
+    const returnUrl = this.editReturnUrl();
     this.formOpen.set(false);
     this.editingRow.set(null);
     this.activeCatalogField.set(null);
     this.error.set(null);
     this.saving.set(false);
+    if (returnUrl) {
+      void this.router.navigateByUrl(returnUrl);
+      return;
+    }
+    this.clearReturnQuery();
   }
 
   save() {
@@ -267,6 +339,7 @@ export class MantenimientosPageComponent implements OnDestroy {
 
     this.recalculateTotals();
     const row = this.editingRow();
+    const returnUrl = row ? this.editReturnUrl() : null;
     const payload = this.buildPayload();
     const request = row
       ? this.api.put<MantenimientoRow>(`/mantenimientos/${row.id}`, payload)
@@ -282,6 +355,10 @@ export class MantenimientosPageComponent implements OnDestroy {
           this.formOpen.set(false);
           this.editingRow.set(null);
           this.message.set(row ? 'Mantenimiento actualizado.' : 'Mantenimiento creado.');
+          if (returnUrl) {
+            void this.router.navigateByUrl(returnUrl);
+            return;
+          }
           this.load();
         },
         error: (err) => {
@@ -292,8 +369,18 @@ export class MantenimientosPageComponent implements OnDestroy {
     );
   }
 
-  delete(row: MantenimientoRow) {
-    if (!confirm(`Cancelar mantenimiento de ${this.vehiculoLabel(row.vehiculo)}?`)) return;
+  async delete(row: MantenimientoRow) {
+    const isCancelado = row.estado === 'cancelado';
+    const action = isCancelado ? 'eliminar definitivamente' : 'cancelar';
+    const confirmed = await this.dialog.confirm({
+      title: isCancelado ? 'Eliminar mantenimiento definitivamente' : 'Cancelar mantenimiento',
+      text: isCancelado
+        ? `Esta acción quitará de la tabla el mantenimiento de ${this.vehiculoLabel(row.vehiculo)}.`
+        : `El mantenimiento de ${this.vehiculoLabel(row.vehiculo)} quedará con estado cancelado.`,
+      confirmText: isCancelado ? 'Sí, eliminar' : 'Sí, cancelar'
+    });
+
+    if (!confirmed) return;
 
     this.deletingId.set(row.id);
     this.error.set(null);
@@ -303,22 +390,48 @@ export class MantenimientosPageComponent implements OnDestroy {
       this.api.delete<MantenimientoRow>(`/mantenimientos/${row.id}`).subscribe({
         next: () => {
           this.deletingId.set(null);
-          this.message.set('Mantenimiento cancelado.');
+          this.message.set(isCancelado ? 'Mantenimiento eliminado.' : 'Mantenimiento cancelado.');
           this.load();
         },
         error: (err) => {
           this.deletingId.set(null);
-          this.error.set(err?.error?.message ?? 'No se pudo cancelar el mantenimiento.');
+          this.error.set(
+            err?.error?.message ??
+              (isCancelado ? 'No se pudo eliminar el mantenimiento.' : 'No se pudo cancelar el mantenimiento.')
+          );
         }
       })
     );
   }
 
   filteredRows() {
-    const term = this.search().trim().toLowerCase();
-    if (!term) return this.rows();
+    return this.rows();
+  }
 
-    return this.rows().filter((row) => JSON.stringify(row).toLowerCase().includes(term));
+  changePage(page: number) {
+    const meta = this.pagination();
+    if (!meta || page < 1 || page > meta.total_pages || page === this.page()) return;
+
+    this.page.set(page);
+    this.load();
+  }
+
+  changeLimit(limit: number) {
+    if (limit === this.limit()) return;
+
+    this.limit.set(limit);
+    this.page.set(1);
+    this.load();
+  }
+
+  setSearch(value: string) {
+    this.search.set(value);
+    this.scheduleFilterLoad();
+  }
+
+  setFilterPlaca(value: string) {
+    this.filterPlacaTerm.set(value);
+    this.scheduleFilterLoad();
   }
 
   openCatalog(field: CatalogField) {
@@ -444,6 +557,10 @@ export class MantenimientosPageComponent implements OnDestroy {
     return numberValue(value).toFixed(2);
   }
 
+  dateOnly(value: unknown) {
+    return formatDateOnly(value);
+  }
+
   estadoLabel(value: unknown) {
     const labels: Record<string, string> = {
       programado: 'Programado',
@@ -465,6 +582,13 @@ export class MantenimientosPageComponent implements OnDestroy {
   vehiculoLabel(vehiculo?: VehiculoOption | null) {
     if (!vehiculo) return '-';
     return [vehiculo.placa, vehiculo.marca].filter(Boolean).join(' - ');
+  }
+
+  private vehiculoSearchText(row: MantenimientoRow) {
+    return [row.vehiculo?.placa, row.vehiculo?.marca, row.vehiculo?.modelo, row.vehiculo_id]
+      .filter((value) => value !== null && value !== undefined && value !== '')
+      .join(' ')
+      .toLowerCase();
   }
 
   tipoMantenimientoLabel(tipo?: TipoMantenimientoOption | null) {
@@ -548,6 +672,138 @@ export class MantenimientosPageComponent implements OnDestroy {
         { emitEvent: false }
       );
     }
+  }
+
+  private openPendingEdit() {
+    if (!this.pendingEditId) return;
+
+    const row = this.rows().find((item) => String(item.id) === this.pendingEditId);
+    if (!row) {
+      const id = this.pendingEditId;
+      this.sub.add(
+        this.api.get<MantenimientoRow>(`/mantenimientos/${id}`).subscribe({
+          next: (response) => {
+            if (this.pendingEditId !== id) return;
+            this.pendingEditId = null;
+            this.openEdit(response);
+            this.clearEditQuery();
+          },
+          error: () => {
+            this.error.set('No se encontró el mantenimiento solicitado.');
+            this.pendingEditId = null;
+            this.clearEditQuery();
+          }
+        })
+      );
+      return;
+    }
+
+    this.pendingEditId = null;
+    this.openEdit(row);
+    this.clearEditQuery();
+  }
+
+  private openPendingCreate() {
+    if (!this.pendingCreate) return;
+    this.pendingCreate = false;
+    this.openCreate();
+    this.clearEditQuery();
+  }
+
+  private applyCreatePrefill() {
+    const params = this.route.snapshot.queryParamMap;
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    const numberPattern = /^\d+(\.\d+)?$/;
+    const patch: Partial<ReturnType<typeof this.form.getRawValue>> = {};
+
+    const vehiculoId = params.get('vehiculo_id');
+    const tipoId = params.get('tipo_mantenimiento_id');
+    const fecha = params.get('fecha_mantenimiento');
+    const costo = params.get('costo_total');
+
+    if (vehiculoId) patch.vehiculo_id = vehiculoId;
+    if (tipoId) patch.tipo_mantenimiento_id = tipoId;
+    if (fecha && datePattern.test(fecha)) patch.fecha_mantenimiento = fecha;
+    if (costo && numberPattern.test(costo)) patch.costo_total = Number(costo);
+
+    if (!Object.keys(patch).length) return;
+
+    this.form.patchValue(patch, { emitEvent: false });
+    if (patch.vehiculo_id) {
+      const vehiculo = this.vehiculos().find((item) => String(item.id) === String(patch.vehiculo_id));
+      if (vehiculo) {
+        this.form.controls.kilometraje_actual_vehiculo.setValue(numberValue(vehiculo.kilometraje_actual), {
+          emitEvent: false
+        });
+      }
+    }
+    this.syncCatalogInputs();
+    this.recalculateTotals();
+    this.recalculateProximoMantenimiento();
+  }
+
+  private clearEditQuery() {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: {
+        new: null,
+        edit: null,
+        editId: null,
+        vehiculo_id: null,
+        tipo_mantenimiento_id: null,
+        fecha_mantenimiento: null,
+        costo_total: null
+      },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
+  }
+
+  private editReturnUrl() {
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+    return returnUrl?.startsWith('/app/') ? returnUrl : null;
+  }
+
+  private clearReturnQuery() {
+    if (!this.route.snapshot.queryParamMap.has('returnUrl')) return;
+
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { returnUrl: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
+  }
+
+  private setMantenimientosResponse(response: MantenimientosListResponse) {
+    if (isPaginatedResponse(response)) {
+      this.rows.set(response.data);
+      this.pagination.set(response.meta);
+      return;
+    }
+
+    this.rows.set(response);
+    this.pagination.set(null);
+  }
+
+  private listParams() {
+    return {
+      page: this.page(),
+      limit: this.limit(),
+      search: this.search().trim() || undefined,
+      placa_search: this.filterPlacaTerm().trim() || undefined
+    };
+  }
+
+  private scheduleFilterLoad() {
+    if (this.filterTimer) {
+      clearTimeout(this.filterTimer);
+    }
+
+    this.filterTimer = setTimeout(() => {
+      this.page.set(1);
+      this.load();
+    }, 350);
   }
 
   private buildPayload() {

@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import ExcelJS from 'exceljs';
+import { strToU8, zipSync } from 'fflate';
 import PDFDocument from 'pdfkit';
 import { AppError } from './app-error.js';
 
@@ -43,7 +43,9 @@ const isDecimalLike = (value: unknown): value is { toNumber: () => number; toStr
   );
 };
 
-const toExcelValue = (value: unknown): ExcelJS.CellValue => {
+type ExcelValue = string | number;
+
+const toExcelValue = (value: unknown): ExcelValue => {
   if (value === null || value === undefined) return '';
   if (value instanceof Date) return dateOnly(value);
   if (typeof value === 'bigint') return value.toString();
@@ -63,78 +65,194 @@ const toTextValue = (value: unknown) => {
   return String(excelValue);
 };
 
-export const createReportXlsxBuffer = async (table: ReportExportTable) => {
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'gestion-transporte';
-  workbook.created = new Date();
-  const worksheet = workbook.addWorksheet('Reporte', {
-    views: [{ state: 'frozen', ySplit: table.summary?.length ? 5 : 3 }]
-  });
-  const columnCount = Math.max(table.columns.length, 1);
+const xmlDocument = (content: string) =>
+  `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>${content}`;
 
-  worksheet.mergeCells(1, 1, 1, columnCount);
-  worksheet.getCell(1, 1).value = table.title;
-  worksheet.getCell(1, 1).font = { bold: true, size: 16 };
+const xmlEscape = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 
-  if (table.subtitle) {
-    worksheet.mergeCells(2, 1, 2, columnCount);
-    worksheet.getCell(2, 1).value = table.subtitle;
-    worksheet.getCell(2, 1).font = { italic: true, color: { argb: 'FF555555' } };
+const columnName = (columnNumber: number) => {
+  let value = Math.max(1, columnNumber);
+  let result = '';
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    result = String.fromCharCode(65 + remainder) + result;
+    value = Math.floor((value - 1) / 26);
   }
+  return result;
+};
 
+const cellXml = (reference: string, value: ExcelValue, style: number) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return `<c r="${reference}" s="${style}" t="n"><v>${value}</v></c>`;
+  }
+  return (
+    `<c r="${reference}" s="${style}" t="inlineStr"><is><t xml:space="preserve">` +
+    `${xmlEscape(String(value))}</t></is></c>`
+  );
+};
+
+const rowXml = (rowNumber: number, cells: string[], height?: number) =>
+  `<row r="${rowNumber}"${height ? ` ht="${height}" customHeight="1"` : ''}>` +
+  `${cells.join('')}</row>`;
+
+const contentTypesXml = xmlDocument(
+  `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+    `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+    `<Default Extension="xml" ContentType="application/xml"/>` +
+    `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
+    `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
+    `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>` +
+    `<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>` +
+    `</Types>`
+);
+
+const rootRelationshipsXml = xmlDocument(
+  `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
+    `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>` +
+    `</Relationships>`
+);
+
+const workbookXml = xmlDocument(
+  `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ` +
+    `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+    `<sheets><sheet name="Reporte" sheetId="1" r:id="rId1"/></sheets></workbook>`
+);
+
+const workbookRelationshipsXml = xmlDocument(
+  `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
+    `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>` +
+    `</Relationships>`
+);
+
+const stylesXml = xmlDocument(
+  `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+    `<fonts count="5">` +
+    `<font><sz val="11"/><name val="Calibri"/></font>` +
+    `<font><b/><sz val="16"/><name val="Calibri"/></font>` +
+    `<font><i/><color rgb="FF555555"/><sz val="11"/><name val="Calibri"/></font>` +
+    `<font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font>` +
+    `<font><b/><sz val="11"/><name val="Calibri"/></font>` +
+    `</fonts>` +
+    `<fills count="3"><fill><patternFill patternType="none"/></fill>` +
+    `<fill><patternFill patternType="gray125"/></fill>` +
+    `<fill><patternFill patternType="solid"><fgColor rgb="FF1F2937"/><bgColor indexed="64"/></patternFill></fill></fills>` +
+    `<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>` +
+    `<border><left style="thin"><color rgb="FFE5E7EB"/></left>` +
+    `<right style="thin"><color rgb="FFE5E7EB"/></right>` +
+    `<top style="thin"><color rgb="FFE5E7EB"/></top>` +
+    `<bottom style="thin"><color rgb="FFE5E7EB"/></bottom><diagonal/></border></borders>` +
+    `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
+    `<cellXfs count="6">` +
+    `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>` +
+    `<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"/>` +
+    `<xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"/>` +
+    `<xf numFmtId="0" fontId="4" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"/>` +
+    `<xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment vertical="center" wrapText="1"/></xf>` +
+    `<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf>` +
+    `</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>` +
+    `</styleSheet>`
+);
+
+export const createReportXlsxBuffer = async (table: ReportExportTable) => {
+  const columnCount = Math.max(table.columns.length, 1);
+  const rows: string[] = [];
+  const mergeCells: string[] = [`A1:${columnName(columnCount)}1`];
+  rows.push(rowXml(1, [cellXml('A1', table.title, 1)]));
+  if (table.subtitle) {
+    rows.push(rowXml(2, [cellXml('A2', table.subtitle, 2)]));
+    mergeCells.push(`A2:${columnName(columnCount)}2`);
+  }
   let rowNumber = table.subtitle ? 4 : 3;
 
   if (table.summary?.length) {
     for (const item of table.summary) {
-      worksheet.getCell(rowNumber, 1).value = item.label;
-      worksheet.getCell(rowNumber, 1).font = { bold: true };
-      worksheet.getCell(rowNumber, 2).value = toExcelValue(item.value);
+      rows.push(
+        rowXml(rowNumber, [
+          cellXml(`A${rowNumber}`, item.label, 3),
+          cellXml(`B${rowNumber}`, toExcelValue(item.value), 5)
+        ])
+      );
       rowNumber += 1;
     }
-
     rowNumber += 1;
   }
 
-  const headerRow = worksheet.getRow(rowNumber);
-  table.columns.forEach((column, index) => {
-    const cell = headerRow.getCell(index + 1);
-    cell.value = column.header;
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    cell.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF1F2937' }
-    };
-    cell.alignment = { vertical: 'middle', wrapText: true };
-  });
-  headerRow.height = 20;
+  const headerRowNumber = rowNumber;
+  rows.push(
+    rowXml(
+      rowNumber,
+      table.columns.map((column, index) =>
+        cellXml(`${columnName(index + 1)}${rowNumber}`, column.header, 4)
+      ),
+      20
+    )
+  );
+  rowNumber += 1;
 
   for (const row of table.rows) {
-    const excelRow = worksheet.addRow(
-      table.columns.map((column) => toExcelValue(row[column.key]))
+    rows.push(
+      rowXml(
+        rowNumber,
+        table.columns.map((column, index) =>
+          cellXml(
+            `${columnName(index + 1)}${rowNumber}`,
+            toExcelValue(row[column.key]),
+            5
+          )
+        )
+      )
     );
-    excelRow.eachCell((cell) => {
-      cell.alignment = { vertical: 'top', wrapText: true };
-    });
+    rowNumber += 1;
   }
 
-  table.columns.forEach((column, index) => {
-    worksheet.getColumn(index + 1).width = column.width ?? 18;
-  });
-
-  worksheet.eachRow((row) => {
-    row.eachCell((cell) => {
-      cell.border = {
-        top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-        left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-        right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
-      };
-    });
-  });
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  return Buffer.from(buffer);
+  const columns = table.columns
+    .map(
+      (column, index) =>
+        `<col min="${index + 1}" max="${index + 1}" width="${column.width ?? 18}" customWidth="1"/>`
+    )
+    .join('');
+  const merges = mergeCells.length
+    ? `<mergeCells count="${mergeCells.length}">${mergeCells
+        .map((ref) => `<mergeCell ref="${ref}"/>`)
+        .join('')}</mergeCells>`
+    : '';
+  const sheetXml = xmlDocument(
+    `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+      `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${headerRowNumber}" ` +
+      `topLeftCell="A${headerRowNumber + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
+      `<cols>${columns}</cols><sheetData>${rows.join('')}</sheetData>${merges}</worksheet>`
+  );
+  const createdAt = new Date().toISOString();
+  const archive = zipSync(
+    {
+      '[Content_Types].xml': strToU8(contentTypesXml),
+      '_rels/.rels': strToU8(rootRelationshipsXml),
+      'docProps/core.xml': strToU8(
+        xmlDocument(
+          `<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" ` +
+            `xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" ` +
+            `xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">` +
+            `<dc:creator>gestion-transporte</dc:creator>` +
+            `<dcterms:created xsi:type="dcterms:W3CDTF">${createdAt}</dcterms:created>` +
+            `</cp:coreProperties>`
+        )
+      ),
+      'xl/workbook.xml': strToU8(workbookXml),
+      'xl/_rels/workbook.xml.rels': strToU8(workbookRelationshipsXml),
+      'xl/styles.xml': strToU8(stylesXml),
+      'xl/worksheets/sheet1.xml': strToU8(sheetXml)
+    },
+    { level: 6 }
+  );
+  return Buffer.from(archive);
 };
 
 export const createReportPdfBuffer = async (table: ReportExportTable) => {

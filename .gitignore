@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+*.log
+*.err
+*.err.log
+.firebase/
+backups/
+*.dump
+*.sql.gz
+frontend/test-results/
+frontend/playwright-report/

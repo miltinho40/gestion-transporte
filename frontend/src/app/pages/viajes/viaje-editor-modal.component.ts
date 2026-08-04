@@ -1,162 +1,57 @@
-import { DatePipe } from '@angular/common';
-import { Component, OnDestroy, inject, signal } from '@angular/core';
+import { Component, OnDestroy, inject, output, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   LucideCalculator,
-  LucidePencil,
   LucidePlus,
-  LucideRefreshCw,
   LucideSave,
-  LucideSearch,
   LucideTrash2
 } from '@lucide/angular';
 import { Subscription, forkJoin, map, of, switchMap } from 'rxjs';
 import { ApiService } from '../../core/api.service';
-
-type EstadoViaje = 'programado' | 'en_curso' | 'completado' | 'cancelado';
-type ViajeCatalogField = 'cliente_id' | 'vehiculo_id' | 'conductor_id' | 'tarifa_ruta_id' | 'tipo_gasto_id';
-
-interface SelectOption {
-  value: string;
-  label: string;
-}
-
-interface BasicOption {
-  id: string;
-  nombre: string;
-  activo?: boolean;
-}
-
-interface ClienteOption extends BasicOption {
-  ruc_cedula: string;
-  porcentaje_comision: string | number;
-}
-
-interface VehiculoOption {
-  id: string;
-  placa: string;
-  marca: string;
-  modelo?: string | null;
-}
-
-interface ConductorOption extends BasicOption {
-  cedula: string;
-}
-
-interface TarifaRutaOption {
-  id: string;
-  precio: string | number;
-  capacidad?: number | null;
-  toneladas?: string | number | null;
-  ruta: {
-    id: string;
-    origen: string;
-    destino: string;
-    distancia_km: string | number;
-  };
-  tipo_carga: {
-    nombre: string;
-  };
-}
-
-interface TipoGastoOption extends BasicOption {}
-
-interface ViajeRow {
-  id: string;
-  cliente_id: string;
-  vehiculo_id: string;
-  conductor_id: string;
-  tarifa_ruta_id: string;
-  cliente?: ClienteOption;
-  vehiculo?: VehiculoOption;
-  conductor?: ConductorOption;
-  tarifa_ruta?: TarifaRutaOption;
-  fecha_salida: string;
-  fecha_llegada?: string | null;
-  descripcion_carga?: string | null;
-  peso_carga_kg?: string | number | null;
-  numeros_guia_remision: string[];
-  precio_flete: string | number;
-  porcentaje_comision_aplicado: string | number;
-  valor_comision: string | number;
-  precio_real_flete: string | number;
-  galones_diesel: string | number;
-  costo_diesel: string | number;
-  costo_peajes: string | number;
-  costo_estimado_gastos: string | number;
-  costo_real_gastos?: string | number | null;
-  cobrado: boolean;
-  fecha_cobro?: string | null;
-  estado: EstadoViaje;
-  observaciones?: string | null;
-}
-
-interface CalculoViaje {
-  distancia_km: string | number;
-  precio_flete: string | number;
-  porcentaje_comision: string | number;
-  valor_comision: string | number;
-  precio_real_flete: string | number;
-  precio_galon_diesel: string | number;
-  galones_diesel: string | number;
-  costo_diesel: string | number;
-  costo_peajes: string | number;
-  costo_estimado_gastos: string | number;
-}
-
-interface GastoViajeItem {
-  id?: string;
-  tipo_gasto_id: string;
-  tipo_gasto_nombre: string;
-  descripcion: string | null;
-  monto: number;
-  es_estimado: boolean;
-}
-
-const toDateInputValue = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-
-  return `${year}-${month}-${day}`;
-};
-
-const todayInputDate = () => toDateInputValue(new Date());
-
-const dateInputValue = (value?: string | null) => {
-  if (!value) return '';
-  return String(value).slice(0, 10);
-};
-
-const numberValue = (value: unknown) => {
-  const parsed = Number(value ?? 0);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
+import {
+  type CalculoViaje,
+  type ClienteOption,
+  type ConductorOption,
+  type EstadoViaje,
+  type GastoViajeItem,
+  type SelectOption,
+  type TarifaRutaOption,
+  type TipoGastoOption,
+  type ViajeCatalogField,
+  type ViajeRow,
+  type VehiculoOption
+} from './viaje-editor.models';
+import {
+  addDaysInputDate,
+  dateInputValue,
+  numberValue,
+  roundMoney,
+  splitGuiasRemision,
+  todayInputDate
+} from './viaje-editor.utils';
 
 @Component({
-  selector: 'app-viajes-page',
+  selector: 'app-viaje-editor-modal',
   imports: [
-    DatePipe,
     FormsModule,
     ReactiveFormsModule,
     LucideCalculator,
-    LucidePencil,
     LucidePlus,
-    LucideRefreshCw,
     LucideSave,
-    LucideSearch,
     LucideTrash2
   ],
-  templateUrl: './viajes-page.component.html'
+  templateUrl: './viaje-editor-modal.component.html'
 })
-export class ViajesPageComponent implements OnDestroy {
+export class ViajeEditorModalComponent implements OnDestroy {
   private readonly api = inject(ApiService);
   private readonly fb = inject(FormBuilder);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly sub = new Subscription();
-
-  readonly rows = signal<ViajeRow[]>([]);
+  private pendingEditId: string | null = null;
+  private pendingDuplicateId: string | null = null;
+  private pendingCreate = false;
   readonly clientes = signal<ClienteOption[]>([]);
   readonly vehiculos = signal<VehiculoOption[]>([]);
   readonly conductores = signal<ConductorOption[]>([]);
@@ -166,12 +61,10 @@ export class ViajesPageComponent implements OnDestroy {
   readonly deletedGastoIds = signal<string[]>([]);
   readonly loading = signal(false);
   readonly saving = signal(false);
-  readonly deletingId = signal<string | null>(null);
   readonly formOpen = signal(false);
   readonly editingRow = signal<ViajeRow | null>(null);
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
-  readonly search = signal('');
   readonly calculating = signal(false);
   readonly catalogInput = signal<Record<ViajeCatalogField, string>>({
     cliente_id: '',
@@ -181,9 +74,11 @@ export class ViajesPageComponent implements OnDestroy {
     tipo_gasto_id: ''
   });
   readonly activeCatalogField = signal<ViajeCatalogField | null>(null);
+  readonly saved = output<void>();
 
   private precioRealManual = false;
   private costoRealManual = false;
+  private fechaLlegadaManual = false;
 
   readonly form = this.fb.nonNullable.group({
     cliente_id: ['', Validators.required],
@@ -191,7 +86,7 @@ export class ViajesPageComponent implements OnDestroy {
     conductor_id: ['', Validators.required],
     tarifa_ruta_id: ['', Validators.required],
     fecha_salida: [todayInputDate(), Validators.required],
-    fecha_llegada: [todayInputDate()],
+    fecha_llegada: [addDaysInputDate(todayInputDate(), 1)],
     descripcion_carga: [''],
     numeros_guia_remision: [''],
     peso_carga_kg: [0, [Validators.min(0)]],
@@ -205,8 +100,9 @@ export class ViajesPageComponent implements OnDestroy {
     costo_diesel: [0],
     costo_peajes: [0],
     costo_estimado_gastos: [0],
-    costo_real_gastos: [0, [Validators.min(0)]],
+    viaticos: [0, [Validators.min(0)]],
     cobrado: [false],
+    retorno: [false],
     fecha_cobro: [''],
     estado: ['programado' as EstadoViaje, Validators.required],
     observaciones: ['']
@@ -220,6 +116,27 @@ export class ViajesPageComponent implements OnDestroy {
   });
 
   constructor() {
+    this.sub.add(
+      this.route.queryParamMap.subscribe((params) => {
+        this.pendingCreate = params.has('new');
+        this.pendingEditId = params.get('edit') ?? params.get('editId');
+        this.pendingDuplicateId = params.get('duplicate') ?? params.get('duplicateId');
+        this.openPendingCreate();
+        this.openPendingEdit();
+        this.openPendingDuplicate();
+      })
+    );
+    this.sub.add(
+      this.form.controls.cobrado.valueChanges.subscribe((cobrado) => {
+        if (cobrado && !this.form.controls.fecha_cobro.value) {
+          this.form.controls.fecha_cobro.setValue(todayInputDate(), { emitEvent: false });
+        }
+
+        if (!cobrado) {
+          this.form.controls.fecha_cobro.setValue('', { emitEvent: false });
+        }
+      })
+    );
     this.load();
   }
 
@@ -233,40 +150,44 @@ export class ViajesPageComponent implements OnDestroy {
 
     this.sub.add(
       forkJoin({
-        viajes: this.api.get<ViajeRow[]>('/viajes'),
-        clientes: this.api.get<ClienteOption[]>('/clientes', { activo: true }),
-        vehiculos: this.api.get<VehiculoOption[]>('/vehiculos'),
-        conductores: this.api.get<ConductorOption[]>('/conductores', { estado: 'activo' }),
-        tarifasRuta: this.api.get<TarifaRutaOption[]>('/tarifas-ruta', { activa: true }),
+        clientes: this.api.get<ClienteOption[]>('/clientes', { activo: true, solo_propios: true }),
+        vehiculos: this.api.get<VehiculoOption[]>('/vehiculos', { solo_propios: true }),
+        conductores: this.api.get<ConductorOption[]>('/conductores', {
+          estado: 'activo',
+          solo_propios: true
+        }),
+        tarifasRuta: this.api.get<TarifaRutaOption[]>('/tarifas-ruta', {
+          activa: true,
+          solo_propios: true
+        }),
         tiposGasto: this.api.get<TipoGastoOption[]>('/tipos-gasto-viaje', { activo: true })
       }).subscribe({
-        next: ({ viajes, clientes, vehiculos, conductores, tarifasRuta, tiposGasto }) => {
-          this.rows.set(viajes);
+        next: ({ clientes, vehiculos, conductores, tarifasRuta, tiposGasto }) => {
           this.clientes.set(clientes);
           this.vehiculos.set(vehiculos);
           this.conductores.set(conductores);
           this.tarifasRuta.set(tarifasRuta);
           this.tiposGasto.set(tiposGasto);
           this.syncCatalogInputs();
+          this.openPendingCreate();
+          this.openPendingEdit();
+          this.openPendingDuplicate();
           this.loading.set(false);
         },
         error: (err) => {
-          this.error.set(err?.error?.message ?? 'No se pudieron cargar los viajes.');
+          this.error.set(err?.error?.message ?? 'No se pudieron cargar los catálogos del viaje.');
           this.loading.set(false);
         }
       })
     );
   }
 
-  filteredRows() {
-    const term = this.search().trim().toLowerCase();
-    if (!term) return this.rows();
-
-    return this.rows().filter((row) => JSON.stringify(row).toLowerCase().includes(term));
-  }
-
   openCreate() {
     const today = todayInputDate();
+    const tomorrow = addDaysInputDate(today, 1);
+    const viaticosParam = this.route.snapshot.queryParamMap.get('viaticos');
+    const hasManualViaticos =
+      viaticosParam !== null && /^\d+(\.\d+)?$/.test(viaticosParam);
     this.editingRow.set(null);
     this.form.reset({
       cliente_id: '',
@@ -274,7 +195,7 @@ export class ViajesPageComponent implements OnDestroy {
       conductor_id: '',
       tarifa_ruta_id: '',
       fecha_salida: today,
-      fecha_llegada: today,
+      fecha_llegada: tomorrow,
       descripcion_carga: '',
       numeros_guia_remision: '',
       peso_carga_kg: 0,
@@ -288,18 +209,21 @@ export class ViajesPageComponent implements OnDestroy {
       costo_diesel: 0,
       costo_peajes: 0,
       costo_estimado_gastos: 0,
-      costo_real_gastos: 0,
+      viaticos: 0,
       cobrado: false,
+      retorno: false,
       fecha_cobro: '',
       estado: 'programado',
       observaciones: ''
     });
+    this.precioRealManual = false;
+    this.costoRealManual = hasManualViaticos;
+    this.fechaLlegadaManual = false;
+    this.applyCreatePrefill();
     this.gastos.set([]);
     this.deletedGastoIds.set([]);
     this.resetGastoForm();
     this.syncCatalogInputs();
-    this.precioRealManual = false;
-    this.costoRealManual = false;
     this.formOpen.set(true);
     this.error.set(null);
     this.message.set(null);
@@ -313,7 +237,7 @@ export class ViajesPageComponent implements OnDestroy {
       conductor_id: String(row.conductor_id),
       tarifa_ruta_id: String(row.tarifa_ruta_id),
       fecha_salida: dateInputValue(row.fecha_salida),
-      fecha_llegada: dateInputValue(row.fecha_llegada) || dateInputValue(row.fecha_salida),
+      fecha_llegada: dateInputValue(row.fecha_llegada),
       descripcion_carga: row.descripcion_carga ?? '',
       numeros_guia_remision: (row.numeros_guia_remision ?? []).join('\n'),
       peso_carga_kg: numberValue(row.peso_carga_kg),
@@ -327,8 +251,9 @@ export class ViajesPageComponent implements OnDestroy {
       costo_diesel: numberValue(row.costo_diesel),
       costo_peajes: numberValue(row.costo_peajes),
       costo_estimado_gastos: numberValue(row.costo_estimado_gastos),
-      costo_real_gastos: numberValue(row.costo_real_gastos),
+      viaticos: numberValue(row.viaticos ?? row.costo_real_gastos),
       cobrado: Boolean(row.cobrado),
+      retorno: Boolean(row.retorno),
       fecha_cobro: dateInputValue(row.fecha_cobro),
       estado: row.estado,
       observaciones: row.observaciones ?? ''
@@ -339,19 +264,68 @@ export class ViajesPageComponent implements OnDestroy {
     this.syncCatalogInputs();
     this.precioRealManual = true;
     this.costoRealManual = true;
+    this.fechaLlegadaManual = false;
     this.formOpen.set(true);
     this.error.set(null);
     this.message.set(null);
     this.loadGastos(row.id);
   }
 
+  openDuplicate(row: ViajeRow) {
+    this.editingRow.set(null);
+    this.form.reset({
+      cliente_id: String(row.cliente_id),
+      vehiculo_id: String(row.vehiculo_id),
+      conductor_id: String(row.conductor_id),
+      tarifa_ruta_id: String(row.tarifa_ruta_id),
+      fecha_salida: dateInputValue(row.fecha_salida),
+      fecha_llegada: dateInputValue(row.fecha_llegada) || addDaysInputDate(dateInputValue(row.fecha_salida), 1),
+      descripcion_carga: row.descripcion_carga ?? '',
+      numeros_guia_remision: (row.numeros_guia_remision ?? []).join('\n'),
+      peso_carga_kg: numberValue(row.peso_carga_kg),
+      precio_flete: numberValue(row.precio_flete),
+      porcentaje_comision: numberValue(row.porcentaje_comision_aplicado),
+      valor_comision: numberValue(row.valor_comision),
+      precio_real_flete: numberValue(row.precio_real_flete),
+      distancia_km: numberValue(row.tarifa_ruta?.ruta.distancia_km),
+      precio_galon_diesel: 0,
+      galones_diesel: numberValue(row.galones_diesel),
+      costo_diesel: numberValue(row.costo_diesel),
+      costo_peajes: numberValue(row.costo_peajes),
+      costo_estimado_gastos: numberValue(row.costo_estimado_gastos),
+      viaticos: numberValue(row.viaticos ?? row.costo_real_gastos),
+      cobrado: Boolean(row.cobrado),
+      retorno: Boolean(row.retorno),
+      fecha_cobro: dateInputValue(row.fecha_cobro),
+      estado: row.estado,
+      observaciones: row.observaciones ?? ''
+    });
+    this.gastos.set([]);
+    this.deletedGastoIds.set([]);
+    this.resetGastoForm();
+    this.syncCatalogInputs();
+    this.precioRealManual = true;
+    this.costoRealManual = true;
+    this.fechaLlegadaManual = false;
+    this.formOpen.set(true);
+    this.error.set(null);
+    this.message.set(null);
+    this.loadGastos(row.id, { duplicate: true });
+  }
+
   closeForm() {
+    const returnUrl = this.editReturnUrl();
     this.formOpen.set(false);
     this.editingRow.set(null);
     this.gastos.set([]);
     this.deletedGastoIds.set([]);
     this.saving.set(false);
     this.error.set(null);
+    if (returnUrl) {
+      void this.router.navigateByUrl(returnUrl);
+      return;
+    }
+    this.clearReturnQuery();
   }
 
   openCatalog(field: ViajeCatalogField) {
@@ -398,15 +372,27 @@ export class ViajesPageComponent implements OnDestroy {
   onFechaSalidaChange() {
     const salida = this.form.controls.fecha_salida.value;
     const llegada = this.form.controls.fecha_llegada.value;
-    if (!llegada || llegada < salida) {
-      this.form.controls.fecha_llegada.setValue(salida);
+
+    if (!this.editingRow() && (!this.fechaLlegadaManual || !llegada)) {
+      this.form.controls.fecha_llegada.setValue(addDaysInputDate(salida, 1));
     }
+
     this.fetchCalculation({ resetPrecioReal: true });
   }
 
+  onFechaLlegadaChange() {
+    this.fechaLlegadaManual = true;
+  }
+
   onTarifaChange() {
+    const preserveViaticos = Boolean(this.editingRow());
+
     this.form.controls.precio_flete.setValue(0);
-    this.fetchCalculation({ forcePrecioFlete: true, resetPrecioReal: true, resetCostoReal: true });
+    this.fetchCalculation({
+      forcePrecioFlete: true,
+      resetPrecioReal: true,
+      resetCostoReal: !preserveViaticos
+    });
   }
 
   onCalculationInputChanged() {
@@ -439,7 +425,11 @@ export class ViajesPageComponent implements OnDestroy {
           cliente_id: value.cliente_id,
           vehiculo_id: value.vehiculo_id,
           tarifa_ruta_id: value.tarifa_ruta_id,
-          fecha_salida: value.fecha_salida
+          fecha_salida: value.fecha_salida,
+          precio_flete:
+            !options.forcePrecioFlete && numberValue(value.precio_flete) > 0
+              ? numberValue(value.precio_flete)
+              : undefined
         })
         .subscribe({
           next: (calculo) => {
@@ -531,7 +521,7 @@ export class ViajesPageComponent implements OnDestroy {
     this.form.controls.costo_estimado_gastos.setValue(costoEstimado, { emitEvent: false });
 
     if (!this.costoRealManual) {
-      this.form.controls.costo_real_gastos.setValue(costoEstimado, { emitEvent: false });
+      this.form.controls.viaticos.setValue(costoEstimado, { emitEvent: false });
     }
   }
 
@@ -552,7 +542,7 @@ export class ViajesPageComponent implements OnDestroy {
   }
 
   totalGastosReales() {
-    return roundMoney(numberValue(this.form.controls.costo_real_gastos.value) + this.totalGastosRealesAdicionales());
+    return roundMoney(numberValue(this.form.controls.viaticos.value) + this.totalGastosRealesAdicionales());
   }
 
   utilidadViaje() {
@@ -566,6 +556,7 @@ export class ViajesPageComponent implements OnDestroy {
     }
 
     const row = this.editingRow();
+    const returnUrl = this.editReturnUrl();
     const payload = this.buildPayload();
     const request = row
       ? this.api.put<ViajeRow>(`/viajes/${row.id}`, payload)
@@ -588,7 +579,12 @@ export class ViajesPageComponent implements OnDestroy {
             this.saving.set(false);
             this.formOpen.set(false);
             this.message.set(row ? 'Viaje actualizado.' : 'Viaje creado.');
-            this.load();
+            this.saved.emit();
+            if (returnUrl) {
+              void this.router.navigateByUrl(returnUrl);
+              return;
+            }
+            this.clearReturnQuery();
           },
           error: (err) => {
             this.error.set(err?.error?.message ?? 'No se pudo guardar el viaje.');
@@ -598,8 +594,56 @@ export class ViajesPageComponent implements OnDestroy {
     );
   }
 
-  delete(row: ViajeRow) {
-    if (!confirm(`Cancelar el viaje de ${row.cliente?.nombre ?? 'cliente'}?`)) return;
+  /* List actions are handled by ReportsPageComponent.
+  async marcarCobrado(row: ViajeRow) {
+    if (row.cobrado || row.estado === 'cancelado') return;
+
+    const support = await this.dialog.supportPrompt({
+      title: 'Marcar viaje como cobrado',
+      text: `Se registrará la fecha de cobro de hoy para el viaje de ${row.cliente?.nombre ?? 'este cliente'}.`,
+      confirmText: 'Sí, marcar cobrado'
+    });
+
+    if (!support) return;
+
+    this.markingCobroId.set(row.id);
+    this.error.set(null);
+    this.message.set(null);
+
+    this.sub.add(
+      this.api
+        .patch<ViajeRow>(`/viajes/${row.id}/cobro`, {
+          cobrado: true,
+          fecha_cobro: support.fecha,
+          soporte_cobro: support.soporte,
+          sin_factura_cobro: support.sin_factura
+        })
+        .subscribe({
+          next: () => {
+            this.markingCobroId.set(null);
+            this.message.set('Viaje marcado como cobrado.');
+            this.load();
+          },
+          error: (err) => {
+            this.markingCobroId.set(null);
+            this.error.set(err?.error?.message ?? 'No se pudo marcar el viaje como cobrado.');
+          }
+        })
+    );
+  }
+
+  async delete(row: ViajeRow) {
+    const isCancelado = row.estado === 'cancelado';
+    const action = isCancelado ? 'eliminar definitivamente' : 'cancelar';
+    const confirmed = await this.dialog.confirm({
+      title: isCancelado ? 'Eliminar viaje definitivamente' : 'Cancelar viaje',
+      text: isCancelado
+        ? `Esta acción quitará de la tabla el viaje de ${row.cliente?.nombre ?? 'este cliente'}.`
+        : `El viaje de ${row.cliente?.nombre ?? 'este cliente'} quedará con estado cancelado.`,
+      confirmText: isCancelado ? 'Sí, eliminar' : 'Sí, cancelar'
+    });
+
+    if (!confirmed) return;
 
     this.deletingId.set(row.id);
     this.error.set(null);
@@ -609,24 +653,25 @@ export class ViajesPageComponent implements OnDestroy {
       this.api.delete<ViajeRow>(`/viajes/${row.id}`).subscribe({
         next: () => {
           this.deletingId.set(null);
-          this.message.set('Viaje cancelado.');
+          this.message.set(isCancelado ? 'Viaje eliminado.' : 'Viaje cancelado.');
           this.load();
         },
         error: (err) => {
           this.deletingId.set(null);
-          this.error.set(err?.error?.message ?? 'No se pudo cancelar el viaje.');
+          this.error.set(err?.error?.message ?? `No se pudo ${action} el viaje.`);
         }
       })
     );
   }
 
-  private loadGastos(viajeId: string) {
+  */
+  private loadGastos(viajeId: string, options: { duplicate?: boolean } = {}) {
     this.sub.add(
       this.api.get<any[]>(`/viajes/${viajeId}/gastos`).subscribe({
         next: (gastos) => {
           this.gastos.set(
             gastos.map((item) => ({
-              id: String(item.id),
+              id: options.duplicate ? undefined : String(item.id),
               tipo_gasto_id: String(item.tipo_gasto_id),
               tipo_gasto_nombre: item.tipo_gasto?.nombre ?? `Gasto ${item.tipo_gasto_id}`,
               descripcion: item.descripcion ?? null,
@@ -654,10 +699,7 @@ export class ViajesPageComponent implements OnDestroy {
       fecha_salida: value.fecha_salida,
       fecha_llegada: value.fecha_llegada || null,
       descripcion_carga: value.descripcion_carga || null,
-      numeros_guia_remision: String(value.numeros_guia_remision ?? '')
-        .split(/[\n,;]+/)
-        .map((item) => item.trim())
-        .filter(Boolean),
+      numeros_guia_remision: splitGuiasRemision(value.numeros_guia_remision),
       peso_carga_kg: numberValue(value.peso_carga_kg),
       precio_flete: numberValue(value.precio_flete),
       precio_real_flete: numberValue(value.precio_real_flete),
@@ -665,9 +707,11 @@ export class ViajesPageComponent implements OnDestroy {
       costo_diesel: numberValue(value.costo_diesel),
       costo_peajes: numberValue(value.costo_peajes),
       costo_estimado_gastos: numberValue(value.costo_estimado_gastos),
-      costo_real_gastos: numberValue(value.costo_real_gastos),
+      viaticos: numberValue(value.viaticos),
+      costo_real_gastos: this.totalGastosReales(),
       cobrado: value.cobrado,
-      fecha_cobro: value.fecha_cobro || null,
+      retorno: value.retorno,
+      fecha_cobro: value.cobrado ? value.fecha_cobro || todayInputDate() : null,
       estado: value.estado,
       observaciones: value.observaciones || null
     };
@@ -696,22 +740,6 @@ export class ViajesPageComponent implements OnDestroy {
 
   money(value: unknown) {
     return numberValue(value).toFixed(2);
-  }
-
-  estadoLabel(estado: EstadoViaje) {
-    const labels: Record<EstadoViaje, string> = {
-      programado: 'Programado',
-      en_curso: 'En curso',
-      completado: 'Completado',
-      cancelado: 'Cancelado'
-    };
-
-    return labels[estado] ?? estado;
-  }
-
-  rutaLabel(tarifa?: TarifaRutaOption) {
-    if (!tarifa) return '-';
-    return `${tarifa.ruta.origen} - ${tarifa.ruta.destino}`;
   }
 
   tarifaLabel(tarifa: TarifaRutaOption) {
@@ -787,4 +815,186 @@ export class ViajesPageComponent implements OnDestroy {
     const option = this.catalogOptions(field).find((item) => String(item.value) === String(value));
     this.catalogInput.update((current) => ({ ...current, [field]: option?.label ?? '' }));
   }
+
+  private openPendingEdit() {
+    if (!this.pendingEditId) return;
+    const id = this.pendingEditId;
+    this.pendingEditId = null;
+    this.sub.add(
+      this.api.get<ViajeRow>(`/viajes/${id}`).subscribe({
+        next: (response) => {
+          this.openEdit(response);
+          this.clearEditQuery();
+        },
+        error: () => {
+          this.error.set('No se encontró el viaje solicitado.');
+          this.clearEditQuery();
+        }
+      })
+    );
+  }
+
+  /* Legacy list lookup retired with the old trips page.
+  private legacyOpenPendingEdit() {
+    if (!this.pendingEditId) return;
+
+    const row = this.rows().find((item) => String(item.id) === this.pendingEditId);
+    if (!row) {
+      const id = this.pendingEditId;
+      this.sub.add(
+        this.api.get<ViajeRow>(`/viajes/${id}`).subscribe({
+          next: (response) => {
+            if (this.pendingEditId !== id) return;
+            this.pendingEditId = null;
+            this.openEdit(response);
+            this.clearEditQuery();
+          },
+          error: () => {
+            this.error.set('No se encontró el viaje solicitado.');
+            this.pendingEditId = null;
+            this.clearEditQuery();
+          }
+        })
+      );
+      return;
+    }
+
+    this.pendingEditId = null;
+    this.openEdit(row);
+    this.clearEditQuery();
+  }
+
+  }
+  */
+
+  private openPendingCreate() {
+    if (!this.pendingCreate) return;
+    this.pendingCreate = false;
+    this.openCreate();
+    this.clearEditQuery();
+  }
+
+  private applyCreatePrefill() {
+    const params = this.route.snapshot.queryParamMap;
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    const numberPattern = /^\d+(\.\d+)?$/;
+    const patch: Partial<ReturnType<typeof this.form.getRawValue>> = {};
+
+    for (const field of ['cliente_id', 'vehiculo_id', 'conductor_id', 'tarifa_ruta_id'] as const) {
+      const value = params.get(field);
+      if (value) patch[field] = value;
+    }
+
+    const fechaSalida = params.get('fecha_salida');
+    const fechaLlegada = params.get('fecha_llegada');
+    if (fechaSalida && datePattern.test(fechaSalida)) patch.fecha_salida = fechaSalida;
+    if (fechaLlegada && datePattern.test(fechaLlegada)) patch.fecha_llegada = fechaLlegada;
+
+    const guias = params.get('numeros_guia_remision');
+    if (guias) patch.numeros_guia_remision = guias;
+
+    const precioFlete = params.get('precio_flete');
+    if (precioFlete && numberPattern.test(precioFlete)) patch.precio_flete = Number(precioFlete);
+
+    const viaticos = params.get('viaticos');
+    if (viaticos && numberPattern.test(viaticos)) patch.viaticos = Number(viaticos);
+
+    if (!Object.keys(patch).length) return;
+
+    this.form.patchValue(patch, { emitEvent: false });
+    this.syncCatalogInputs();
+    this.onCalculationInputChanged();
+  }
+
+  private openPendingDuplicate() {
+    if (!this.pendingDuplicateId) return;
+    const id = this.pendingDuplicateId;
+    this.pendingDuplicateId = null;
+    this.sub.add(
+      this.api.get<ViajeRow>(`/viajes/${id}`).subscribe({
+        next: (response) => {
+          this.openDuplicate(response);
+          this.clearEditQuery();
+        },
+        error: () => {
+          this.error.set('No se encontró el viaje solicitado.');
+          this.clearEditQuery();
+        }
+      })
+    );
+  }
+
+  /* Legacy list lookup retired with the old trips page.
+  private legacyOpenPendingDuplicate() {
+    if (!this.pendingDuplicateId) return;
+
+    const row = this.rows().find((item) => String(item.id) === this.pendingDuplicateId);
+    if (!row) {
+      const id = this.pendingDuplicateId;
+      this.sub.add(
+        this.api.get<ViajeRow>(`/viajes/${id}`).subscribe({
+          next: (response) => {
+            if (this.pendingDuplicateId !== id) return;
+            this.pendingDuplicateId = null;
+            this.openDuplicate(response);
+            this.clearEditQuery();
+          },
+          error: () => {
+            this.error.set('No se encontró el viaje solicitado.');
+            this.pendingDuplicateId = null;
+            this.clearEditQuery();
+          }
+        })
+      );
+      return;
+    }
+
+    this.pendingDuplicateId = null;
+    this.openDuplicate(row);
+    this.clearEditQuery();
+  }
+
+  }
+  */
+
+  private clearEditQuery() {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: {
+        new: null,
+        edit: null,
+        editId: null,
+        duplicate: null,
+        duplicateId: null,
+        cliente_id: null,
+        vehiculo_id: null,
+        conductor_id: null,
+        tarifa_ruta_id: null,
+        fecha_salida: null,
+        fecha_llegada: null,
+        numeros_guia_remision: null,
+        precio_flete: null,
+        viaticos: null
+      },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
+  }
+
+  private editReturnUrl() {
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+    return returnUrl?.startsWith('/app/') ? returnUrl : null;
+  }
+
+  private clearReturnQuery() {
+    if (!this.route.snapshot.queryParamMap.has('returnUrl')) return;
+
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { returnUrl: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
+  }
+
 }

@@ -1,0 +1,190 @@
+<section class="assistant-page">
+  <header class="assistant-heading">
+    <div>
+      <h1>Asistente</h1>
+      <p>Consulta datos operativos por texto o voz. Las acciones se confirman antes de guardar.</p>
+    </div>
+    <div class="assistant-heading-actions">
+      <button
+        type="button"
+        class="btn btn-outline-secondary assistant-icon-btn"
+        (click)="toggleAutoSpeak()"
+        [class.active]="autoSpeak()"
+        [title]="autoSpeak() ? 'Desactivar lectura automática' : 'Activar lectura automática'"
+        [attr.aria-label]="autoSpeak() ? 'Desactivar lectura automática' : 'Activar lectura automática'"
+      >
+        @if (autoSpeak()) {
+          <svg lucideVolume2 size="17"></svg>
+        } @else {
+          <svg lucideVolumeX size="17"></svg>
+        }
+      </button>
+      <button
+        type="button"
+        class="btn btn-outline-secondary assistant-icon-btn"
+        (click)="newConversation()"
+        title="Nueva conversación"
+        aria-label="Nueva conversación"
+      >
+        <svg lucideMessageSquarePlus size="17"></svg>
+      </button>
+      <span class="assistant-heading-icon">
+        <svg lucideSparkles size="20"></svg>
+      </span>
+    </div>
+  </header>
+
+  @if (error()) {
+    <div class="alert alert-warning py-2">{{ error() }}</div>
+  }
+
+  <div class="assistant-chat">
+    <div class="assistant-messages">
+      @for (message of messages(); track message.id) {
+        <article class="assistant-message" [class.assistant-message-user]="message.role === 'user'">
+          <div class="assistant-bubble">
+            <div class="assistant-message-top">
+              <strong>{{ message.role === 'user' ? 'Tú' : 'Asistente' }}</strong>
+              @if (message.role === 'assistant') {
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm assistant-icon-btn"
+                  (click)="speak(message.text)"
+                  title="Leer en voz alta"
+                  aria-label="Leer en voz alta"
+                >
+                  <svg lucideVolume2 size="14"></svg>
+                </button>
+              }
+            </div>
+            <p>{{ message.text }}</p>
+
+            @if (message.cards?.length) {
+              <div class="assistant-card-grid">
+                @for (card of message.cards; track card.titulo) {
+                  <div class="assistant-data-card">
+                    <span>{{ card.titulo }}</span>
+                    <strong>{{ card.valor }}</strong>
+                    @if (card.detalle) {
+                      <small>{{ card.detalle }}</small>
+                    }
+                  </div>
+                }
+              </div>
+            }
+
+            @if (message.detail) {
+              <pre class="assistant-detail">{{ message.detail }}</pre>
+            }
+
+            @if (message.draft; as draft) {
+              <div class="assistant-draft">
+                <div class="fw-semibold">{{ draft.titulo }}</div>
+                <dl>
+                  @for (field of draft.campos | keyvalue; track field.key) {
+                    <div>
+                      <dt>{{ field.key }}</dt>
+                      <dd>{{ field.value }}</dd>
+                    </div>
+                  }
+                </dl>
+                @for (warning of draft.advertencias; track warning) {
+                  <small>{{ warning }}</small>
+                }
+              </div>
+            }
+
+            @if (message.actions?.length) {
+              <div class="assistant-actions">
+                @for (action of message.actions; track action.label) {
+                  <button type="button" class="btn btn-primary btn-sm" (click)="runAction(action)">
+                    {{ action.label }}
+                  </button>
+                }
+              </div>
+            }
+
+            @if (message.suggestions?.length) {
+              <div class="assistant-suggestions">
+                @for (suggestion of message.suggestions; track suggestion) {
+                  <button type="button" class="btn btn-outline-primary btn-sm" (click)="sendSuggestion(suggestion)">
+                    {{ suggestion }}
+                  </button>
+                }
+              </div>
+            }
+
+            @if (message.role === 'assistant' && message.messageId) {
+              <div class="assistant-feedback" aria-label="Evaluar respuesta">
+                <span>¿Te sirvió esta respuesta?</span>
+                <button
+                  type="button"
+                  class="btn assistant-feedback-btn"
+                  [class.active-positive]="message.evaluation?.calificacion === 'correcta'"
+                  [disabled]="message.feedbackSaving"
+                  (click)="rateMessage(message, 'correcta')"
+                  title="Respuesta correcta"
+                  aria-label="Marcar respuesta como correcta"
+                >
+                  <svg lucideThumbsUp size="14"></svg>
+                </button>
+                <button
+                  type="button"
+                  class="btn assistant-feedback-btn"
+                  [class.active-negative]="message.evaluation?.calificacion === 'incorrecta'"
+                  [disabled]="message.feedbackSaving"
+                  (click)="rateMessage(message, 'incorrecta')"
+                  title="Respuesta incorrecta"
+                  aria-label="Marcar respuesta como incorrecta"
+                >
+                  <svg lucideThumbsDown size="14"></svg>
+                </button>
+                @if (message.evaluation) {
+                  <small>Evaluación guardada</small>
+                }
+              </div>
+            }
+          </div>
+        </article>
+      }
+
+      @if (loading()) {
+        <article class="assistant-message">
+          <div class="assistant-bubble assistant-loading">Pensando...</div>
+        </article>
+      }
+
+      <div #messagesEnd></div>
+    </div>
+
+    <form class="assistant-input-bar" (ngSubmit)="sendCurrent()">
+      <button
+        type="button"
+        class="btn btn-outline-secondary assistant-voice-btn"
+        (click)="toggleVoice()"
+        [class.active]="listening()"
+        [disabled]="!speechAvailable() || loading()"
+        [title]="speechAvailable() ? 'Dictar por voz' : 'Voz no disponible'"
+        aria-label="Dictar por voz"
+      >
+        @if (listening()) {
+          <svg lucideMicOff size="17"></svg>
+        } @else {
+          <svg lucideMic size="17"></svg>
+        }
+      </button>
+      <input
+        class="form-control"
+        type="text"
+        placeholder="Pregunta por viajes, mantenimientos, cierres..."
+        [ngModel]="input()"
+        (ngModelChange)="input.set($event)"
+        name="assistant-input"
+        [disabled]="loading()"
+      />
+      <button class="btn btn-primary assistant-send-btn" type="submit" [disabled]="loading() || !input().trim()">
+        <svg lucideSend size="17"></svg>
+      </button>
+    </form>
+  </div>
+</section>

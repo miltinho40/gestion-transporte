@@ -7,6 +7,7 @@ import {
   deleteUsuarioController,
   getUsuarioController,
   listUsuariosController,
+  resetPasswordUsuarioController,
   updateEstadoUsuarioController,
   updatePasswordUsuarioController,
   updateUsuarioController
@@ -32,4 +33,5 @@ usuariosRouter.patch(
   validateBody(usuarioPasswordSchema),
   updatePasswordUsuarioController
 );
+usuariosRouter.patch('/:id/reset-password', resetPasswordUsuarioController);
 usuariosRouter.delete('/:id', deleteUsuarioController);

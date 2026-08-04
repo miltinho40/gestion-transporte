@@ -11,12 +11,12 @@ import {
 } from './clientes.service.js';
 
 export const listClientesController = asyncHandler(async (req: Request, res: Response) => {
-  const clientes = await listClientes(req.user!.propietario_id, req.query);
+  const clientes = await listClientes(req.user, req.query);
   res.json(serializeResponse(clientes));
 });
 
 export const getClienteController = asyncHandler(async (req: Request, res: Response) => {
-  const cliente = await getClienteById(req.user!.propietario_id, req.params.id);
+  const cliente = await getClienteById(req.user, req.params.id);
   res.json(serializeResponse(cliente));
 });
 

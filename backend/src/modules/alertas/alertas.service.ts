@@ -1,6 +1,7 @@
 import { EstadoConductor, EstadoMantenimiento, EstadoViaje, EstadoVehiculo } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { listAnomaliasCierresSemanales } from '../cierres-semanales/cierres-semanales.service.js';
 
 const CONFIG_DEFAULTS = {
   alerta_mantenimiento_km_anticipacion: 500,
@@ -281,16 +282,67 @@ export const listAlertasViajesSinCobrar = async (propietarioIdInput: unknown) =>
   };
 };
 
+export const listActividadReciente = async (propietarioIdInput: unknown) => {
+  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const eventos = await prisma.auditoriaEvento.findMany({
+    where: {
+      propietario_id: propietarioId
+    },
+    include: {
+      usuario: {
+        select: {
+          id: true,
+          nombre: true,
+          email: true
+        }
+      }
+    },
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    take: 5
+  });
+
+  return eventos.map((evento) => ({
+    id: evento.id,
+    fecha: evento.created_at,
+    entidad: evento.entidad,
+    entidad_id: evento.entidad_id,
+    accion: evento.accion,
+    resumen: evento.resumen,
+    usuario: evento.usuario
+      ? {
+          id: evento.usuario.id,
+          nombre: evento.usuario.nombre,
+          email: evento.usuario.email
+        }
+      : null,
+    ip: normalizeAuditIp(evento.ip)
+  }));
+};
+
+const normalizeAuditIp = (value: string | null) => {
+  if (!value) return null;
+  const ip = value.startsWith('::ffff:') ? value.slice(7) : value;
+  if (ip.startsWith('169.254.')) return 'Interna';
+  if (ip === '::1' || ip === '127.0.0.1') return 'Local';
+  return ip;
+};
+
 export const listAlertas = async (propietarioIdInput: unknown) => {
-  const [mantenimientos, licencias, viajesSinCobrar] = await Promise.all([
+  const [mantenimientos, licencias, viajesSinCobrar, cierresSemanales, actividadReciente] = await Promise.all([
     listAlertasMantenimientos(propietarioIdInput),
     listAlertasLicencias(propietarioIdInput),
-    listAlertasViajesSinCobrar(propietarioIdInput)
+    listAlertasViajesSinCobrar(propietarioIdInput),
+    listAnomaliasCierresSemanales(propietarioIdInput),
+    listActividadReciente(propietarioIdInput)
   ]);
 
   return {
     resumen: {
-      total: mantenimientos.total + licencias.total + viajesSinCobrar.total,
+      total:
+        mantenimientos.total +
+        licencias.total +
+        viajesSinCobrar.total +
+        cierresSemanales.total,
       mantenimientos: {
         total: mantenimientos.total,
         vencidos: mantenimientos.vencidos,
@@ -303,6 +355,10 @@ export const listAlertas = async (propietarioIdInput: unknown) => {
       },
       viajes_sin_cobrar: {
         total: viajesSinCobrar.total
+      },
+      cierres_semanales: {
+        total: cierresSemanales.total,
+        cierres_revisados: cierresSemanales.cierres_revisados
       }
     },
     configuraciones: {
@@ -312,6 +368,8 @@ export const listAlertas = async (propietarioIdInput: unknown) => {
     },
     mantenimientos: mantenimientos.items,
     licencias: licencias.items,
-    viajes_sin_cobrar: viajesSinCobrar.items
+    viajes_sin_cobrar: viajesSinCobrar.items,
+    cierres_semanales: cierresSemanales.items,
+    actividad_reciente: actividadReciente
   };
 };

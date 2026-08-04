@@ -1,8 +1,11 @@
 import type { Request, Response } from 'express';
 import { asyncHandler } from '../../utils/async-handler.js';
+import { auditContextFromRequest } from '../../utils/audit.js';
+import { mapPaginatedResult } from '../../utils/pagination.js';
 import { serializeResponse } from '../../utils/response.js';
 import { formatViaje, formatViajes } from './viajes.mapper.js';
 import {
+  addGuiasViaje,
   calculateViajeValores,
   cancelViaje,
   createViaje,
@@ -15,7 +18,7 @@ import {
 
 export const listViajesController = asyncHandler(async (req: Request, res: Response) => {
   const viajes = await listViajes(req.user!.propietario_id, req.query);
-  res.json(serializeResponse(formatViajes(viajes)));
+  res.json(serializeResponse(mapPaginatedResult(viajes, formatViajes)));
 });
 
 export const getViajeController = asyncHandler(async (req: Request, res: Response) => {
@@ -29,28 +32,57 @@ export const calculateViajeController = asyncHandler(async (req: Request, res: R
 });
 
 export const createViajeController = asyncHandler(async (req: Request, res: Response) => {
-  const viaje = await createViaje(req.user!.propietario_id, req.body);
+  const viaje = await createViaje(req.user!.propietario_id, req.body, auditContextFromRequest(req));
   res.status(201).json(serializeResponse(formatViaje(viaje)));
 });
 
 export const updateViajeController = asyncHandler(async (req: Request, res: Response) => {
-  const viaje = await updateViaje(req.user!.propietario_id, req.params.id, req.body);
+  const viaje = await updateViaje(
+    req.user!.propietario_id,
+    req.params.id,
+    req.body,
+    auditContextFromRequest(req)
+  );
   res.json(serializeResponse(formatViaje(viaje)));
 });
 
 export const updateEstadoViajeController = asyncHandler(
   async (req: Request, res: Response) => {
-    const viaje = await updateEstadoViaje(req.user!.propietario_id, req.params.id, req.body);
+    const viaje = await updateEstadoViaje(
+      req.user!.propietario_id,
+      req.params.id,
+      req.body,
+      auditContextFromRequest(req)
+    );
     res.json(serializeResponse(formatViaje(viaje)));
   }
 );
 
 export const updateCobroViajeController = asyncHandler(async (req: Request, res: Response) => {
-  const viaje = await updateCobroViaje(req.user!.propietario_id, req.params.id, req.body);
+  const viaje = await updateCobroViaje(
+    req.user!.propietario_id,
+    req.params.id,
+    req.body,
+    auditContextFromRequest(req)
+  );
+  res.json(serializeResponse(formatViaje(viaje)));
+});
+
+export const addGuiasViajeController = asyncHandler(async (req: Request, res: Response) => {
+  const viaje = await addGuiasViaje(
+    req.user!.propietario_id,
+    req.params.id,
+    req.body,
+    auditContextFromRequest(req)
+  );
   res.json(serializeResponse(formatViaje(viaje)));
 });
 
 export const deleteViajeController = asyncHandler(async (req: Request, res: Response) => {
-  const viaje = await cancelViaje(req.user!.propietario_id, req.params.id);
+  const viaje = await cancelViaje(
+    req.user!.propietario_id,
+    req.params.id,
+    auditContextFromRequest(req)
+  );
   res.json(serializeResponse(formatViaje(viaje)));
 });

@@ -3,6 +3,7 @@ import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angu
 import {
   LucideArrowDown,
   LucideArrowUp,
+  LucideCopy,
   LucidePencil,
   LucidePlus,
   LucideRefreshCw,
@@ -14,6 +15,10 @@ import {
 import { Subscription, forkJoin } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { isPaginatedResponse, PaginatedResponse, PaginationMeta } from '../../core/pagination';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
+import { DialogService } from '../../shared/dialog.service';
+import { PaginationControlsComponent } from '../../shared/pagination-controls.component';
 
 type SentidoPeaje = 'ida' | 'retorno' | 'ambos';
 
@@ -35,6 +40,10 @@ interface RutaPeajeItem {
 interface RutaRow {
   id: string;
   propietario_id?: string | null;
+  propietario?: {
+    id: string;
+    nombre: string;
+  } | null;
   origen: string;
   destino: string;
   distancia_km: string | number;
@@ -47,6 +56,8 @@ interface RutaRow {
     peaje?: PeajeOption;
   }>;
 }
+
+type RutasListResponse = RutaRow[] | PaginatedResponse<RutaRow>;
 
 const toHoursTime = (value: unknown) => {
   if (value === null || value === undefined || value === '') return '';
@@ -81,23 +92,30 @@ const normalizeSentido = (value?: string | null): SentidoPeaje => {
     ReactiveFormsModule,
     LucideArrowDown,
     LucideArrowUp,
+    LucideCopy,
     LucidePencil,
     LucidePlus,
     LucideRefreshCw,
     LucideSave,
     LucideSearch,
     LucideTrash2,
-    LucideX
+    LucideX,
+    AutoDismissAlertDirective,
+    PaginationControlsComponent
   ],
   templateUrl: './rutas-page.component.html'
 })
 export class RutasPageComponent implements OnDestroy {
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
+  private readonly dialog = inject(DialogService);
   private readonly fb = inject(FormBuilder);
   private readonly sub = new Subscription();
 
   readonly rows = signal<RutaRow[]>([]);
+  readonly pagination = signal<PaginationMeta | null>(null);
+  readonly page = signal(1);
+  readonly limit = signal(50);
   readonly peajesCatalogo = signal<PeajeOption[]>([]);
   readonly peajesRuta = signal<RutaPeajeItem[]>([]);
   readonly loading = signal(false);
@@ -111,6 +129,7 @@ export class RutasPageComponent implements OnDestroy {
   readonly peajeSearch = signal('');
   readonly peajeCatalogOpen = signal(false);
   readonly selectedPeajeId = signal('');
+  private searchTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly isSuperAdmin = this.auth.usuario()?.es_super_admin === true;
 
@@ -129,6 +148,7 @@ export class RutasPageComponent implements OnDestroy {
 
   ngOnDestroy() {
     this.sub.unsubscribe();
+    if (this.searchTimer) clearTimeout(this.searchTimer);
   }
 
   load() {
@@ -137,11 +157,11 @@ export class RutasPageComponent implements OnDestroy {
 
     this.sub.add(
       forkJoin({
-        rutas: this.api.get<RutaRow[]>('/rutas'),
+        rutas: this.api.get<RutasListResponse>('/rutas', this.listParams()),
         peajes: this.api.get<PeajeOption[]>('/peajes/catalogo', { activo: true })
       }).subscribe({
         next: ({ rutas, peajes }) => {
-          this.rows.set(rutas);
+          this.setRutasResponse(rutas);
           this.peajesCatalogo.set(peajes);
           this.loading.set(false);
         },
@@ -154,10 +174,33 @@ export class RutasPageComponent implements OnDestroy {
   }
 
   filteredRows() {
-    const term = this.search().trim().toLowerCase();
-    if (!term) return this.rows();
+    return this.rows();
+  }
 
-    return this.rows().filter((row) => JSON.stringify(row).toLowerCase().includes(term));
+  setSearch(value: string) {
+    this.search.set(value);
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+
+    this.searchTimer = setTimeout(() => {
+      this.page.set(1);
+      this.load();
+    }, 350);
+  }
+
+  changePage(page: number) {
+    const meta = this.pagination();
+    if (!meta || page < 1 || page > meta.total_pages || page === this.page()) return;
+
+    this.page.set(page);
+    this.load();
+  }
+
+  changeLimit(limit: number) {
+    if (limit === this.limit()) return;
+
+    this.limit.set(limit);
+    this.page.set(1);
+    this.load();
   }
 
   filteredPeajes() {
@@ -208,6 +251,33 @@ export class RutasPageComponent implements OnDestroy {
       duracion_estimada_horas: toHoursTime(row.duracion_estimada_horas),
       activa: Boolean(row.activa),
       global: row.propietario_id === null
+    });
+    this.peajesRuta.set(
+      (row.rutas_peajes ?? []).map((item, index) => ({
+        peaje_id: String(item.peaje_id),
+        peaje_propietario_id: item.peaje?.propietario_id ?? null,
+        peaje_nombre: item.peaje?.nombre ?? `Peaje ${item.peaje_id}`,
+        orden: item.orden ?? index + 1,
+        sentido: normalizeSentido(item.sentido)
+      }))
+    );
+    this.peajeSearch.set('');
+    this.peajeCatalogOpen.set(false);
+    this.selectedPeajeId.set('');
+    this.formOpen.set(true);
+    this.error.set(null);
+    this.message.set(null);
+  }
+
+  openDuplicate(row: RutaRow) {
+    this.editingRow.set(null);
+    this.form.reset({
+      origen: row.origen,
+      destino: row.destino,
+      distancia_km: Number(row.distancia_km ?? 0),
+      duracion_estimada_horas: toHoursTime(row.duracion_estimada_horas),
+      activa: Boolean(row.activa),
+      global: this.isSuperAdmin && row.propietario_id === null
     });
     this.peajesRuta.set(
       (row.rutas_peajes ?? []).map((item, index) => ({
@@ -348,8 +418,14 @@ export class RutasPageComponent implements OnDestroy {
     );
   }
 
-  delete(row: RutaRow) {
-    if (!confirm(`Eliminar o desactivar ${row.origen} - ${row.destino}?`)) return;
+  async delete(row: RutaRow) {
+    const confirmed = await this.dialog.confirm({
+      title: 'Eliminar o desactivar ruta',
+      text: `Se va a eliminar o desactivar ${row.origen} - ${row.destino}.`,
+      confirmText: 'Sí, continuar'
+    });
+
+    if (!confirmed) return;
 
     this.deletingId.set(row.id);
     this.error.set(null);
@@ -391,6 +467,34 @@ export class RutasPageComponent implements OnDestroy {
   }
 
   canEditRuta(row: RutaRow) {
-    return this.isSuperAdmin || row.propietario_id !== null;
+    if (row.propietario_id === null) return this.isSuperAdmin;
+    return String(row.propietario_id) === String(this.auth.contexto()?.propietario_id ?? '');
+  }
+
+  scopeLabel(row: RutaRow) {
+    return row.propietario_id === null ? 'Global' : 'Propio';
+  }
+
+  ownerLabel(row: RutaRow) {
+    return row.propietario?.nombre ?? (row.propietario_id === null ? 'Global' : '-');
+  }
+
+  private setRutasResponse(response: RutasListResponse) {
+    if (isPaginatedResponse(response)) {
+      this.rows.set(response.data);
+      this.pagination.set(response.meta);
+      return;
+    }
+
+    this.rows.set(response);
+    this.pagination.set(null);
+  }
+
+  private listParams() {
+    return {
+      search: this.search().trim(),
+      page: this.page(),
+      limit: this.limit()
+    };
   }
 }

@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
-import { requirePropietarioContext, requireRoles } from '../../middlewares/roles.middleware.js';
+import {
+  requirePropietarioContext,
+  requirePropietarioOperativo,
+  requireRoles
+} from '../../middlewares/roles.middleware.js';
 import { validateBody } from '../../middlewares/validate.middleware.js';
 import {
   createGastoSemanalController,
@@ -21,7 +25,7 @@ export const cierresSemanalesRouter = Router();
 const canRead = requireRoles('admin', 'operador', 'supervisor', 'consulta');
 const canWrite = requireRoles('admin', 'operador');
 
-cierresSemanalesRouter.use(authMiddleware, requirePropietarioContext);
+cierresSemanalesRouter.use(authMiddleware, requirePropietarioContext, requirePropietarioOperativo);
 
 cierresSemanalesRouter.get('/', canRead, getCierreSemanalController);
 cierresSemanalesRouter.post(

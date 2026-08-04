@@ -66,17 +66,31 @@ enum TipoInvitacionUsuario {
   @@map("tipo_invitacion_usuario")
 }
 
+enum EstadoSuscripcionPropietario {
+  ACTIVA     @map("activa")
+  PRUEBA     @map("prueba")
+  SUSPENDIDA @map("suspendida")
+  CANCELADA  @map("cancelada")
+
+  @@map("estado_suscripcion_propietario")
+}
+
 model Propietario {
-  id              BigInt   @id @default(autoincrement())
-  nombre          String   @db.VarChar(150)
-  ruc_cedula      String   @unique @db.VarChar(20)
-  contacto_nombre String?  @db.VarChar(120)
-  telefono        String?  @db.VarChar(30)
-  email           String?  @db.VarChar(150)
-  direccion       String?  @db.VarChar(255)
-  activo          Boolean  @default(true)
-  created_at      DateTime @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime @updatedAt @db.Timestamptz(6)
+  id                        BigInt                       @id @default(autoincrement())
+  nombre                    String                       @db.VarChar(150)
+  ruc_cedula                String                       @unique @db.VarChar(20)
+  contacto_nombre           String?                      @db.VarChar(120)
+  telefono                  String?                      @db.VarChar(30)
+  email                     String?                      @db.VarChar(150)
+  direccion                 String?                      @db.VarChar(255)
+  activo                    Boolean                      @default(true)
+  estado_suscripcion        EstadoSuscripcionPropietario @default(ACTIVA)
+  limite_vehiculos          Int                          @default(0)
+  precio_por_vehiculo       Decimal                      @default(0) @db.Decimal(12, 2)
+  fecha_corte_facturacion   Int                          @default(1)
+  observaciones_facturacion String?                      @db.VarChar(255)
+  created_at                DateTime                     @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                     @updatedAt @db.Timestamptz(6)
 
   usuarios_propietarios     UsuarioPropietario[]
   clientes                  Cliente[]
@@ -94,17 +108,28 @@ model Propietario {
   tipos_mantenimiento       TipoMantenimiento[]
   mantenimientos            Mantenimiento[]
   gastos_semanales_vehiculo GastoSemanalVehiculo[]
+  cierres_semanales         CierreSemanal[]
   invitaciones_usuario      InvitacionUsuario[]
+  auditoria_eventos         AuditoriaEvento[]
+  proveedores               Proveedor[]
+  viajes_proveedor          ViajeProveedor[]
+  conversaciones_asistente  ConversacionAsistente[]
+  preferencias_asistente    PreferenciaAsistente[]
+  evaluaciones_asistente    EvaluacionAsistente[]
+  ejemplos_asistente        EjemploAsistente[]
+  sesiones_usuario          SesionUsuario[]
 
   @@map("propietarios")
 }
 
 model Rol {
-  id          BigInt   @id @default(autoincrement())
-  nombre      String   @unique @db.VarChar(50)
-  descripcion String?  @db.VarChar(255)
-  created_at  DateTime @default(now()) @db.Timestamptz(6)
-  updated_at  DateTime @updatedAt @db.Timestamptz(6)
+  id                    BigInt   @id @default(autoincrement())
+  nombre                String   @unique @db.VarChar(50)
+  descripcion           String?  @db.VarChar(255)
+  permisos              String[] @default([])
+  permisos_configurados Boolean  @default(false)
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime @updatedAt @db.Timestamptz(6)
 
   usuarios_propietarios UsuarioPropietario[]
 
@@ -112,22 +137,73 @@ model Rol {
 }
 
 model Usuario {
-  id               BigInt    @id @default(autoincrement())
-  nombre           String    @db.VarChar(120)
-  email            String    @unique @db.VarChar(150)
-  password_hash    String?   @db.VarChar(255)
-  fecha_nacimiento DateTime? @db.Date
-  es_super_admin   Boolean   @default(false)
-  email_verificado Boolean   @default(false)
-  requiere_password Boolean  @default(false)
-  activo           Boolean   @default(true)
-  created_at       DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime  @updatedAt @db.Timestamptz(6)
+  id                BigInt    @id @default(autoincrement())
+  nombre            String    @db.VarChar(120)
+  email             String    @unique @db.VarChar(150)
+  password_hash     String?   @db.VarChar(255)
+  fecha_nacimiento  DateTime? @db.Date
+  es_super_admin    Boolean   @default(false)
+  email_verificado  Boolean   @default(false)
+  requiere_password Boolean   @default(false)
+  activo            Boolean   @default(true)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime  @updatedAt @db.Timestamptz(6)
 
-  usuarios_propietarios UsuarioPropietario[]
-  invitaciones          InvitacionUsuario[]
+  usuarios_propietarios    UsuarioPropietario[]
+  invitaciones             InvitacionUsuario[]
+  cierres_semanales        CierreSemanal[]         @relation("UsuarioCierresSemanales")
+  auditoria_eventos        AuditoriaEvento[]
+  conversaciones_asistente ConversacionAsistente[]
+  preferencias_asistente   PreferenciaAsistente[]
+  evaluaciones_asistente   EvaluacionAsistente[]   @relation("EvaluacionesAsistenteUsuario")
+  evaluaciones_revisadas   EvaluacionAsistente[]   @relation("EvaluacionesAsistenteRevisor")
+  sesiones                 SesionUsuario[]
 
   @@map("usuarios")
+}
+
+model SesionUsuario {
+  id                 String    @id @default(uuid()) @db.Uuid
+  usuario_id         BigInt
+  propietario_id     BigInt?
+  refresh_token_hash String    @unique @db.VarChar(64)
+  expira_en          DateTime  @db.Timestamptz(6)
+  revocada_en        DateTime? @db.Timestamptz(6)
+  ultimo_uso_en      DateTime  @default(now()) @db.Timestamptz(6)
+  ip                 String?   @db.VarChar(64)
+  user_agent         String?   @db.VarChar(255)
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime  @updatedAt @db.Timestamptz(6)
+
+  usuario     Usuario      @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+  propietario Propietario? @relation(fields: [propietario_id], references: [id], onDelete: Cascade)
+
+  @@index([usuario_id, revocada_en, expira_en])
+  @@index([propietario_id, revocada_en])
+  @@map("sesiones_usuario")
+}
+
+model AuditoriaEvento {
+  id             BigInt   @id @default(autoincrement())
+  propietario_id BigInt?
+  usuario_id     BigInt?
+  entidad        String   @db.VarChar(80)
+  entidad_id     String?  @db.VarChar(80)
+  accion         String   @db.VarChar(80)
+  resumen        String?  @db.VarChar(255)
+  antes          Json?
+  despues        Json?
+  ip             String?  @db.VarChar(64)
+  user_agent     String?  @db.VarChar(255)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  propietario Propietario? @relation(fields: [propietario_id], references: [id], onDelete: SetNull)
+  usuario     Usuario?     @relation(fields: [usuario_id], references: [id], onDelete: SetNull)
+
+  @@index([propietario_id, created_at])
+  @@index([usuario_id, created_at])
+  @@index([entidad, entidad_id])
+  @@map("auditoria_eventos")
 }
 
 model InvitacionUsuario {
@@ -154,13 +230,15 @@ model InvitacionUsuario {
 }
 
 model UsuarioPropietario {
-  id             BigInt   @id @default(autoincrement())
-  usuario_id     BigInt
-  propietario_id BigInt
-  rol_id         BigInt
-  activo         Boolean  @default(true)
-  created_at     DateTime @default(now()) @db.Timestamptz(6)
-  updated_at     DateTime @updatedAt @db.Timestamptz(6)
+  id               BigInt   @id @default(autoincrement())
+  usuario_id       BigInt
+  propietario_id   BigInt
+  rol_id           BigInt
+  es_propietario   Boolean  @default(true)
+  es_intermediario Boolean  @default(false)
+  activo           Boolean  @default(true)
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime @updatedAt @db.Timestamptz(6)
 
   usuario     Usuario     @relation(fields: [usuario_id], references: [id])
   propietario Propietario @relation(fields: [propietario_id], references: [id])
@@ -170,6 +248,166 @@ model UsuarioPropietario {
   @@index([propietario_id])
   @@index([rol_id])
   @@map("usuarios_propietarios")
+}
+
+model ConversacionAsistente {
+  id                BigInt   @id @default(autoincrement())
+  propietario_id    BigInt
+  usuario_id        BigInt
+  canal             String   @default("web") @db.VarChar(20)
+  titulo            String?  @db.VarChar(160)
+  estado            String   @default("activa") @db.VarChar(20)
+  contexto          Json?
+  ultimo_mensaje_at DateTime @default(now()) @db.Timestamptz(6)
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario  Propietario                     @relation(fields: [propietario_id], references: [id], onDelete: Cascade)
+  usuario      Usuario                         @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+  mensajes     MensajeAsistente[]
+  borradores   BorradorAsistente[]
+  ejecuciones  EjecucionHerramientaAsistente[]
+  evaluaciones EvaluacionAsistente[]
+
+  @@index([propietario_id, usuario_id, ultimo_mensaje_at])
+  @@index([usuario_id, estado])
+  @@map("conversaciones_asistente")
+}
+
+model MensajeAsistente {
+  id              BigInt   @id @default(autoincrement())
+  conversacion_id BigInt
+  rol             String   @db.VarChar(20)
+  contenido       String   @db.Text
+  metadata        Json?
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  conversacion ConversacionAsistente @relation(fields: [conversacion_id], references: [id], onDelete: Cascade)
+  evaluacion   EvaluacionAsistente?
+
+  @@index([conversacion_id, created_at])
+  @@map("mensajes_asistente")
+}
+
+model EvaluacionAsistente {
+  id                  BigInt    @id @default(autoincrement())
+  mensaje_id          BigInt    @unique
+  conversacion_id     BigInt
+  propietario_id      BigInt
+  usuario_id          BigInt
+  revisado_por_id     BigInt?
+  calificacion        String    @db.VarChar(20)
+  correccion          String?   @db.Text
+  estado_revision     String    @default("pendiente") @db.VarChar(20)
+  mensaje_usuario     String?   @db.Text
+  respuesta_asistente String?   @db.Text
+  herramienta         String?   @db.VarChar(80)
+  parametros          Json?
+  proveedor           String?   @db.VarChar(20)
+  modelo              String?   @db.VarChar(100)
+  confianza           Float?
+  duracion_ms         Int?
+  tokens_entrada      Int?
+  tokens_salida       Int?
+  tokens_total        Int?
+  revisado_at         DateTime? @db.Timestamptz(6)
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime  @updatedAt @db.Timestamptz(6)
+
+  mensaje      MensajeAsistente      @relation(fields: [mensaje_id], references: [id], onDelete: Cascade)
+  conversacion ConversacionAsistente @relation(fields: [conversacion_id], references: [id], onDelete: Cascade)
+  propietario  Propietario           @relation(fields: [propietario_id], references: [id], onDelete: Cascade)
+  usuario      Usuario               @relation("EvaluacionesAsistenteUsuario", fields: [usuario_id], references: [id], onDelete: Cascade)
+  revisado_por Usuario?              @relation("EvaluacionesAsistenteRevisor", fields: [revisado_por_id], references: [id], onDelete: SetNull)
+  ejemplo       EjemploAsistente?
+
+  @@index([propietario_id, calificacion, created_at])
+  @@index([propietario_id, estado_revision, created_at])
+  @@index([usuario_id, created_at])
+  @@index([conversacion_id, created_at])
+  @@map("evaluaciones_asistente")
+}
+
+model EjemploAsistente {
+  id                    BigInt    @id @default(autoincrement())
+  evaluacion_id         BigInt    @unique
+  propietario_id        BigInt
+  mensaje_usuario       String    @db.Text
+  correccion            String    @db.Text
+  herramienta_esperada  String    @db.VarChar(80)
+  parametros_esperados  Json?
+  activo                Boolean   @default(true)
+  created_at            DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime  @updatedAt @db.Timestamptz(6)
+
+  evaluacion  EvaluacionAsistente @relation(fields: [evaluacion_id], references: [id], onDelete: Cascade)
+  propietario Propietario         @relation(fields: [propietario_id], references: [id], onDelete: Cascade)
+
+  @@index([propietario_id, activo, updated_at])
+  @@map("ejemplos_asistente")
+}
+
+model BorradorAsistente {
+  id              BigInt    @id @default(autoincrement())
+  conversacion_id BigInt
+  tipo            String    @db.VarChar(40)
+  estado          String    @default("pendiente") @db.VarChar(20)
+  datos           Json
+  advertencias    Json?
+  expira_at       DateTime? @db.Timestamptz(6)
+  aplicado_at     DateTime? @db.Timestamptz(6)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @updatedAt @db.Timestamptz(6)
+
+  conversacion ConversacionAsistente @relation(fields: [conversacion_id], references: [id], onDelete: Cascade)
+
+  @@index([conversacion_id, estado, updated_at])
+  @@map("borradores_asistente")
+}
+
+model EjecucionHerramientaAsistente {
+  id                    BigInt   @id @default(autoincrement())
+  conversacion_id       BigInt
+  herramienta           String   @db.VarChar(80)
+  categoria             String   @db.VarChar(20)
+  estado                String   @db.VarChar(20)
+  parametros            Json?
+  resultado             Json?
+  requiere_confirmacion Boolean  @default(false)
+  confirmada            Boolean  @default(false)
+  error                 String?  @db.VarChar(500)
+  duracion_ms           Int?
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+
+  conversacion ConversacionAsistente @relation(fields: [conversacion_id], references: [id], onDelete: Cascade)
+
+  @@index([conversacion_id, created_at])
+  @@index([herramienta, estado])
+  @@map("ejecuciones_herramientas_asistente")
+}
+
+model PreferenciaAsistente {
+  id             BigInt   @id @default(autoincrement())
+  propietario_id BigInt
+  usuario_id     BigInt
+  alcance        String   @default("personal") @db.VarChar(20)
+  scope_key      String   @db.VarChar(80)
+  tipo           String   @db.VarChar(40)
+  clave          String   @db.VarChar(120)
+  valor          Json
+  descripcion    String?  @db.VarChar(255)
+  activa         Boolean  @default(true)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario Propietario @relation(fields: [propietario_id], references: [id], onDelete: Cascade)
+  usuario     Usuario     @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+
+  @@unique([propietario_id, scope_key, clave])
+  @@index([propietario_id, scope_key, activa])
+  @@index([propietario_id, usuario_id, activa])
+  @@index([usuario_id, tipo, activa])
+  @@map("preferencias_asistente")
 }
 
 model Cliente {
@@ -186,12 +424,36 @@ model Cliente {
   created_at          DateTime @default(now()) @db.Timestamptz(6)
   updated_at          DateTime @updatedAt @db.Timestamptz(6)
 
-  propietario Propietario @relation(fields: [propietario_id], references: [id])
-  viajes      Viaje[]
+  propietario      Propietario      @relation(fields: [propietario_id], references: [id])
+  viajes           Viaje[]
+  viajes_proveedor ViajeProveedor[]
 
   @@unique([propietario_id, ruc_cedula])
   @@index([propietario_id])
+  @@index([propietario_id, activo, nombre], map: "idx_clientes_prop_activo_nombre")
   @@map("clientes")
+}
+
+model Proveedor {
+  id                  BigInt   @id @default(autoincrement())
+  propietario_id      BigInt
+  ruc_cedula          String   @db.VarChar(20)
+  nombre              String   @db.VarChar(150)
+  telefono            String?  @db.VarChar(30)
+  email               String?  @db.VarChar(150)
+  observacion         String?  @db.VarChar(255)
+  porcentaje_utilidad Decimal  @default(0) @db.Decimal(5, 2)
+  activo              Boolean  @default(true)
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario      Propietario      @relation(fields: [propietario_id], references: [id])
+  viajes_proveedor ViajeProveedor[]
+
+  @@unique([propietario_id, ruc_cedula])
+  @@index([propietario_id])
+  @@index([propietario_id, activo, nombre], map: "idx_proveedores_prop_activo_nombre")
+  @@map("proveedores")
 }
 
 model Conductor {
@@ -216,6 +478,7 @@ model Conductor {
   @@unique([propietario_id, cedula])
   @@unique([propietario_id, numero_licencia])
   @@index([propietario_id, estado])
+  @@index([propietario_id, estado, nombre], map: "idx_conductores_prop_estado_nombre")
   @@map("conductores")
 }
 
@@ -238,30 +501,35 @@ model CategoriaPeaje {
 }
 
 model Vehiculo {
-  id                   BigInt         @id @default(autoincrement())
-  propietario_id       BigInt
-  categoria_peaje_id   BigInt
-  placa                String         @db.VarChar(20)
-  marca                String         @db.VarChar(80)
-  modelo               String?        @db.VarChar(80)
-  color                String?        @db.VarChar(50)
-  anio                 Int?
-  capacidad            Int
-  toneladas            Decimal        @db.Decimal(10, 2)
-  kilometraje_actual   Int            @default(0)
-  rendimiento_km_galon Decimal        @db.Decimal(10, 2)
-  estado               EstadoVehiculo @default(DISPONIBLE)
-  created_at           DateTime       @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime       @updatedAt @db.Timestamptz(6)
+  id                     BigInt         @id @default(autoincrement())
+  propietario_id         BigInt
+  categoria_peaje_id     BigInt
+  placa                  String         @db.VarChar(20)
+  marca                  String         @db.VarChar(80)
+  modelo                 String?        @db.VarChar(80)
+  color                  String?        @db.VarChar(50)
+  anio                   Int?
+  capacidad              Int
+  toneladas              Decimal        @db.Decimal(10, 2)
+  kilometraje_actual     Int            @default(0)
+  rendimiento_km_galon   Decimal        @db.Decimal(10, 2)
+  estado                 EstadoVehiculo @default(DISPONIBLE)
+  facturable             Boolean        @default(true)
+  fecha_alta_facturacion DateTime?      @db.Date
+  fecha_baja_facturacion DateTime?      @db.Date
+  created_at             DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime       @updatedAt @db.Timestamptz(6)
 
   propietario               Propietario            @relation(fields: [propietario_id], references: [id])
   categoria_peaje           CategoriaPeaje         @relation(fields: [categoria_peaje_id], references: [id])
   viajes                    Viaje[]
   mantenimientos            Mantenimiento[]
   gastos_semanales_vehiculo GastoSemanalVehiculo[]
+  cierres_semanales         CierreSemanal[]
 
   @@unique([propietario_id, placa])
   @@index([propietario_id, estado])
+  @@index([propietario_id, estado, placa], map: "idx_vehiculos_prop_estado_placa")
   @@index([categoria_peaje_id])
   @@map("vehiculos")
 }
@@ -294,7 +562,7 @@ model TipoCarga {
   created_at     DateTime @default(now()) @db.Timestamptz(6)
   updated_at     DateTime @updatedAt @db.Timestamptz(6)
 
-  propietario  Propietario?  @relation(fields: [propietario_id], references: [id])
+  propietario  Propietario? @relation(fields: [propietario_id], references: [id])
   tarifas_ruta TarifaRuta[]
 
   @@index([propietario_id])
@@ -306,7 +574,7 @@ model TarifaRuta {
   propietario_id BigInt
   ruta_id        BigInt
   tipo_carga_id  BigInt
-  capacidad      Int?
+  capacidad      String?   @db.VarChar(50)
   toneladas      Decimal?  @db.Decimal(10, 2)
   precio         Decimal   @db.Decimal(12, 2)
   vigente_desde  DateTime  @default(dbgenerated("CURRENT_DATE")) @db.Date
@@ -315,12 +583,14 @@ model TarifaRuta {
   created_at     DateTime  @default(now()) @db.Timestamptz(6)
   updated_at     DateTime  @updatedAt @db.Timestamptz(6)
 
-  propietario Propietario @relation(fields: [propietario_id], references: [id])
-  ruta        Ruta        @relation(fields: [ruta_id], references: [id])
-  tipo_carga  TipoCarga   @relation(fields: [tipo_carga_id], references: [id])
-  viajes      Viaje[]
+  propietario      Propietario      @relation(fields: [propietario_id], references: [id])
+  ruta             Ruta             @relation(fields: [ruta_id], references: [id])
+  tipo_carga       TipoCarga        @relation(fields: [tipo_carga_id], references: [id])
+  viajes           Viaje[]
+  viajes_proveedor ViajeProveedor[]
 
   @@index([propietario_id, ruta_id, tipo_carga_id])
+  @@index([propietario_id, activa, ruta_id, tipo_carga_id], map: "idx_tarifas_ruta_prop_activa_ruta_carga")
   @@map("tarifas_ruta")
 }
 
@@ -401,9 +671,13 @@ model Viaje {
   costo_diesel                 Decimal     @default(0) @db.Decimal(12, 2)
   costo_peajes                 Decimal     @default(0) @db.Decimal(12, 2)
   costo_estimado_gastos        Decimal     @default(0) @db.Decimal(12, 2)
+  viaticos                     Decimal     @default(0) @db.Decimal(12, 2)
   costo_real_gastos            Decimal?    @db.Decimal(12, 2)
   cobrado                      Boolean     @default(false)
+  retorno                      Boolean     @default(false)
   fecha_cobro                  DateTime?   @db.Date
+  soporte_cobro                String?     @db.VarChar(80)
+  sin_factura_cobro            Boolean?
   estado                       EstadoViaje @default(PROGRAMADO)
   observaciones                String?
   created_at                   DateTime    @default(now()) @db.Timestamptz(6)
@@ -417,13 +691,61 @@ model Viaje {
   gastos_viaje GastoViaje[]
 
   @@index([propietario_id, fecha_salida])
+  @@index([propietario_id, fecha_llegada])
   @@index([propietario_id, cliente_id])
+  @@index([propietario_id, cliente_id, fecha_llegada])
   @@index([propietario_id, vehiculo_id])
+  @@index([propietario_id, vehiculo_id, fecha_llegada])
+  @@index([propietario_id, cobrado, fecha_llegada], map: "idx_viajes_prop_cobro_llegada")
+  @@index([propietario_id, vehiculo_id, cobrado, fecha_llegada], map: "idx_viajes_prop_vehiculo_cobro_llegada")
   @@index([propietario_id, conductor_id])
   @@index([propietario_id, estado])
   @@index([propietario_id, cobrado, fecha_salida])
   @@index([tarifa_ruta_id])
   @@map("viajes")
+}
+
+model ViajeProveedor {
+  id                     BigInt      @id @default(autoincrement())
+  propietario_id         BigInt
+  cliente_id             BigInt
+  proveedor_id           BigInt
+  tarifa_ruta_id         BigInt
+  fecha_salida           DateTime    @default(dbgenerated("CURRENT_DATE")) @db.Date
+  fecha_llegada          DateTime?   @db.Date
+  descripcion_carga      String?
+  numeros_guia_remision  String[]    @default([])
+  precio_viaje           Decimal     @default(0) @db.Decimal(12, 2)
+  valor_a_facturar       Decimal     @default(0) @db.Decimal(12, 2)
+  precio_pagar_proveedor Decimal     @default(0) @db.Decimal(12, 2)
+  viaticos               Decimal     @default(0) @db.Decimal(12, 2)
+  utilidad               Decimal     @default(0) @db.Decimal(12, 2)
+  cobrado                Boolean     @default(false)
+  fecha_cobro            DateTime?   @db.Date
+  soporte_cobro          String?     @db.VarChar(80)
+  sin_factura_cobro      Boolean     @default(false)
+  pagado_proveedor       Boolean     @default(false)
+  fecha_pago_proveedor   DateTime?   @db.Date
+  soporte_pago_proveedor String?     @db.VarChar(80)
+  proveedor_sin_factura  Boolean     @default(false)
+  estado                 EstadoViaje @default(PROGRAMADO)
+  observaciones          String?
+  created_at             DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime    @updatedAt @db.Timestamptz(6)
+
+  propietario Propietario @relation(fields: [propietario_id], references: [id])
+  cliente     Cliente     @relation(fields: [cliente_id], references: [id])
+  proveedor   Proveedor   @relation(fields: [proveedor_id], references: [id])
+  tarifa_ruta TarifaRuta  @relation(fields: [tarifa_ruta_id], references: [id])
+
+  @@index([propietario_id, fecha_llegada])
+  @@index([propietario_id, fecha_salida])
+  @@index([propietario_id, cliente_id, fecha_llegada], map: "idx_viajes_prov_prop_cliente_llegada")
+  @@index([propietario_id, proveedor_id, fecha_llegada], map: "idx_viajes_prov_prop_proveedor_llegada")
+  @@index([propietario_id, cobrado, fecha_llegada], map: "idx_viajes_prov_prop_cobro_llegada")
+  @@index([propietario_id, pagado_proveedor, fecha_llegada], map: "idx_viajes_prov_prop_pago_llegada")
+  @@index([tarifa_ruta_id])
+  @@map("viajes_proveedor")
 }
 
 model GastoSemanalVehiculo {
@@ -447,9 +769,47 @@ model GastoSemanalVehiculo {
   conductor   Conductor?  @relation(fields: [conductor_id], references: [id])
 
   @@index([propietario_id, anio, numero_semana])
+  @@index([propietario_id, vehiculo_id, anio, numero_semana])
+  @@index([propietario_id, vehiculo_id, es_generado, anio, numero_semana], map: "idx_gastos_sem_prop_veh_gen_semana")
   @@index([vehiculo_id, anio, numero_semana])
   @@index([conductor_id, anio, numero_semana])
   @@map("gastos_semanales_vehiculo")
+}
+
+model CierreSemanal {
+  id                        BigInt   @id @default(autoincrement())
+  propietario_id            BigInt
+  vehiculo_id               BigInt
+  anio                      Int
+  numero_semana             Int
+  fecha_inicio              DateTime @db.Date
+  fecha_fin                 DateTime @db.Date
+  cantidad_viajes           Int      @default(0)
+  cantidad_mantenimientos   Int      @default(0)
+  cantidad_gastos_semanales Int      @default(0)
+  total_precio_flete        Decimal  @default(0) @db.Decimal(12, 2)
+  total_precio_real_flete   Decimal  @default(0) @db.Decimal(12, 2)
+  total_utilidad            Decimal  @default(0) @db.Decimal(12, 2)
+  total_mantenimientos      Decimal  @default(0) @db.Decimal(12, 2)
+  total_gastos_semanales    Decimal  @default(0) @db.Decimal(12, 2)
+  total_sueldos             Decimal  @default(0) @db.Decimal(12, 2)
+  total_bonificaciones      Decimal  @default(0) @db.Decimal(12, 2)
+  resultado_operativo       Decimal  @default(0) @db.Decimal(12, 2)
+  snapshot                  Json
+  cerrado_en                DateTime @default(now()) @db.Timestamptz(6)
+  cerrado_por_usuario_id    BigInt?
+  created_at                DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime @updatedAt @db.Timestamptz(6)
+
+  propietario         Propietario @relation(fields: [propietario_id], references: [id])
+  vehiculo            Vehiculo    @relation(fields: [vehiculo_id], references: [id])
+  cerrado_por_usuario Usuario?    @relation("UsuarioCierresSemanales", fields: [cerrado_por_usuario_id], references: [id], onDelete: SetNull)
+
+  @@unique([propietario_id, vehiculo_id, anio, numero_semana])
+  @@index([propietario_id, anio, numero_semana])
+  @@index([vehiculo_id, anio, numero_semana])
+  @@index([cerrado_por_usuario_id])
+  @@map("cierres_semanales")
 }
 
 model TipoGastoViaje {
@@ -541,6 +901,8 @@ model Mantenimiento {
   repuestos          RepuestoMantenimiento[]
 
   @@index([propietario_id, fecha_mantenimiento])
+  @@index([propietario_id, vehiculo_id, fecha_mantenimiento])
+  @@index([propietario_id, estado, fecha_mantenimiento], map: "idx_mantenimientos_prop_estado_fecha")
   @@index([vehiculo_id])
   @@map("mantenimientos")
 }

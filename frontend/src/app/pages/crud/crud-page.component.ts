@@ -1,8 +1,9 @@
-import { DatePipe } from '@angular/common';
-import { Component, OnDestroy, inject, signal } from '@angular/core';
+﻿import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
+  LucideCopy,
+  LucideKeyRound,
   LucidePencil,
   LucidePlus,
   LucideRefreshCw,
@@ -13,11 +14,18 @@ import {
 } from '@lucide/angular';
 import { forkJoin, Subscription } from 'rxjs';
 import { ApiService } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
+import { formatDateOnly } from '../../core/date-only';
 import type { ApiListColumn, CrudFieldConfig, CrudRouteData, SelectOption } from '../../core/models';
+import { isPaginatedResponse, PaginatedResponse, PaginationMeta } from '../../core/pagination';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
+import { DialogService } from '../../shared/dialog.service';
+import { PaginationControlsComponent } from '../../shared/pagination-controls.component';
 
 type Row = Record<string, unknown>;
 type FormValue = string | number | boolean | null;
 type CrudForm = FormGroup<Record<string, FormControl<FormValue>>>;
+type RowsListResponse = Row[] | PaginatedResponse<Row>;
 
 const toHoursTime = (value: unknown) => {
   if (value === null || value === undefined || value === '') return '';
@@ -62,31 +70,41 @@ const setPayloadValue = (payload: Row, field: CrudFieldConfig, value: unknown) =
 @Component({
   selector: 'app-crud-page',
   imports: [
-    DatePipe,
     FormsModule,
     ReactiveFormsModule,
+    LucideCopy,
+    LucideKeyRound,
     LucidePencil,
     LucidePlus,
     LucideRefreshCw,
     LucideSave,
     LucideSearch,
     LucideTrash2,
-    LucideX
+    LucideX,
+    AutoDismissAlertDirective,
+    PaginationControlsComponent
   ],
   templateUrl: './crud-page.component.html'
 })
 export class CrudPageComponent implements OnDestroy {
   private readonly api = inject(ApiService);
+  private readonly auth = inject(AuthService);
+  private readonly dialog = inject(DialogService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly sub = new Subscription();
   private formSyncSub = new Subscription();
 
   readonly config = signal<CrudRouteData | null>(null);
   readonly rows = signal<Row[]>([]);
+  readonly pagination = signal<PaginationMeta | null>(null);
+  readonly page = signal(1);
+  readonly limit = signal(50);
   readonly catalogOptions = signal<Record<string, SelectOption[]>>({});
   readonly loading = signal(false);
   readonly saving = signal(false);
   readonly deletingId = signal<string | null>(null);
+  readonly resettingPasswordId = signal<string | null>(null);
   readonly formOpen = signal(false);
   readonly editingRow = signal<Row | null>(null);
   readonly catalogInput = signal<Record<string, string>>({});
@@ -94,6 +112,7 @@ export class CrudPageComponent implements OnDestroy {
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly search = signal('');
+  private searchTimer: ReturnType<typeof setTimeout> | null = null;
 
   form: CrudForm = new FormGroup<Record<string, FormControl<FormValue>>>({});
 
@@ -103,6 +122,8 @@ export class CrudPageComponent implements OnDestroy {
         const config = data as CrudRouteData;
         this.config.set(config);
         this.search.set('');
+        this.page.set(1);
+        this.pagination.set(null);
         this.message.set(null);
         this.error.set(null);
         this.formOpen.set(false);
@@ -110,13 +131,18 @@ export class CrudPageComponent implements OnDestroy {
         this.buildForm(config);
         this.loadCatalogs(config);
         this.load();
+        this.openPendingCreate();
       })
+    );
+    this.sub.add(
+      this.route.queryParamMap.subscribe(() => this.openPendingCreate())
     );
   }
 
   ngOnDestroy() {
     this.sub.unsubscribe();
     this.formSyncSub.unsubscribe();
+    if (this.searchTimer) clearTimeout(this.searchTimer);
   }
 
   load() {
@@ -126,9 +152,9 @@ export class CrudPageComponent implements OnDestroy {
     this.loading.set(true);
     this.error.set(null);
 
-    this.api.get<Row[]>(config.endpoint).subscribe({
-      next: (rows) => {
-        this.rows.set(rows);
+    this.api.get<RowsListResponse>(config.endpoint, this.listParams()).subscribe({
+      next: (response) => {
+        this.setRowsResponse(response);
         this.loading.set(false);
       },
       error: (err) => {
@@ -138,12 +164,38 @@ export class CrudPageComponent implements OnDestroy {
     });
   }
 
+  changePage(page: number) {
+    const meta = this.pagination();
+    if (!meta || page < 1 || page > meta.total_pages || page === this.page()) return;
+
+    this.page.set(page);
+    this.load();
+  }
+
+  changeLimit(limit: number) {
+    if (limit === this.limit()) return;
+
+    this.limit.set(limit);
+    this.page.set(1);
+    this.load();
+  }
+
+  isReadOnly() {
+    const config = this.config();
+    return Boolean(config?.superAdminReadOnly && this.auth.isSuperAdmin());
+  }
+
+  visibleColumns(columns: ApiListColumn[]) {
+    return columns.filter((column) => !column.superAdminOnly || this.auth.isSuperAdmin());
+  }
+
   openCreate() {
     const config = this.config();
     if (!config) return;
 
     this.editingRow.set(null);
     this.buildForm(config);
+    this.applyCreatePrefill(config);
     this.syncCatalogInputs(config.fields);
     this.formOpen.set(true);
     this.message.set(null);
@@ -162,13 +214,29 @@ export class CrudPageComponent implements OnDestroy {
     this.error.set(null);
   }
 
+  openDuplicate(row: Row) {
+    const config = this.config();
+    if (!config) return;
+
+    this.editingRow.set(null);
+    this.buildForm(config, row);
+    this.syncCatalogInputs(config.fields);
+    this.formOpen.set(true);
+    this.message.set(null);
+    this.error.set(null);
+  }
+
   closeForm() {
+    const returnUrl = this.returnUrl();
     this.formOpen.set(false);
     this.editingRow.set(null);
     this.catalogInput.set({});
     this.activeCatalogField.set(null);
     this.error.set(null);
     this.saving.set(false);
+    if (returnUrl) {
+      void this.router.navigateByUrl(returnUrl);
+    }
   }
 
   save() {
@@ -191,10 +259,15 @@ export class CrudPageComponent implements OnDestroy {
 
     request.subscribe({
       next: (response) => {
+        const returnUrl = this.returnUrl();
         this.saving.set(false);
         this.formOpen.set(false);
         this.editingRow.set(null);
         this.message.set(this.successMessage(row, response));
+        if (returnUrl) {
+          void this.router.navigateByUrl(returnUrl);
+          return;
+        }
         this.load();
       },
       error: (err) => {
@@ -204,12 +277,20 @@ export class CrudPageComponent implements OnDestroy {
     });
   }
 
-  delete(row: Row) {
+  async delete(row: Row) {
     const config = this.config();
     if (!config) return;
 
     const name = this.textValue(row, { label: '', path: config.displayField });
-    if (!confirm(`Eliminar o desactivar ${name}?`)) return;
+    const disabled = this.rowDisabled(row);
+    const action = disabled ? 'eliminar definitivamente' : 'eliminar o desactivar';
+    const confirmed = await this.dialog.confirm({
+      title: disabled ? 'Eliminar registro definitivamente' : 'Eliminar o desactivar registro',
+      text: `Se va a ${action} ${name}.`,
+      confirmText: disabled ? 'Sí, eliminar' : 'Sí, continuar'
+    });
+
+    if (!confirmed) return;
 
     const id = this.idOf(row);
     this.deletingId.set(id);
@@ -219,27 +300,69 @@ export class CrudPageComponent implements OnDestroy {
     this.api.delete<Row>(`${config.endpoint}/${id}`).subscribe({
       next: () => {
         this.deletingId.set(null);
-        this.message.set('Registro eliminado o desactivado.');
+        this.message.set(disabled ? 'Registro eliminado.' : 'Registro desactivado.');
         this.load();
       },
       error: (err) => {
         this.deletingId.set(null);
-        this.error.set(err?.error?.message ?? 'No se pudo desactivar el registro.');
+        this.error.set(
+          err?.error?.message ??
+            (disabled ? 'No se pudo eliminar el registro.' : 'No se pudo desactivar el registro.')
+        );
+      }
+    });
+  }
+
+  async resetPassword(row: Row) {
+    const config = this.config();
+    if (!config?.passwordResetEnabled) return;
+
+    const name = this.textValue(row, { label: '', path: config.displayField });
+    const confirmed = await this.dialog.confirm({
+      title: 'Resetear clave',
+      text: `Se asignará una clave temporal a ${name} y deberá cambiarla al iniciar sesión.`,
+      confirmText: 'Sí, resetear',
+      icon: 'question'
+    });
+
+    if (!confirmed) return;
+
+    const id = this.idOf(row);
+    this.resettingPasswordId.set(id);
+    this.error.set(null);
+    this.message.set(null);
+
+    this.api.patch<Row>(`${config.endpoint}/${id}/reset-password`, {}).subscribe({
+      next: (response) => {
+        this.resettingPasswordId.set(null);
+        this.message.set(this.passwordResetMessage(response));
+        this.load();
+      },
+      error: (err) => {
+        this.resettingPasswordId.set(null);
+        this.error.set(err?.error?.message ?? 'No se pudo resetear la clave.');
       }
     });
   }
 
   filteredRows() {
     const term = this.search().trim().toLowerCase();
-    if (!term) return this.rows();
+    if (!term || this.pagination()) return this.rows();
 
     return this.rows().filter((row) => JSON.stringify(row).toLowerCase().includes(term));
+  }
+
+  setSearch(value: string) {
+    this.search.set(value);
+    this.page.set(1);
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => this.load(), 350);
   }
 
   visibleFields(fields: CrudFieldConfig[]) {
     const editing = Boolean(this.editingRow());
 
-    return fields.filter((field) => !(editing && field.createOnly));
+    return fields.filter((field) => this.canUseField(field) && !(editing && field.createOnly));
   }
 
   value(row: Row, path: string) {
@@ -259,7 +382,7 @@ export class CrudPageComponent implements OnDestroy {
   }
 
   dateValue(row: Row, path: string) {
-    return this.value(row, path) as string | number | Date | null | undefined;
+    return formatDateOnly(this.value(row, path));
   }
 
   hoursTimeValue(row: Row, path: string) {
@@ -358,13 +481,38 @@ export class CrudPageComponent implements OnDestroy {
     return String(row['id']);
   }
 
+  canMutateRow(config: CrudRouteData, row: Row) {
+    if (this.isReadOnly()) return false;
+
+    if (this.auth.isSuperAdmin()) {
+      const rowOwnerId = row['propietario_id'];
+      if (rowOwnerId === null || rowOwnerId === undefined) return true;
+
+      const activeOwnerId = this.auth.contexto()?.propietario_id;
+      return Boolean(activeOwnerId && String(rowOwnerId) === String(activeOwnerId));
+    }
+
+    if (!config.readonlyGlobalRows) return true;
+    return row['global'] !== true && row['propietario_id'] !== null;
+  }
+
+  rowDisabled(row: Row) {
+    const estado = String(row['estado'] ?? '').toLowerCase();
+    return (
+      row['activo'] === false ||
+      row['activa'] === false ||
+      estado === 'inactivo' ||
+      estado.includes('cancelad')
+    );
+  }
+
   private buildForm(config: CrudRouteData, row?: Row) {
     this.formSyncSub.unsubscribe();
     this.formSyncSub = new Subscription();
 
     const controls: Record<string, FormControl<FormValue>> = {};
 
-    for (const field of config.fields) {
+    for (const field of this.usableFields(config.fields)) {
       const validators = [];
       if (field.required && field.type !== 'checkbox' && !(row && field.createOnly)) {
         validators.push(Validators.required);
@@ -379,7 +527,7 @@ export class CrudPageComponent implements OnDestroy {
     }
 
     this.form = new FormGroup<Record<string, FormControl<FormValue>>>(controls);
-    this.setupFieldSync(config.fields, row);
+    this.setupFieldSync(this.usableFields(config.fields), row);
   }
 
   private initialValue(field: CrudFieldConfig, row?: Row): FormValue {
@@ -406,7 +554,7 @@ export class CrudPageComponent implements OnDestroy {
     const payload: Row = {};
     const isEdit = Boolean(this.editingRow());
 
-    for (const field of fields) {
+    for (const field of this.usableFields(fields)) {
       if (isEdit && field.createOnly) continue;
 
       const raw = this.form.controls[field.name]?.value;
@@ -457,20 +605,59 @@ export class CrudPageComponent implements OnDestroy {
     return payload;
   }
 
+  private canUseField(field: CrudFieldConfig) {
+    return !field.superAdminOnly || Boolean(this.auth.usuario()?.es_super_admin);
+  }
+
+  private usableFields(fields: CrudFieldConfig[]) {
+    return fields.filter((field) => this.canUseField(field));
+  }
+
   private successMessage(row: Row | null, response: unknown) {
     if (row) return 'Registro actualizado.';
+
+    const claveTemporal = (response as Row | null)?.['clave_temporal'];
+    if (typeof claveTemporal === 'string' && claveTemporal) {
+      return `Registro creado. Clave temporal: ${claveTemporal}`;
+    }
 
     const invitacion = (response as Row | null)?.['invitacion'] as Row | null | undefined;
     const enlace = invitacion?.['enlace'];
     if (typeof enlace === 'string') {
       const estadoCorreo = invitacion?.['email_enviado']
         ? ' La invitación fue enviada por correo.'
-        : ' SMTP no esta configurado; usa este enlace para probar.';
+        : ' SMTP no está configurado; usa este enlace para probar.';
 
       return `Registro creado.${estadoCorreo} Enlace: ${enlace}`;
     }
 
     return 'Registro creado.';
+  }
+
+  private passwordResetMessage(response: Row) {
+    const claveTemporal = response['clave_temporal'];
+    return typeof claveTemporal === 'string' && claveTemporal
+      ? `Clave reseteada. Clave temporal: ${claveTemporal}`
+      : 'Clave reseteada.';
+  }
+
+  private setRowsResponse(response: RowsListResponse) {
+    if (isPaginatedResponse(response)) {
+      this.rows.set(response.data);
+      this.pagination.set(response.meta);
+      return;
+    }
+
+    this.rows.set(response);
+    this.pagination.set(null);
+  }
+
+  private listParams() {
+    return {
+      search: this.search().trim(),
+      page: this.page(),
+      limit: this.limit()
+    };
   }
 
   private loadCatalogs(config: CrudRouteData) {
@@ -541,5 +728,41 @@ export class CrudPageComponent implements OnDestroy {
       syncValue(source.value);
       this.formSyncSub.add(source.valueChanges.subscribe(syncValue));
     }
+  }
+
+  private openPendingCreate() {
+    if (!this.route.snapshot.queryParamMap.has('new') || !this.config() || this.formOpen()) return;
+
+    this.openCreate();
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { new: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
+  }
+
+  private applyCreatePrefill(config: CrudRouteData) {
+    if (!this.route.snapshot.queryParamMap.has('new')) return;
+
+    const patch: Record<string, FormValue> = {};
+    for (const field of this.usableFields(config.fields)) {
+      const value = this.route.snapshot.queryParamMap.get(field.name);
+      if (value === null) continue;
+
+      patch[field.name] =
+        field.type === 'number'
+          ? Number(value)
+          : field.type === 'checkbox'
+            ? value === 'true'
+            : value;
+    }
+
+    this.form.patchValue(patch, { emitEvent: false });
+  }
+
+  private returnUrl() {
+    const value = this.route.snapshot.queryParamMap.get('returnUrl');
+    return value?.startsWith('/app/') || value?.startsWith('/movil/') ? value : null;
   }
 }

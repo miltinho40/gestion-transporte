@@ -1,0 +1,205 @@
+<section class="mobile-proveedor-viajes">
+  <header class="mobile-page-heading">
+    <div>
+      <h1>Viajes proveedores</h1>
+      <p>{{ totalCount() }} registros</p>
+    </div>
+    <a class="btn btn-primary add-button" routerLink="/movil/viajes-proveedores/nuevo" aria-label="Nuevo viaje proveedor">
+      <svg lucidePlus size="20"></svg>
+    </a>
+  </header>
+
+  @if (message()) {
+    <div class="alert alert-success py-2" [appAutoDismissAlert]="message()">{{ message() }}</div>
+  }
+
+  @if (error()) {
+    <div class="alert alert-danger py-2" [appAutoDismissAlert]="error()">{{ error() }}</div>
+  }
+
+  <div class="mobile-filter-card">
+    <div class="search-box">
+      <svg lucideSearch size="17"></svg>
+      <input
+        type="search"
+        placeholder="Buscar cliente, proveedor, guía..."
+        [ngModel]="search()"
+        (ngModelChange)="setSearch($event)"
+      />
+    </div>
+
+    <div class="filter-row">
+      <select class="form-select form-select-sm" [ngModel]="cobrado()" (ngModelChange)="setCobrado($event)">
+        <option value="">Cobro</option>
+        <option value="true">Cobrados</option>
+        <option value="false">No cobrados</option>
+      </select>
+
+      <select class="form-select form-select-sm" [ngModel]="pagado()" (ngModelChange)="setPagado($event)">
+        <option value="">Pago</option>
+        <option value="true">Pagados</option>
+        <option value="false">No pagados</option>
+      </select>
+
+      <button type="button" class="btn btn-outline-secondary btn-sm refresh-button" (click)="load()">
+        <svg lucideRefreshCw size="15"></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="viajes-list">
+    @for (row of filteredRows(); track row.id) {
+      <article
+        class="viaje-card"
+        [class.cobrado]="row.cobrado"
+        [class.pagado]="row.pagado_proveedor"
+        [class.cancelado]="row.estado === 'cancelado'"
+      >
+        <div class="card-top">
+          <div>
+            <span class="week-pill">{{ semanaLabel(row) }}</span>
+            <h2>{{ rutaLabel(row) }}</h2>
+            <p>{{ row.cliente.nombre }}</p>
+          </div>
+          <div class="status-stack">
+            <span class="state-pill" [class.ok]="row.cobrado">{{ row.cobrado ? 'Cobrado' : 'Sin cobrar' }}</span>
+            <span class="state-pill" [class.ok]="row.pagado_proveedor">{{ row.pagado_proveedor ? 'Pagado' : 'Sin pagar' }}</span>
+          </div>
+        </div>
+
+        <div class="card-meta">
+          <span>{{ dateOnly(row.fecha_llegada || row.fecha_salida) }}</span>
+          <span>{{ row.proveedor.nombre }}</span>
+        </div>
+
+        <div class="money-grid">
+          <div>
+            <span>Precio viaje</span>
+            <strong>$ {{ money(row.precio_viaje) }}</strong>
+          </div>
+          <div>
+            <span>A facturar</span>
+            <strong>$ {{ money(row.valor_a_facturar) }}</strong>
+          </div>
+          <div>
+            <span>Utilidad</span>
+            <strong>$ {{ money(row.utilidad) }}</strong>
+          </div>
+        </div>
+
+        @if (guiasLabel(row)) {
+          <div class="guides">Guías: {{ guiasLabel(row) }}</div>
+        }
+
+        <div class="card-actions">
+          @if (!row.cobrado && row.estado !== 'cancelado') {
+            <button
+              type="button"
+              class="btn btn-outline-secondary btn-sm icon-action"
+              (click)="openGuides(row)"
+              title="Guías"
+              aria-label="Guías"
+            >
+              <svg lucideClipboardList size="16"></svg>
+            </button>
+            <button
+              type="button"
+              class="btn btn-outline-success btn-sm icon-action"
+              (click)="marcarCobrado(row)"
+              [disabled]="markingCobroId() === row.id"
+              title="Cobrar"
+              aria-label="Cobrar"
+            >
+              <svg lucideCheck size="16"></svg>
+            </button>
+          }
+          @if (!row.pagado_proveedor && row.estado !== 'cancelado') {
+            <button
+              type="button"
+              class="btn btn-outline-success btn-sm icon-action"
+              (click)="marcarPagado(row)"
+              [disabled]="markingPagoId() === row.id"
+              title="Pagar"
+              aria-label="Pagar"
+            >
+              <svg lucideDollarSign size="16"></svg>
+            </button>
+          }
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm icon-action"
+            (click)="duplicate(row)"
+            title="Duplicar"
+            aria-label="Duplicar"
+          >
+            <svg lucideCopy size="16"></svg>
+          </button>
+          @if (!row.cobrado && row.estado !== 'cancelado') {
+            <button
+              type="button"
+              class="btn btn-outline-primary btn-sm icon-action"
+              (click)="edit(row)"
+              title="Editar"
+              aria-label="Editar"
+            >
+              <svg lucidePencil size="16"></svg>
+            </button>
+          }
+        </div>
+      </article>
+    } @empty {
+      <div class="empty-state">
+        @if (loading()) {
+          Cargando viajes...
+        } @else {
+          No hay viajes de proveedores para mostrar.
+        }
+      </div>
+    }
+  </div>
+
+  <app-pagination-controls
+    [meta]="pagination()"
+    [loading]="loading()"
+    [pageSizeOptions]="[10, 25, 50]"
+    (pageChange)="changePage($event)"
+    (limitChange)="changeLimit($event)"
+  />
+
+  @if (guideRow()) {
+    <div class="mobile-modal-backdrop" (click)="closeGuides()"></div>
+    <div class="mobile-bottom-sheet" role="dialog" aria-modal="true" aria-label="Agregar guías">
+      <div class="sheet-header">
+        <div>
+          <h2>Agregar guías</h2>
+          <p>{{ rutaLabel(guideRow()!) }}</p>
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm" (click)="closeGuides()">Cerrar</button>
+      </div>
+
+      <label class="mobile-field">
+        <span>Guías de remisión</span>
+        <textarea
+          class="form-control"
+          rows="3"
+          placeholder="Separadas por coma o guion"
+          [ngModel]="guideInput()"
+          (ngModelChange)="guideInput.set($event)"
+        ></textarea>
+      </label>
+
+      <button
+        type="button"
+        class="btn btn-primary w-100"
+        (click)="saveGuides()"
+        [disabled]="savingGuidesId() === guideRow()!.id"
+      >
+        @if (savingGuidesId() === guideRow()!.id) {
+          Guardando...
+        } @else {
+          Guardar guías
+        }
+      </button>
+    </div>
+  }
+</section>

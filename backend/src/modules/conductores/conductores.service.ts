@@ -1,7 +1,10 @@
 import { EstadoConductor, Prisma } from '@prisma/client';
+import type { JwtPayload } from '../../config/jwt.js';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { resolveReadScopeWithOwnOverride } from '../../utils/ownership-scope.js';
+import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import { toPrismaEstadoConductor } from './conductores.mapper.js';
 import type {
   ConductorCreateInput,
@@ -13,7 +16,17 @@ interface ListConductoresFilters {
   search?: unknown;
   estado?: unknown;
   licencia_vencida?: unknown;
+  solo_propios?: unknown;
 }
+
+const includePropietario = {
+  propietario: {
+    select: {
+      id: true,
+      nombre: true
+    }
+  }
+} satisfies Prisma.ConductorInclude;
 
 const toDateOnly = (value?: string | null) => {
   if (!value) {
@@ -24,12 +37,18 @@ const toDateOnly = (value?: string | null) => {
 };
 
 const buildWhere = (
-  propietarioId: bigint,
+  scopeInput: JwtPayload | unknown,
   filters: ListConductoresFilters
 ): Prisma.ConductorWhereInput => {
-  const where: Prisma.ConductorWhereInput = {
-    propietario_id: propietarioId
-  };
+  const scope = resolveReadScopeWithOwnOverride(
+    scopeInput,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
+  const where: Prisma.ConductorWhereInput = scope.all
+    ? {}
+    : {
+        propietario_id: scope.propietarioId
+      };
 
   if (typeof filters.search === 'string' && filters.search.trim()) {
     const search = filters.search.trim();
@@ -97,26 +116,48 @@ const ensureLicenciaAvailable = async (
 };
 
 export const listConductores = async (
-  propietarioIdInput: unknown,
+  scopeInput: JwtPayload | unknown,
   filters: ListConductoresFilters
 ) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const where = buildWhere(scopeInput, filters);
+  const orderBy = [
+    { estado: 'asc' },
+    { nombre: 'asc' }
+  ] satisfies Prisma.ConductorOrderByWithRelationInput[];
+  const pagination = parsePagination(filters as Record<string, unknown>);
 
-  return prisma.conductor.findMany({
-    where: buildWhere(propietarioId, filters),
-    orderBy: [{ estado: 'asc' }, { nombre: 'asc' }]
-  });
+  if (!pagination) {
+    return prisma.conductor.findMany({
+      where,
+      include: includePropietario,
+      orderBy
+    });
+  }
+
+  const [data, total] = await prisma.$transaction([
+    prisma.conductor.findMany({
+      where,
+      include: includePropietario,
+      orderBy,
+      skip: pagination.skip,
+      take: pagination.limit
+    }),
+    prisma.conductor.count({ where })
+  ]);
+
+  return buildPaginatedResult(data, total, pagination);
 };
 
-export const getConductorById = async (propietarioIdInput: unknown, idInput: unknown) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+export const getConductorById = async (scopeInput: JwtPayload | unknown, idInput: unknown) => {
+  const scope = resolveReadScopeWithOwnOverride(scopeInput, false);
   const id = parseBigIntId(idInput);
 
   const conductor = await prisma.conductor.findFirst({
     where: {
       id,
-      propietario_id: propietarioId
-    }
+      ...(scope.all ? {} : { propietario_id: scope.propietarioId })
+    },
+    include: includePropietario
   });
 
   if (!conductor) {
@@ -210,12 +251,43 @@ export const deactivateConductor = async (propietarioIdInput: unknown, idInput: 
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getConductorById(propietarioId, id);
+  const current = await getConductorById(propietarioId, id);
 
-  return prisma.conductor.update({
-    where: { id },
-    data: {
-      estado: EstadoConductor.INACTIVO
-    }
+  if (current.estado !== EstadoConductor.INACTIVO) {
+    return prisma.conductor.update({
+      where: { id },
+      data: {
+        estado: EstadoConductor.INACTIVO
+      }
+    });
+  }
+
+  const [viajes, gastosSemanales] = await Promise.all([
+    prisma.viaje.count({
+      where: {
+        propietario_id: propietarioId,
+        conductor_id: id
+      }
+    }),
+    prisma.gastoSemanalVehiculo.count({
+      where: {
+        propietario_id: propietarioId,
+        conductor_id: id
+      }
+    })
+  ]);
+
+  const blockers: string[] = [];
+  if (viajes > 0) blockers.push('El conductor ya esta usado en algunos viajes');
+  if (gastosSemanales > 0) blockers.push('El conductor ya esta usado en gastos semanales');
+
+  if (blockers.length) {
+    throw new AppError(blockers.join('. '), 409);
+  }
+
+  await prisma.conductor.delete({
+    where: { id }
   });
+
+  return current;
 };

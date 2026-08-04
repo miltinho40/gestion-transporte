@@ -152,6 +152,29 @@ const buildSemana = (anio: number, numeroSemana: number) => {
   };
 };
 
+const viajeFechaEntrega = (viaje: { fecha_salida: Date; fecha_llegada: Date | null }) =>
+  viaje.fecha_llegada ?? viaje.fecha_salida;
+
+const buildViajeSemanaWhere = (
+  semana: ReturnType<typeof buildSemana>
+): Prisma.ViajeWhereInput => ({
+  OR: [
+    {
+      fecha_llegada: {
+        gte: semana.fecha_inicio,
+        lte: semana.fecha_fin
+      }
+    },
+    {
+      fecha_llegada: null,
+      fecha_salida: {
+        gte: semana.fecha_inicio,
+        lte: semana.fecha_fin
+      }
+    }
+  ]
+});
+
 const buildViajeWhere = (
   propietarioId: bigint,
   semana: ReturnType<typeof buildSemana>,
@@ -165,10 +188,7 @@ const buildViajeWhere = (
   const where: Prisma.ViajeWhereInput = {
     propietario_id: propietarioId,
     estado: { not: EstadoViaje.CANCELADO },
-    fecha_salida: {
-      gte: semana.fecha_inicio,
-      lte: semana.fecha_fin
-    }
+    ...buildViajeSemanaWhere(semana)
   };
 
   if (filters.conductor_id) {
@@ -195,6 +215,8 @@ const buildViajeWhere = (
 const formatViajeConductor = (viaje: ViajeReporte) => ({
   id: viaje.id,
   fecha_salida: viaje.fecha_salida,
+  fecha_llegada: viaje.fecha_llegada,
+  fecha_semana: viajeFechaEntrega(viaje),
   cliente: buildClienteMini(viaje.cliente),
   origen: viaje.tarifa_ruta.ruta.origen,
   destino: viaje.tarifa_ruta.ruta.destino,
@@ -217,6 +239,8 @@ const formatViajeVehiculo = (viaje: ViajeReporte, numeroSemana: number) => {
   return {
     id: viaje.id,
     fecha_salida: viaje.fecha_salida,
+    fecha_llegada: viaje.fecha_llegada,
+    fecha_semana: viajeFechaEntrega(viaje),
     cliente: buildClienteMini(viaje.cliente),
     ruta: buildRutaMini(viaje),
     conductor: buildConductorMini(viaje.conductor),
@@ -308,7 +332,7 @@ export const getReporteViajesConductorSemanal = async (
     prisma.viaje.findMany({
       where: buildViajeWhere(propietarioId, semana, filters),
       include: viajeInclude,
-      orderBy: [{ conductor_id: 'asc' }, { fecha_salida: 'asc' }, { id: 'asc' }]
+      orderBy: [{ conductor_id: 'asc' }, { fecha_llegada: 'asc' }, { fecha_salida: 'asc' }, { id: 'asc' }]
     }),
     prisma.gastoSemanalVehiculo.findMany({
       where: {
@@ -431,7 +455,7 @@ export const getReporteViajesVehiculoSemanal = async (
   const viajes = await prisma.viaje.findMany({
     where: buildViajeWhere(propietarioId, semana, filters),
     include: viajeInclude,
-    orderBy: [{ vehiculo_id: 'asc' }, { fecha_salida: 'asc' }, { id: 'asc' }]
+    orderBy: [{ vehiculo_id: 'asc' }, { fecha_llegada: 'asc' }, { fecha_salida: 'asc' }, { id: 'asc' }]
   });
 
   const grupos = new Map<
@@ -519,7 +543,7 @@ const formatMovimientoViaje = (viaje: ViajeReporte) => {
   return {
     tipo: 'viaje',
     referencia_id: viaje.id,
-    fecha: viaje.fecha_salida,
+    fecha: viajeFechaEntrega(viaje),
     descripcion: `${viaje.cliente.nombre}-${viaje.tarifa_ruta.ruta.destino}`,
     precio: utilidad,
     naturaleza: 'ingreso',
@@ -588,7 +612,7 @@ export const getReporteIngresosEgresosSemanal = async (
         vehiculo_id: filters.vehiculo_id
       }),
       include: viajeInclude,
-      orderBy: [{ vehiculo_id: 'asc' }, { fecha_salida: 'asc' }, { id: 'asc' }]
+      orderBy: [{ vehiculo_id: 'asc' }, { fecha_llegada: 'asc' }, { fecha_salida: 'asc' }, { id: 'asc' }]
     }),
     prisma.mantenimiento.findMany({
       where: {
@@ -818,7 +842,7 @@ export const buildReporteViajesConductorSemanalExportTable = (
     conductor.viajes.map((viaje) => ({
       conductor: conductor.conductor.nombre,
       cedula: conductor.conductor.cedula,
-      fecha: viaje.fecha_salida,
+      fecha: viaje.fecha_semana,
       cliente: viaje.cliente.nombre,
       origen: viaje.origen,
       destino: viaje.destino,
@@ -866,7 +890,7 @@ export const buildReporteViajesVehiculoSemanalExportTable = (
   rows: reporte.vehiculos.flatMap((vehiculo) =>
     vehiculo.viajes.map((viaje) => ({
       placa: vehiculo.vehiculo.placa,
-      fecha: viaje.fecha_salida,
+      fecha: viaje.fecha_semana,
       cliente: viaje.cliente.nombre,
       origen: viaje.ruta.origen,
       destino: viaje.ruta.destino,

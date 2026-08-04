@@ -6,6 +6,7 @@ import {
   deactivateUsuario,
   getUsuarioById,
   listUsuarios,
+  resetPasswordUsuario,
   updateEstadoUsuario,
   updatePasswordUsuario,
   updateUsuario
@@ -41,6 +42,13 @@ export const updateEstadoUsuarioController = asyncHandler(
 export const updatePasswordUsuarioController = asyncHandler(
   async (req: Request, res: Response) => {
     const usuario = await updatePasswordUsuario(req.params.id, req.body);
+    res.json(serializeResponse(usuario));
+  }
+);
+
+export const resetPasswordUsuarioController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const usuario = await resetPasswordUsuario(req.params.id);
     res.json(serializeResponse(usuario));
   }
 );

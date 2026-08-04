@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
-import { requireRoles } from '../../middlewares/roles.middleware.js';
+import { forbidSuperAdminWrite, requireRoles } from '../../middlewares/roles.middleware.js';
 import { validateBody } from '../../middlewares/validate.middleware.js';
 import {
   createTipoCargaController,
@@ -25,12 +25,25 @@ tiposCargaRouter.use(authMiddleware);
 
 tiposCargaRouter.get('/', canRead, listTiposCargaController);
 tiposCargaRouter.get('/:id', canRead, getTipoCargaController);
-tiposCargaRouter.post('/', canWrite, validateBody(tipoCargaCreateSchema), createTipoCargaController);
-tiposCargaRouter.put('/:id', canWrite, validateBody(tipoCargaUpdateSchema), updateTipoCargaController);
+tiposCargaRouter.post(
+  '/',
+  canWrite,
+  forbidSuperAdminWrite,
+  validateBody(tipoCargaCreateSchema),
+  createTipoCargaController
+);
+tiposCargaRouter.put(
+  '/:id',
+  canWrite,
+  forbidSuperAdminWrite,
+  validateBody(tipoCargaUpdateSchema),
+  updateTipoCargaController
+);
 tiposCargaRouter.patch(
   '/:id/estado',
   canWrite,
+  forbidSuperAdminWrite,
   validateBody(tipoCargaEstadoSchema),
   updateEstadoTipoCargaController
 );
-tiposCargaRouter.delete('/:id', canWrite, deleteTipoCargaController);
+tiposCargaRouter.delete('/:id', canWrite, forbidSuperAdminWrite, deleteTipoCargaController);

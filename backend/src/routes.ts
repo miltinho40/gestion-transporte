@@ -1,13 +1,16 @@
 import { Router } from 'express';
 import { alertasRouter } from './modules/alertas/alertas.routes.js';
+import { asistenteRouter } from './modules/asistente/asistente.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { categoriasPeajeRouter } from './modules/categorias-peaje/categorias-peaje.routes.js';
 import { cierresSemanalesRouter } from './modules/cierres-semanales/cierres-semanales.routes.js';
 import { clientesRouter } from './modules/clientes/clientes.routes.js';
+import { configuracionesRouter } from './modules/configuraciones/configuraciones.routes.js';
 import { conductoresRouter } from './modules/conductores/conductores.routes.js';
 import { healthRouter } from './modules/health/health.routes.js';
 import { mantenimientosRouter } from './modules/mantenimientos/mantenimientos.routes.js';
 import { peajesRouter } from './modules/peajes/peajes.routes.js';
+import { proveedoresRouter } from './modules/proveedores/proveedores.routes.js';
 import { propietariosRouter } from './modules/propietarios/propietarios.routes.js';
 import { reportesRouter } from './modules/reportes/reportes.routes.js';
 import { reportesSemanalesRouter } from './modules/reportes-semanales/reportes-semanales.routes.js';
@@ -22,19 +25,23 @@ import { tiposMantenimientoRouter } from './modules/tipos-mantenimiento/tipos-ma
 import { usuariosRouter } from './modules/usuarios/usuarios.routes.js';
 import { usuariosPropietariosRouter } from './modules/usuarios-propietarios/usuarios-propietarios.routes.js';
 import { vehiculosRouter } from './modules/vehiculos/vehiculos.routes.js';
+import { viajesProveedorRouter } from './modules/viajes-proveedor/viajes-proveedor.routes.js';
 import { viajesRouter } from './modules/viajes/viajes.routes.js';
 
 export const apiRouter = Router();
 
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/alertas', alertasRouter);
+apiRouter.use('/asistente', asistenteRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/categorias-peaje', categoriasPeajeRouter);
 apiRouter.use('/cierres-semanales', cierresSemanalesRouter);
 apiRouter.use('/clientes', clientesRouter);
+apiRouter.use('/configuraciones', configuracionesRouter);
 apiRouter.use('/conductores', conductoresRouter);
 apiRouter.use('/mantenimientos', mantenimientosRouter);
 apiRouter.use('/peajes', peajesRouter);
+apiRouter.use('/proveedores', proveedoresRouter);
 apiRouter.use('/propietarios', propietariosRouter);
 apiRouter.use('/reportes', reportesRouter);
 apiRouter.use('/reportes-semanales', reportesSemanalesRouter);
@@ -49,4 +56,5 @@ apiRouter.use('/tipos-mantenimiento', tiposMantenimientoRouter);
 apiRouter.use('/usuarios', usuariosRouter);
 apiRouter.use('/usuarios-propietarios', usuariosPropietariosRouter);
 apiRouter.use('/vehiculos', vehiculosRouter);
+apiRouter.use('/viajes-proveedor', viajesProveedorRouter);
 apiRouter.use('/viajes', viajesRouter);

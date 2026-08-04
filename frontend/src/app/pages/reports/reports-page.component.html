@@ -1,100 +1,338 @@
 <div class="d-flex justify-content-between align-items-start gap-3 mb-4">
   <div>
-    <h1 class="h3 mb-1">Reportes</h1>
-    <p class="text-secondary mb-0">Exportación a Excel y PDF desde backend.</p>
+    <h1 class="h3 mb-1">Viajes</h1>
+    <p class="text-secondary mb-0">Registro, cobros, guias y utilidad de viajes.</p>
   </div>
+  <button
+    class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
+    type="button"
+    (click)="newTrip()"
+  >
+    <svg lucidePlus size="15"></svg>
+    Nuevo viaje
+  </button>
 </div>
 
 @if (error()) {
-  <div class="alert alert-danger">{{ error() }}</div>
+  <div class="alert alert-danger" autoDismissAlert>{{ error() }}</div>
 }
 
-<div class="row g-3">
-  <div class="col-xl-6">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-white d-flex align-items-center gap-2 fw-semibold">
-        <svg lucideFileSpreadsheet size="18"></svg>
-        Reportes semanales
-      </div>
-      <div class="card-body">
-        <form [formGroup]="weeklyForm" class="row g-3">
-          <div class="col-md-4">
-            <label class="form-label">Año</label>
-            <input class="form-control" type="number" formControlName="anio" />
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Semana</label>
-            <input class="form-control" type="number" min="1" max="53" formControlName="numero_semana" />
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Reporte</label>
-            <select class="form-select" formControlName="tipo">
-              <option value="viajes-conductor">Viajes por conductor</option>
-              <option value="viajes-vehiculo">Viajes por vehículo</option>
-              <option value="ingresos-egresos">Ingresos y egresos</option>
-            </select>
-          </div>
-        </form>
-      </div>
-      <div class="card-footer bg-white d-flex gap-2">
-        <button class="btn btn-outline-success d-inline-flex align-items-center gap-2" type="button" (click)="exportWeekly('xlsx')">
-          <svg lucideDownload size="17"></svg>
-          Excel
-        </button>
-        <button class="btn btn-outline-danger d-inline-flex align-items-center gap-2" type="button" (click)="exportWeekly('pdf')">
-          <svg lucideDownload size="17"></svg>
-          PDF
-        </button>
-      </div>
+@if (message()) {
+  <div class="alert alert-info" autoDismissAlert>{{ message() }}</div>
+}
+
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-white d-flex align-items-center justify-content-between gap-2">
+    <div class="d-flex align-items-center gap-2 fw-semibold">
+      <svg lucideFileSpreadsheet size="18"></svg>
+      Viajes
     </div>
+    <div class="d-flex gap-2">
+      <button
+        class="btn btn-outline-success btn-sm d-inline-flex align-items-center gap-2"
+        type="button"
+        (click)="exportTravel('xlsx')"
+        [disabled]="downloading() || loadingTravelReport()"
+      >
+        <svg lucideDownload size="16"></svg>
+        Excel
+      </button>
+      <button
+        class="btn btn-outline-danger btn-sm d-inline-flex align-items-center gap-2"
+        type="button"
+        (click)="exportTravel('pdf')"
+        [disabled]="downloading() || loadingTravelReport()"
+      >
+        <svg lucideDownload size="16"></svg>
+        PDF
+      </button>
+    </div>
+  </div>
+  <div class="card-body">
+    <form [formGroup]="travelForm">
+      <div class="mb-3">
+        <label class="form-label">Buscar</label>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text bg-white">
+            <svg lucideSearch size="14"></svg>
+          </span>
+          <input
+            class="form-control"
+            type="search"
+            placeholder="Buscar por cliente, placa, ruta, conductor o guía"
+            formControlName="search"
+          />
+        </div>
+      </div>
+
+      <div class="reports-travel-filters reports-travel-filters-annual">
+        <div class="reports-filter-year">
+          <label class="form-label">Año</label>
+          <input class="form-control form-control-sm" type="number" formControlName="anio" />
+        </div>
+
+        <app-multi-select-filter
+          label="Vehículos"
+          emptyLabel="Todos los vehículos"
+          selectedLabel="vehículo(s)"
+          searchPlaceholder="Buscar placa"
+          [options]="vehiculoFilterOptions()"
+          [selectedValues]="selectedVehicleIds()"
+          [disabled]="loadingCatalogs()"
+          (selectedValuesChange)="setSelectedVehicles($event)"
+        />
+
+        <app-multi-select-filter
+          label="Semanas"
+          emptyLabel="Todo el año"
+          selectedLabel="semana(s)"
+          searchPlaceholder="Buscar semana"
+          [options]="weekFilterOptions()"
+          [selectedValues]="selectedWeeks()"
+          (selectedValuesChange)="setSelectedWeeks($event)"
+        />
+
+        <app-multi-select-filter
+          label="Clientes"
+          emptyLabel="Todos los clientes"
+          selectedLabel="cliente(s)"
+          searchPlaceholder="Buscar cliente"
+          [options]="clienteFilterOptions()"
+          [selectedValues]="selectedClientIds()"
+          [disabled]="loadingCatalogs()"
+          (selectedValuesChange)="setSelectedClients($event)"
+        />
+
+        <div>
+          <label class="form-label">Cobro</label>
+          <select class="form-select form-select-sm" formControlName="cobrado">
+            <option value="">Todos</option>
+            <option value="true">Cobrados</option>
+            <option value="false">No cobrados</option>
+          </select>
+        </div>
+      </div>
+    </form>
   </div>
 
-  <div class="col-xl-6">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-white d-flex align-items-center gap-2 fw-semibold">
-        <svg lucideFileSpreadsheet size="18"></svg>
-        Mantenimientos
+  @if (travelReport(); as report) {
+    <div class="card-body border-top">
+      <div class="reports-summary-grid reports-travel-summary-grid mb-3">
+        <div class="reports-summary-card">
+          <span>Viajes</span>
+          <strong>{{ summary().viajes }}</strong>
+        </div>
+        <div class="reports-summary-card">
+          <span>Vehículos</span>
+          <strong>{{ summary().vehiculos }}</strong>
+        </div>
+        <div class="reports-summary-card">
+          <span>Clientes</span>
+          <strong>{{ summary().clientes }}</strong>
+        </div>
+        <div class="reports-summary-card reports-summary-green">
+          <span>Precio viaje</span>
+          <strong>$ {{ money(summary().precio_viaje) }}</strong>
+        </div>
+        <div class="reports-summary-card reports-summary-green">
+          <span>A FACTURAR</span>
+          <strong>$ {{ money(summary().valor_facturar) }}</strong>
+        </div>
+        <div class="reports-summary-card reports-summary-danger">
+          <span>Viáticos</span>
+          <strong>$ {{ money(summary().viaticos) }}</strong>
+        </div>
+        <div class="reports-summary-card reports-summary-info">
+          <span>Utilidad viajes</span>
+          <strong>$ {{ money(summary().utilidad_viajes) }}</strong>
+        </div>
       </div>
-      <div class="card-body">
-        <form [formGroup]="maintenanceForm" class="row g-3">
-          <div class="col-md-6">
-            <label class="form-label">Desde</label>
-            <input class="form-control" type="date" formControlName="fecha_desde" />
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">Hasta</label>
-            <input class="form-control" type="date" formControlName="fecha_hasta" />
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">Placa</label>
-            <input class="form-control" type="search" formControlName="placa" />
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">Palabra clave</label>
-            <input class="form-control" type="search" formControlName="palabra_clave" />
-          </div>
-          <div class="col-12">
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="por-vencer" formControlName="por_vencer" />
-              <label class="form-check-label" for="por-vencer">Solo vencidos o por vencer</label>
-            </div>
-          </div>
-        </form>
+
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+        <div class="small text-secondary">
+          Semanas incluidas: {{ report.semanas.length }}
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button
+            class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-2"
+            type="button"
+            (click)="markSelectedAsPaid()"
+            [disabled]="!hasSelected() || loadingTravelReport()"
+          >
+            <svg lucideCheck size="15"></svg>
+            Marcar cobrados ({{ selectedCount() }})
+          </button>
+          <button
+            class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
+            type="button"
+            (click)="copySelectedLegend()"
+            [disabled]="!hasSelected()"
+          >
+            <svg lucideCopy size="15"></svg>
+            Copiar leyenda
+          </button>
+        </div>
       </div>
-      <div class="card-footer bg-white d-flex gap-2">
-        <button class="btn btn-outline-success d-inline-flex align-items-center gap-2" type="button" (click)="exportMaintenance('xlsx')">
-          <svg lucideDownload size="17"></svg>
-          Excel
-        </button>
-        <button class="btn btn-outline-danger d-inline-flex align-items-center gap-2" type="button" (click)="exportMaintenance('pdf')">
-          <svg lucideDownload size="17"></svg>
-          PDF
-        </button>
+
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th class="reports-select-col">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  aria-label="Seleccionar todos los viajes"
+                  [checked]="allVisibleSelected()"
+                  (change)="toggleAllVisible($any($event.target).checked)"
+                />
+              </th>
+              <th>Semana</th>
+              <th>Fecha</th>
+              <th>Vehículo</th>
+              <th>Cliente</th>
+              <th>Ruta</th>
+              <th>Guías</th>
+              <th>Precio viaje</th>
+              <th>A FACTURAR</th>
+              <th>Viáticos</th>
+              <th>Utilidad viaje</th>
+              <th class="reports-actions-col"></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of paginatedTravelItems(); track row.id) {
+              <tr
+                [class.reports-row-week-green]="isWeekGreen(row)"
+                [class.reports-row-cobrado]="row.cobrado"
+              >
+                <td class="reports-select-col">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    aria-label="Seleccionar viaje"
+                    [checked]="isSelected(row)"
+                    (change)="toggleTripSelection(row, $any($event.target).checked)"
+                  />
+                </td>
+                <td>{{ row.semana_label }}</td>
+                <td>{{ dateOnly(row.fecha) }}</td>
+                <td>{{ row.vehiculo.placa }}</td>
+                <td>{{ row.cliente.nombre }}</td>
+                <td>{{ row.ruta.origen }} - {{ row.ruta.destino }}</td>
+                <td class="text-secondary small" [title]="row.numeros_guia_remision.join(', ')">
+                  {{ guiaPreview(row) }}
+                </td>
+                <td>$ {{ money(row.precio_viaje) }}</td>
+                <td>$ {{ money(row.valor_facturar) }}</td>
+                <td>$ {{ money(row.viaticos) }}</td>
+                <td class="fw-semibold">$ {{ money(row.utilidad) }}</td>
+                <td class="reports-actions-col">
+                  @if (!row.cobrado && guideEditTripId() === row.id) {
+                    <div class="reports-guide-inline">
+                      <input
+                        class="form-control form-control-sm"
+                        type="text"
+                        aria-label="Guías de remisión"
+                        placeholder="Guías"
+                        [ngModel]="guideInput()"
+                        (ngModelChange)="guideInput.set($event)"
+                        [ngModelOptions]="{ standalone: true }"
+                        (keydown.enter)="saveGuides(row)"
+                        (keydown.escape)="cancelGuideEdit()"
+                      />
+                      <button
+                        class="btn btn-outline-primary btn-sm weekly-activity-icon-btn"
+                        type="button"
+                        title="Guardar guías"
+                        aria-label="Guardar guías"
+                        (click)="saveGuides(row)"
+                      >
+                        <svg lucideCheck size="14"></svg>
+                      </button>
+                    </div>
+                  } @else {
+                    <div class="reports-row-actions">
+                      <button
+                        class="btn btn-outline-secondary btn-sm weekly-activity-icon-btn"
+                        type="button"
+                        title="Duplicar viaje"
+                        aria-label="Duplicar viaje"
+                        (click)="duplicateTrip(row)"
+                      >
+                        <svg lucideCopy size="14"></svg>
+                      </button>
+                      <button
+                        class="btn btn-outline-primary btn-sm weekly-activity-icon-btn"
+                        type="button"
+                        title="Editar viaje"
+                        aria-label="Editar viaje"
+                        (click)="editTrip(row)"
+                      >
+                        <svg lucidePencil size="14"></svg>
+                      </button>
+                      @if (row.cobrado) {
+                        <button
+                          class="btn btn-outline-warning btn-sm weekly-activity-icon-btn"
+                          type="button"
+                          title="Regresar a sin cobrar"
+                          aria-label="Regresar a sin cobrar"
+                          (click)="revertCobro(row)"
+                        >
+                          <svg lucideRotateCcw size="14"></svg>
+                        </button>
+                      }
+                      @if (!row.cobrado) {
+                        <button
+                          class="btn btn-outline-secondary btn-sm weekly-activity-icon-btn"
+                          type="button"
+                          title="Agregar guías"
+                          aria-label="Agregar guías"
+                          (click)="startGuideEdit(row)"
+                        >
+                          <svg lucidePlus size="14"></svg>
+                        </button>
+                      }
+                      <button
+                        class="btn btn-outline-danger btn-sm weekly-activity-icon-btn"
+                        type="button"
+                        title="Eliminar viaje"
+                        aria-label="Eliminar viaje"
+                        (click)="deleteTrip(row)"
+                      >
+                        <svg lucideTrash2 size="14"></svg>
+                      </button>
+                    </div>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="12" class="text-center text-secondary py-4">
+                  @if (loadingTravelReport()) {
+                    Cargando viajes...
+                  } @else {
+                    Sin viajes para los filtros seleccionados.
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
       </div>
+
+      <app-pagination-controls
+        [meta]="travelPagination()"
+        [loading]="loadingTravelReport()"
+        (pageChange)="changeTravelPage($event)"
+        (limitChange)="changeTravelLimit($event)"
+      />
     </div>
-  </div>
+  }
 </div>
 
 @if (downloading()) {
   <div class="text-secondary mt-3">Generando archivo...</div>
 }
+
+<app-viaje-editor-modal (saved)="onTripSaved()" />

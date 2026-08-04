@@ -1,8 +1,12 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
+import {
+  generateHashedTemporaryPassword
+} from '../../utils/default-password.js';
 import { parseBigIntId } from '../../utils/ids.js';
 import { createPasswordInvitation } from '../../utils/user-invitations.js';
+import { toPrismaEstadoSuscripcion } from './propietarios.mapper.js';
 import type {
   PropietarioCreateInput,
   PropietarioEstadoInput,
@@ -12,7 +16,17 @@ import type {
 interface ListPropietariosFilters {
   search?: unknown;
   activo?: unknown;
+  estado_suscripcion?: unknown;
 }
+
+const propietarioInclude = {
+  vehiculos: {
+    select: {
+      estado: true,
+      facturable: true
+    }
+  }
+} satisfies Prisma.PropietarioInclude;
 
 const buildWhere = (filters: ListPropietariosFilters): Prisma.PropietarioWhereInput => {
   const where: Prisma.PropietarioWhereInput = {};
@@ -33,12 +47,22 @@ const buildWhere = (filters: ListPropietariosFilters): Prisma.PropietarioWhereIn
     where.activo = false;
   }
 
+  if (
+    filters.estado_suscripcion === 'activa' ||
+    filters.estado_suscripcion === 'prueba' ||
+    filters.estado_suscripcion === 'suspendida' ||
+    filters.estado_suscripcion === 'cancelada'
+  ) {
+    where.estado_suscripcion = toPrismaEstadoSuscripcion(filters.estado_suscripcion);
+  }
+
   return where;
 };
 
 export const listPropietarios = async (filters: ListPropietariosFilters) => {
   return prisma.propietario.findMany({
     where: buildWhere(filters),
+    include: propietarioInclude,
     orderBy: [{ activo: 'desc' }, { nombre: 'asc' }]
   });
 };
@@ -47,7 +71,8 @@ export const getPropietarioById = async (idInput: unknown) => {
   const id = parseBigIntId(idInput);
 
   const propietario = await prisma.propietario.findUnique({
-    where: { id }
+    where: { id },
+    include: propietarioInclude
   });
 
   if (!propietario) {
@@ -62,8 +87,18 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
   const result = await prisma.$transaction(async (tx) => {
     const propietario = await tx.propietario.create({
       data: {
-        ...propietarioInput,
-        activo: propietarioInput.activo ?? true
+        nombre: propietarioInput.nombre,
+        ruc_cedula: propietarioInput.ruc_cedula,
+        contacto_nombre: propietarioInput.contacto_nombre,
+        telefono: propietarioInput.telefono,
+        email: propietarioInput.email,
+        direccion: propietarioInput.direccion,
+        activo: propietarioInput.activo ?? true,
+        estado_suscripcion: toPrismaEstadoSuscripcion(propietarioInput.estado_suscripcion),
+        limite_vehiculos: propietarioInput.limite_vehiculos ?? 0,
+        precio_por_vehiculo: propietarioInput.precio_por_vehiculo ?? 0,
+        fecha_corte_facturacion: propietarioInput.fecha_corte_facturacion ?? 1,
+        observaciones_facturacion: propietarioInput.observaciones_facturacion
       }
     });
 
@@ -87,6 +122,11 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
     const usuarioExistente = await tx.usuario.findUnique({
       where: { email: admin.email }
     });
+    const debeAsignarClaveTemporal = !usuarioExistente?.password_hash;
+    const temporaryPassword = debeAsignarClaveTemporal
+      ? await generateHashedTemporaryPassword()
+      : null;
+    const passwordHashTemporal = temporaryPassword?.hash;
     const usuario = usuarioExistente
       ? await tx.usuario.update({
           where: { id: usuarioExistente.id },
@@ -97,7 +137,8 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
               : usuarioExistente.fecha_nacimiento,
             email_verificado: usuarioExistente.password_hash
               ? usuarioExistente.email_verificado
-              : false,
+              : true,
+            password_hash: passwordHashTemporal,
             requiere_password: usuarioExistente.password_hash
               ? usuarioExistente.requiere_password
               : true,
@@ -108,12 +149,12 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
           data: {
             nombre: admin.nombre,
             email: admin.email,
-            password_hash: null,
+            password_hash: passwordHashTemporal,
             fecha_nacimiento: admin.fecha_nacimiento
               ? new Date(`${admin.fecha_nacimiento}T00:00:00.000Z`)
               : null,
             es_super_admin: false,
-            email_verificado: false,
+            email_verificado: true,
             requiere_password: true,
             activo: true
           }
@@ -146,7 +187,8 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
         email: usuario.email
       },
       admin_usuario_id: usuario.id,
-      debe_enviar_invitacion: !usuario.password_hash
+      debe_enviar_invitacion: false,
+      clave_temporal: temporaryPassword?.password ?? null
     };
   });
 
@@ -154,7 +196,8 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
     return {
       propietario: result.propietario,
       admin_usuario: result.admin_usuario,
-      invitacion: null
+      invitacion: null,
+      clave_temporal: result.clave_temporal
     };
   }
 
@@ -169,7 +212,8 @@ export const createPropietario = async (input: PropietarioCreateInput) => {
   return {
     propietario: result.propietario,
     admin_usuario: result.admin_usuario,
-    invitacion
+    invitacion,
+    clave_temporal: result.clave_temporal
   };
 };
 
@@ -179,7 +223,23 @@ export const updatePropietario = async (idInput: unknown, input: PropietarioUpda
 
   return prisma.propietario.update({
     where: { id },
-    data: input
+    data: {
+      nombre: input.nombre,
+      ruc_cedula: input.ruc_cedula,
+      contacto_nombre: Object.hasOwn(input, 'contacto_nombre') ? input.contacto_nombre : undefined,
+      telefono: Object.hasOwn(input, 'telefono') ? input.telefono : undefined,
+      email: Object.hasOwn(input, 'email') ? input.email : undefined,
+      direccion: Object.hasOwn(input, 'direccion') ? input.direccion : undefined,
+      activo: input.activo,
+      estado_suscripcion: toPrismaEstadoSuscripcion(input.estado_suscripcion),
+      limite_vehiculos: input.limite_vehiculos,
+      precio_por_vehiculo: input.precio_por_vehiculo,
+      fecha_corte_facturacion: input.fecha_corte_facturacion,
+      observaciones_facturacion: Object.hasOwn(input, 'observaciones_facturacion')
+        ? input.observaciones_facturacion
+        : undefined
+    },
+    include: propietarioInclude
   });
 };
 
@@ -192,7 +252,8 @@ export const updateEstadoPropietario = async (
 
   return prisma.propietario.update({
     where: { id },
-    data: { activo: input.activo }
+    data: { activo: input.activo },
+    include: propietarioInclude
   });
 };
 
@@ -202,6 +263,7 @@ export const deactivatePropietario = async (idInput: unknown) => {
 
   return prisma.propietario.update({
     where: { id },
-    data: { activo: false }
+    data: { activo: false },
+    include: propietarioInclude
   });
 };

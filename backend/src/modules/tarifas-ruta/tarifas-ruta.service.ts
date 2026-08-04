@@ -1,7 +1,12 @@
 import { Prisma } from '@prisma/client';
+import type { JwtPayload } from '../../config/jwt.js';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
+import type { AuditContext } from '../../utils/audit.js';
+import { recordAuditEvent } from '../../utils/audit.js';
 import { parseBigIntId } from '../../utils/ids.js';
+import { resolveReadScopeWithOwnOverride } from '../../utils/ownership-scope.js';
+import { buildPaginatedResult, parsePagination } from '../../utils/pagination.js';
 import type {
   TarifaRutaCreateInput,
   TarifaRutaEstadoInput,
@@ -9,14 +14,22 @@ import type {
 } from './tarifas-ruta.schema.js';
 
 interface ListFilters {
+  search?: unknown;
   ruta_id?: unknown;
   tipo_carga_id?: unknown;
   activa?: unknown;
+  solo_propios?: unknown;
 }
 
 const includeRelations = {
   ruta: true,
-  tipo_carga: true
+  tipo_carga: true,
+  propietario: {
+    select: {
+      id: true,
+      nombre: true
+    }
+  }
 } satisfies Prisma.TarifaRutaInclude;
 
 const toDateOnly = (value?: string | null) => {
@@ -30,12 +43,18 @@ const todayDateOnly = () => {
 };
 
 const buildWhere = (
-  propietarioId: bigint,
+  scopeInput: JwtPayload | unknown,
   filters: ListFilters
 ): Prisma.TarifaRutaWhereInput => {
-  const where: Prisma.TarifaRutaWhereInput = {
-    propietario_id: propietarioId
-  };
+  const scope = resolveReadScopeWithOwnOverride(
+    scopeInput,
+    filters.solo_propios === 'true' || filters.solo_propios === true
+  );
+  const where: Prisma.TarifaRutaWhereInput = scope.all
+    ? {}
+    : {
+        propietario_id: scope.propietarioId
+      };
 
   if (filters.ruta_id) {
     where.ruta_id = parseBigIntId(filters.ruta_id, 'ruta_id');
@@ -43,6 +62,16 @@ const buildWhere = (
 
   if (filters.tipo_carga_id) {
     where.tipo_carga_id = parseBigIntId(filters.tipo_carga_id, 'tipo_carga_id');
+  }
+
+  if (typeof filters.search === 'string' && filters.search.trim()) {
+    const search = filters.search.trim();
+    where.OR = [
+      { ruta: { origen: { contains: search, mode: 'insensitive' } } },
+      { ruta: { destino: { contains: search, mode: 'insensitive' } } },
+      { tipo_carga: { nombre: { contains: search, mode: 'insensitive' } } },
+      { capacidad: { contains: search, mode: 'insensitive' } }
+    ];
   }
 
   if (filters.activa === 'true') where.activa = true;
@@ -83,7 +112,7 @@ const ensureTarifaRutaAvailable = async (
   propietarioId: bigint,
   rutaId: bigint,
   tipoCargaId: bigint,
-  capacidad: number | null,
+  capacidad: string | null,
   toneladas: Prisma.Decimal | number | null,
   vigenteDesde: Date,
   excludeId?: bigint
@@ -108,34 +137,51 @@ const ensureTarifaRutaAvailable = async (
 };
 
 export const listTarifasRuta = async (
-  propietarioIdInput: unknown,
+  scopeInput: JwtPayload | unknown,
   filters: ListFilters
 ) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const where = buildWhere(scopeInput, filters);
+  const orderBy = [
+    { activa: 'desc' },
+    { ruta_id: 'asc' },
+    { tipo_carga_id: 'asc' },
+    { vigente_desde: 'desc' }
+  ] satisfies Prisma.TarifaRutaOrderByWithRelationInput[];
+  const pagination = parsePagination(filters as Record<string, unknown>);
 
-  return prisma.tarifaRuta.findMany({
-    where: buildWhere(propietarioId, filters),
-    include: includeRelations,
-    orderBy: [
-      { activa: 'desc' },
-      { ruta_id: 'asc' },
-      { tipo_carga_id: 'asc' },
-      { vigente_desde: 'desc' }
-    ]
-  });
+  if (!pagination) {
+    return prisma.tarifaRuta.findMany({
+      where,
+      include: includeRelations,
+      orderBy
+    });
+  }
+
+  const [data, total] = await prisma.$transaction([
+    prisma.tarifaRuta.findMany({
+      where,
+      include: includeRelations,
+      orderBy,
+      skip: pagination.skip,
+      take: pagination.limit
+    }),
+    prisma.tarifaRuta.count({ where })
+  ]);
+
+  return buildPaginatedResult(data, total, pagination);
 };
 
 export const getTarifaRutaById = async (
-  propietarioIdInput: unknown,
+  scopeInput: JwtPayload | unknown,
   idInput: unknown
 ) => {
-  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const scope = resolveReadScopeWithOwnOverride(scopeInput, false);
   const id = parseBigIntId(idInput);
 
   const tarifa = await prisma.tarifaRuta.findFirst({
     where: {
       id,
-      propietario_id: propietarioId
+      ...(scope.all ? {} : { propietario_id: scope.propietarioId })
     },
     include: includeRelations
   });
@@ -149,7 +195,8 @@ export const getTarifaRutaById = async (
 
 export const createTarifaRuta = async (
   propietarioIdInput: unknown,
-  input: TarifaRutaCreateInput
+  input: TarifaRutaCreateInput,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const rutaId = parseBigIntId(input.ruta_id, 'ruta_id');
@@ -174,7 +221,7 @@ export const createTarifaRuta = async (
     vigenteDesde
   );
 
-  return prisma.tarifaRuta.create({
+  const tarifa = await prisma.tarifaRuta.create({
     data: {
       propietario_id: propietarioId,
       ruta_id: rutaId,
@@ -188,12 +235,25 @@ export const createTarifaRuta = async (
     },
     include: includeRelations
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'tarifa_ruta',
+    entidadId: tarifa.id,
+    accion: 'crear',
+    resumen: `Tarifa creada ${tarifa.ruta.origen} - ${tarifa.ruta.destino}`,
+    despues: tarifa
+  });
+
+  return tarifa;
 };
 
 export const updateTarifaRuta = async (
   propietarioIdInput: unknown,
   idInput: unknown,
-  input: TarifaRutaUpdateInput
+  input: TarifaRutaUpdateInput,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
@@ -233,7 +293,7 @@ export const updateTarifaRuta = async (
     id
   );
 
-  return prisma.tarifaRuta.update({
+  const tarifa = await prisma.tarifaRuta.update({
     where: { id },
     data: {
       ruta_id: input.ruta_id ? rutaId : undefined,
@@ -247,37 +307,116 @@ export const updateTarifaRuta = async (
     },
     include: includeRelations
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'tarifa_ruta',
+    entidadId: tarifa.id,
+    accion: 'actualizar',
+    resumen: `Tarifa actualizada ${tarifa.ruta.origen} - ${tarifa.ruta.destino}`,
+    antes: current,
+    despues: tarifa
+  });
+
+  return tarifa;
 };
 
 export const updateEstadoTarifaRuta = async (
   propietarioIdInput: unknown,
   idInput: unknown,
-  input: TarifaRutaEstadoInput
+  input: TarifaRutaEstadoInput,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getTarifaRutaById(propietarioId, id);
+  const current = await getTarifaRutaById(propietarioId, id);
 
-  return prisma.tarifaRuta.update({
+  const tarifa = await prisma.tarifaRuta.update({
     where: { id },
     data: { activa: input.activa },
     include: includeRelations
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'tarifa_ruta',
+    entidadId: tarifa.id,
+    accion: input.activa ? 'activar' : 'desactivar',
+    resumen: input.activa ? 'Tarifa activada' : 'Tarifa desactivada',
+    antes: { activa: current.activa },
+    despues: { activa: tarifa.activa }
+  });
+
+  return tarifa;
 };
 
 export const deactivateTarifaRuta = async (
   propietarioIdInput: unknown,
-  idInput: unknown
+  idInput: unknown,
+  audit?: AuditContext
 ) => {
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getTarifaRutaById(propietarioId, id);
+  const current = await getTarifaRutaById(propietarioId, id);
 
-  return prisma.tarifaRuta.update({
-    where: { id },
-    data: { activa: false },
-    include: includeRelations
+  if (current.activa) {
+    const tarifa = await prisma.tarifaRuta.update({
+      where: { id },
+      data: { activa: false },
+      include: includeRelations
+    });
+
+    await recordAuditEvent({
+      ...audit,
+      propietarioId: propietarioIdInput,
+      entidad: 'tarifa_ruta',
+      entidadId: tarifa.id,
+      accion: 'desactivar',
+      resumen: `Tarifa desactivada ${tarifa.ruta.origen} - ${tarifa.ruta.destino}`,
+      antes: { activa: current.activa },
+      despues: { activa: tarifa.activa }
+    });
+
+    return tarifa;
+  }
+
+  const [viajes, viajesProveedor] = await Promise.all([
+    prisma.viaje.count({
+      where: {
+        propietario_id: propietarioId,
+        tarifa_ruta_id: id
+      }
+    }),
+    prisma.viajeProveedor.count({
+      where: {
+        propietario_id: propietarioId,
+        tarifa_ruta_id: id
+      }
+    })
+  ]);
+
+  if (viajes > 0 || viajesProveedor > 0) {
+    throw new AppError('La tarifa ruta ya esta usada en algunos viajes', 409);
+  }
+
+  await prisma.tarifaRuta.delete({
+    where: { id }
   });
+
+  await recordAuditEvent({
+    ...audit,
+    propietarioId: propietarioIdInput,
+    entidad: 'tarifa_ruta',
+    entidadId: current.id,
+    accion: 'eliminar',
+    resumen: `Tarifa eliminada ${current.ruta.origen} - ${current.ruta.destino}`,
+    antes: current,
+    despues: null
+  });
+
+  return current;
 };

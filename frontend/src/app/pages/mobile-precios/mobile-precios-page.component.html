@@ -1,0 +1,106 @@
+<section class="mobile-precios">
+  <header class="mobile-page-heading">
+    <div>
+      <h1>Precios</h1>
+      <p>{{ filteredRows().length }} registros</p>
+    </div>
+    <a class="btn btn-primary add-button" routerLink="/movil/precios/nuevo" aria-label="Nuevo precio">
+      <svg lucidePlus size="20"></svg>
+    </a>
+  </header>
+
+  @if (message()) {
+    <div class="alert alert-success py-2" [appAutoDismissAlert]="message()">{{ message() }}</div>
+  }
+
+  @if (error()) {
+    <div class="alert alert-danger py-2" [appAutoDismissAlert]="error()">{{ error() }}</div>
+  }
+
+  <div class="mobile-filter-card">
+    <div class="search-box">
+      <svg lucideSearch size="17"></svg>
+      <input
+        type="search"
+        placeholder="Buscar ruta, carga, capacidad..."
+        [ngModel]="search()"
+        (ngModelChange)="setSearch($event)"
+      />
+    </div>
+
+    <div class="filter-row">
+      <select class="form-select form-select-sm" [ngModel]="activa()" (ngModelChange)="setActiva($event)">
+        <option value="">Todas</option>
+        <option value="true">Activas</option>
+        <option value="false">Inactivas</option>
+      </select>
+
+      <button type="button" class="btn btn-outline-secondary btn-sm refresh-button" (click)="load()">
+        <svg lucideRefreshCw size="15"></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="precios-list">
+    @for (row of filteredRows(); track row.id) {
+      <article class="precio-card" [class.inactive]="!row.activa">
+        <div class="card-top">
+          <div>
+            <span class="state-pill">{{ row.activa ? 'Activa' : 'Inactiva' }}</span>
+            <h2>{{ rutaLabel(row) }}</h2>
+            <p>{{ row.tipo_carga.nombre }}</p>
+          </div>
+          <strong class="price">$ {{ money(row.precio) }}</strong>
+        </div>
+
+        <div class="info-grid">
+          <div>
+            <span>Capacidad</span>
+            <strong>{{ row.capacidad || '-' }}</strong>
+          </div>
+          <div>
+            <span>Toneladas</span>
+            <strong>{{ row.toneladas ?? '-' }}</strong>
+          </div>
+        </div>
+
+        <div class="card-actions">
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm icon-action"
+            (click)="duplicate(row)"
+            title="Duplicar"
+            aria-label="Duplicar"
+          >
+            <svg lucideCopy size="16"></svg>
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline-primary btn-sm icon-action"
+            (click)="edit(row)"
+            title="Editar"
+            aria-label="Editar"
+          >
+            <svg lucidePencil size="16"></svg>
+          </button>
+        </div>
+      </article>
+    } @empty {
+      <div class="empty-state">
+        @if (loading()) {
+          Cargando precios...
+        } @else {
+          No hay precios para mostrar.
+        }
+      </div>
+    }
+  </div>
+
+  <app-pagination-controls
+    [meta]="pagination()"
+    [loading]="loading()"
+    [pageSizeOptions]="[10, 25, 50]"
+    (pageChange)="changePage($event)"
+    (limitChange)="changeLimit($event)"
+  />
+</section>

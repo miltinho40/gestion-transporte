@@ -11,6 +11,8 @@ import {
 } from '@lucide/angular';
 import { Subscription, forkJoin } from 'rxjs';
 import { ApiService } from '../../core/api.service';
+import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
+import { DialogService } from '../../shared/dialog.service';
 
 interface CategoriaPeajeOption {
   id: string;
@@ -65,12 +67,14 @@ const todayInputDate = () => toDateInputValue(new Date());
     LucideSave,
     LucideSearch,
     LucideTrash2,
-    LucideX
+    LucideX,
+    AutoDismissAlertDirective
   ],
   templateUrl: './peajes-page.component.html'
 })
 export class PeajesPageComponent implements OnDestroy {
   private readonly api = inject(ApiService);
+  private readonly dialog = inject(DialogService);
   private readonly fb = inject(FormBuilder);
   private readonly sub = new Subscription();
 
@@ -330,8 +334,14 @@ export class PeajesPageComponent implements OnDestroy {
     );
   }
 
-  delete(row: PeajeRow) {
-    if (!confirm(`Eliminar o desactivar ${row.nombre}?`)) return;
+  async delete(row: PeajeRow) {
+    const confirmed = await this.dialog.confirm({
+      title: 'Eliminar o desactivar peaje',
+      text: `Se va a eliminar o desactivar ${row.nombre}.`,
+      confirmText: 'Sí, continuar'
+    });
+
+    if (!confirmed) return;
 
     this.deletingId.set(row.id);
     this.error.set(null);
