@@ -43,7 +43,7 @@ export class LoginPageComponent {
       next: (response) => {
         this.loading.set(false);
 
-        if (response.contexto) {
+        if (response.contexto || response.usuario.es_super_admin) {
           if (response.usuario.requiere_password) {
             void this.router.navigate(['/app/cambiar-clave'], {
               queryParams: {
