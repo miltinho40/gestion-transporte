@@ -28,6 +28,17 @@ const response: LoginResponse = {
   propietarios: []
 };
 
+const superAdminResponse: LoginResponse = {
+  ...response,
+  usuario: {
+    ...response.usuario,
+    id: '1',
+    email: 'admin@local.test',
+    es_super_admin: true
+  },
+  contexto: null
+};
+
 describe('AuthService', () => {
   let service: AuthService;
   let http: HttpTestingController;
@@ -66,5 +77,14 @@ describe('AuthService', () => {
 
     expect(service.isAuthenticated()).toBeTrue();
     expect(service.contexto()?.propietario_id).toBe('20');
+  });
+
+  it('mantiene autenticado al superadmin sin propietario activo', () => {
+    service.login('admin@local.test', 'admin123456').subscribe();
+    http.expectOne((request) => request.url.endsWith('/auth/login')).flush(superAdminResponse);
+
+    expect(service.isAuthenticated()).toBeTrue();
+    expect(service.isSuperAdmin()).toBeTrue();
+    expect(service.contexto()).toBeNull();
   });
 });

@@ -38,7 +38,10 @@ export class AuthService {
   readonly usuario = computed(() => this.state().usuario);
   readonly contexto = computed(() => this.state().contexto);
   readonly propietarios = computed(() => this.state().propietarios);
-  readonly isAuthenticated = computed(() => Boolean(this.state().token && this.state().contexto));
+  readonly isAuthenticated = computed(() => {
+    const session = this.state();
+    return Boolean(session.token && (session.contexto || session.usuario?.es_super_admin));
+  });
   readonly isSuperAdmin = computed(() => Boolean(this.state().usuario?.es_super_admin));
   readonly requiresPasswordChange = computed(() => Boolean(this.state().usuario?.requiere_password));
   readonly hasOwnFleet = computed(
@@ -57,7 +60,7 @@ export class AuthService {
       })
       .pipe(
         tap((response) => {
-          if (response.contexto) {
+          if (response.contexto || response.usuario.es_super_admin) {
             this.setSession(response);
           }
         })
@@ -115,7 +118,7 @@ export class AuthService {
       .post<LoginResponse>(`${API_BASE_URL}/auth/refresh`, {})
       .pipe(
         tap((response) => {
-          if (!response.contexto) {
+          if (!response.contexto && !response.usuario.es_super_admin) {
             throw new Error('La sesión no tiene un propietario activo');
           }
           this.setSession(response);
@@ -148,7 +151,7 @@ export class AuthService {
 
     try {
       const parsed = JSON.parse(raw) as SessionState;
-      return parsed.contexto
+      return parsed.contexto || parsed.usuario?.es_super_admin
         ? {
             token: null,
             usuario: parsed.usuario,
