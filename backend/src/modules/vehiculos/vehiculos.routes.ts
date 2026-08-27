@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
 import {
-  forbidSuperAdminWrite,
   requirePropietarioContextOrSuperAdmin,
   requirePropietarioOperativo,
   requireRoles
@@ -36,7 +35,6 @@ vehiculosRouter.get('/', canReadVehiculos, listVehiculosController);
 vehiculosRouter.post(
   '/',
   canWriteVehiculos,
-  forbidSuperAdminWrite,
   validateBody(vehiculoCreateSchema),
   createVehiculoController
 );
@@ -44,15 +42,13 @@ vehiculosRouter.get('/:id', canReadVehiculos, getVehiculoController);
 vehiculosRouter.put(
   '/:id',
   canWriteVehiculos,
-  forbidSuperAdminWrite,
   validateBody(vehiculoUpdateSchema),
   updateVehiculoController
 );
 vehiculosRouter.patch(
   '/:id/estado',
   canWriteVehiculos,
-  forbidSuperAdminWrite,
   validateBody(vehiculoEstadoSchema),
   updateEstadoVehiculoController
 );
-vehiculosRouter.delete('/:id', canWriteVehiculos, forbidSuperAdminWrite, deleteVehiculoController);
+vehiculosRouter.delete('/:id', canWriteVehiculos, deleteVehiculoController);

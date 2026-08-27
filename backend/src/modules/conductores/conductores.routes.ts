@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
 import {
-  forbidSuperAdminWrite,
   requirePropietarioContextOrSuperAdmin,
   requirePropietarioOperativo,
   requireRoles
@@ -36,7 +35,6 @@ conductoresRouter.get('/', canReadConductores, listConductoresController);
 conductoresRouter.post(
   '/',
   canWriteConductores,
-  forbidSuperAdminWrite,
   validateBody(conductorCreateSchema),
   createConductorController
 );
@@ -44,15 +42,13 @@ conductoresRouter.get('/:id', canReadConductores, getConductorController);
 conductoresRouter.put(
   '/:id',
   canWriteConductores,
-  forbidSuperAdminWrite,
   validateBody(conductorUpdateSchema),
   updateConductorController
 );
 conductoresRouter.patch(
   '/:id/estado',
   canWriteConductores,
-  forbidSuperAdminWrite,
   validateBody(conductorEstadoSchema),
   updateEstadoConductorController
 );
-conductoresRouter.delete('/:id', canWriteConductores, forbidSuperAdminWrite, deleteConductorController);
+conductoresRouter.delete('/:id', canWriteConductores, deleteConductorController);

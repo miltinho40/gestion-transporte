@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
 import {
-  forbidSuperAdminWrite,
   requirePropietarioContextOrSuperAdmin,
   requireRoles
 } from '../../middlewares/roles.middleware.js';
@@ -27,7 +26,6 @@ clientesRouter.get('/', canReadClientes, listClientesController);
 clientesRouter.post(
   '/',
   canWriteClientes,
-  forbidSuperAdminWrite,
   validateBody(clienteCreateSchema),
   createClienteController
 );
@@ -35,15 +33,13 @@ clientesRouter.get('/:id', canReadClientes, getClienteController);
 clientesRouter.put(
   '/:id',
   canWriteClientes,
-  forbidSuperAdminWrite,
   validateBody(clienteUpdateSchema),
   updateClienteController
 );
 clientesRouter.patch(
   '/:id/estado',
   canWriteClientes,
-  forbidSuperAdminWrite,
   validateBody(clienteEstadoSchema),
   updateEstadoClienteController
 );
-clientesRouter.delete('/:id', canWriteClientes, forbidSuperAdminWrite, deleteClienteController);
+clientesRouter.delete('/:id', canWriteClientes, deleteClienteController);

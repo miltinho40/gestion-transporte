@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
 import {
-  forbidSuperAdminWrite,
   requirePropietarioContextOrSuperAdmin,
   requireRoles
 } from '../../middlewares/roles.middleware.js';
@@ -31,7 +30,6 @@ tarifasRutaRouter.get('/', canRead, listTarifasRutaController);
 tarifasRutaRouter.post(
   '/',
   canWrite,
-  forbidSuperAdminWrite,
   validateBody(tarifaRutaCreateSchema),
   createTarifaRutaController
 );
@@ -39,15 +37,13 @@ tarifasRutaRouter.get('/:id', canRead, getTarifaRutaController);
 tarifasRutaRouter.put(
   '/:id',
   canWrite,
-  forbidSuperAdminWrite,
   validateBody(tarifaRutaUpdateSchema),
   updateTarifaRutaController
 );
 tarifasRutaRouter.patch(
   '/:id/estado',
   canWrite,
-  forbidSuperAdminWrite,
   validateBody(tarifaRutaEstadoSchema),
   updateEstadoTarifaRutaController
 );
-tarifasRutaRouter.delete('/:id', canWrite, forbidSuperAdminWrite, deleteTarifaRutaController);
+tarifasRutaRouter.delete('/:id', canWrite, deleteTarifaRutaController);

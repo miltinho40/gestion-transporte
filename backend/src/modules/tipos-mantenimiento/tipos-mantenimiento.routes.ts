@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
-import { forbidSuperAdminWrite, requireRoles } from '../../middlewares/roles.middleware.js';
+import { requireRoles } from '../../middlewares/roles.middleware.js';
 import { validateBody } from '../../middlewares/validate.middleware.js';
 import {
   createTipoMantenimientoController,
@@ -27,7 +27,6 @@ tiposMantenimientoRouter.get('/', canRead, listTiposMantenimientoController);
 tiposMantenimientoRouter.post(
   '/',
   canWrite,
-  forbidSuperAdminWrite,
   validateBody(tipoMantenimientoCreateSchema),
   createTipoMantenimientoController
 );
@@ -35,20 +34,17 @@ tiposMantenimientoRouter.get('/:id', canRead, getTipoMantenimientoController);
 tiposMantenimientoRouter.put(
   '/:id',
   canWrite,
-  forbidSuperAdminWrite,
   validateBody(tipoMantenimientoUpdateSchema),
   updateTipoMantenimientoController
 );
 tiposMantenimientoRouter.patch(
   '/:id/estado',
   canWrite,
-  forbidSuperAdminWrite,
   validateBody(tipoMantenimientoEstadoSchema),
   updateEstadoTipoMantenimientoController
 );
 tiposMantenimientoRouter.delete(
   '/:id',
   canWrite,
-  forbidSuperAdminWrite,
   deleteTipoMantenimientoController
 );

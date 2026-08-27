@@ -30,14 +30,6 @@ export const requirePropietarioContextOrSuperAdmin = (
   throw new AppError('Debes seleccionar un propietario para esta accion', 400);
 };
 
-export const forbidSuperAdminWrite = (req: Request, _res: Response, next: NextFunction) => {
-  if (req.user?.es_super_admin) {
-    throw new AppError('El superadmin solo puede consultar este modulo', 403);
-  }
-
-  next();
-};
-
 export const requireRoles = (...roles: string[]) => {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (req.user?.es_super_admin) {
