@@ -6,6 +6,7 @@ import {
   LucideCheck,
   LucideCopy,
   LucideDownload,
+  LucideEye,
   LucideFileSpreadsheet,
   LucidePencil,
   LucidePlus,
@@ -25,6 +26,11 @@ import {
 } from '../../shared/multi-select-filter.component';
 import { PaginationControlsComponent } from '../../shared/pagination-controls.component';
 import { ViajeEditorModalComponent } from '../viajes/viaje-editor-modal.component';
+import {
+  ViajeDetailPanelComponent,
+  type ViajeDetail,
+  type ViajeDetailExpense
+} from './viaje-detail-panel.component';
 
 type ExportFormat = 'xlsx' | 'pdf';
 
@@ -98,6 +104,11 @@ interface ReporteViajeItem {
   estado: string;
 }
 
+interface ViajeDetailCacheEntry {
+  viaje: ViajeDetail;
+  gastos: ViajeDetailExpense[];
+}
+
 const weekOptions = Array.from({ length: 53 }, (_, index) => index + 1);
 
 @Component({
@@ -108,6 +119,7 @@ const weekOptions = Array.from({ length: 53 }, (_, index) => index + 1);
     LucideCheck,
     LucideCopy,
     LucideDownload,
+    LucideEye,
     LucideFileSpreadsheet,
     LucidePencil,
     LucidePlus,
@@ -117,6 +129,7 @@ const weekOptions = Array.from({ length: 53 }, (_, index) => index + 1);
     AutoDismissAlertDirective,
     MultiSelectFilterComponent,
     PaginationControlsComponent,
+    ViajeDetailPanelComponent,
     ViajeEditorModalComponent
   ],
   templateUrl: './reports-page.component.html'
@@ -145,8 +158,18 @@ export class ReportsPageComponent {
   readonly travelLimit = signal(50);
   readonly guideEditTripId = signal<string | null>(null);
   readonly guideInput = signal('');
+  readonly detailOpen = signal(false);
+  readonly detailRowId = signal<string | null>(null);
+  readonly detailViaje = signal<ViajeDetail | null>(null);
+  readonly detailGastos = signal<ViajeDetailExpense[]>([]);
+  readonly detailLoading = signal(false);
+  readonly detailError = signal<string | null>(null);
   readonly weekOptions = weekOptions;
   private autoLoadTimer: ReturnType<typeof setTimeout> | null = null;
+  private detailHoverTimer: ReturnType<typeof setTimeout> | null = null;
+  private detailHoverTripId: string | null = null;
+  private detailRequestSequence = 0;
+  private readonly detailCache = new Map<string, ViajeDetailCacheEntry>();
   private syncingFiltersFromUrl = false;
 
   readonly travelForm = this.fb.nonNullable.group({
@@ -241,6 +264,7 @@ export class ReportsPageComponent {
       if (this.autoLoadTimer) {
         clearTimeout(this.autoLoadTimer);
       }
+      this.cancelTripDetailPreview();
     });
   }
 
@@ -369,6 +393,98 @@ export class ReportsPageComponent {
     return row.numero_semana % 2 === 0;
   }
 
+  scheduleTripDetailPreview(row: ReporteViajeItem, event: PointerEvent) {
+    if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest('.reports-select-col, .reports-actions-col, button, input, a')
+    ) {
+      this.cancelTripDetailPreview();
+      return;
+    }
+
+    if (this.detailOpen() || (this.detailHoverTimer && this.detailHoverTripId === row.id)) {
+      return;
+    }
+
+    this.cancelTripDetailPreview();
+    this.detailHoverTripId = row.id;
+    this.detailHoverTimer = setTimeout(() => {
+      this.detailHoverTimer = null;
+      this.detailHoverTripId = null;
+      this.openTripDetail(row);
+    }, 2000);
+  }
+
+  cancelTripDetailPreview() {
+    if (this.detailHoverTimer) {
+      clearTimeout(this.detailHoverTimer);
+    }
+    this.detailHoverTimer = null;
+    this.detailHoverTripId = null;
+  }
+
+  openTripDetail(row: ReporteViajeItem) {
+    this.cancelTripDetailPreview();
+    this.detailOpen.set(true);
+    this.detailRowId.set(row.id);
+    this.detailError.set(null);
+
+    const cached = this.detailCache.get(row.id);
+    if (cached) {
+      this.detailViaje.set(cached.viaje);
+      this.detailGastos.set(cached.gastos);
+      this.detailLoading.set(false);
+      return;
+    }
+
+    this.detailViaje.set(null);
+    this.detailGastos.set([]);
+    this.detailLoading.set(true);
+    const requestSequence = ++this.detailRequestSequence;
+
+    forkJoin({
+      viaje: this.api.get<ViajeDetail>(`/viajes/${row.id}`),
+      gastos: this.api.get<ViajeDetailExpense[]>(`/viajes/${row.id}/gastos`)
+    })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (detail) => {
+          this.detailCache.set(row.id, detail);
+          if (
+            requestSequence !== this.detailRequestSequence ||
+            !this.detailOpen() ||
+            this.detailRowId() !== row.id
+          ) {
+            return;
+          }
+
+          this.detailViaje.set(detail.viaje);
+          this.detailGastos.set(detail.gastos);
+          this.detailLoading.set(false);
+        },
+        error: (err) => {
+          if (requestSequence !== this.detailRequestSequence || this.detailRowId() !== row.id) {
+            return;
+          }
+
+          this.detailError.set(err?.error?.message ?? 'No se pudo cargar el detalle del viaje.');
+          this.detailLoading.set(false);
+        }
+      });
+  }
+
+  closeTripDetail() {
+    this.cancelTripDetailPreview();
+    this.detailRequestSequence += 1;
+    this.detailOpen.set(false);
+    this.detailRowId.set(null);
+    this.detailLoading.set(false);
+    this.detailError.set(null);
+  }
+
   isSelected(row: ReporteViajeItem) {
     return this.selectedTripIds().includes(row.id);
   }
@@ -462,6 +578,7 @@ export class ReportsPageComponent {
       )
     ).subscribe({
       next: () => {
+        rows.forEach((row) => this.detailCache.delete(row.id));
         this.message.set(
           `${rows.length} ${rows.length === 1 ? 'viaje marcado' : 'viajes marcados'} como cobrados.`
         );
@@ -490,6 +607,7 @@ export class ReportsPageComponent {
 
     this.api.patch(`/viajes/${row.id}/cobro`, { cobrado: false }).subscribe({
       next: () => {
+        this.detailCache.delete(row.id);
         this.message.set('Viaje regresado a sin cobrar.');
         this.loadTravelReport();
       },
@@ -535,6 +653,7 @@ export class ReportsPageComponent {
       })
       .subscribe({
         next: () => {
+          this.detailCache.delete(row.id);
           this.message.set('Guías agregadas correctamente.');
           this.cancelGuideEdit();
           this.loadTravelReport();
@@ -575,6 +694,8 @@ export class ReportsPageComponent {
   }
 
   onTripSaved() {
+    this.detailCache.clear();
+    this.closeTripDetail();
     this.message.set('Viaje guardado correctamente.');
     this.loadTravelReport();
   }
@@ -596,6 +717,8 @@ export class ReportsPageComponent {
 
     this.api.delete(`/viajes/${row.id}`).subscribe({
       next: () => {
+        this.detailCache.delete(row.id);
+        if (this.detailRowId() === row.id) this.closeTripDetail();
         this.message.set(row.estado === 'cancelado' ? 'Viaje eliminado.' : 'Viaje cancelado.');
         this.loadTravelReport();
       },

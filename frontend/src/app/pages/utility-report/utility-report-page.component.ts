@@ -1,9 +1,13 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
-import { LucideDownload, LucideFileSpreadsheet, LucideRefreshCw } from '@lucide/angular';
+import { LucideDownload, LucideEye, LucideFileSpreadsheet, LucideRefreshCw } from '@lucide/angular';
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
+import {
+  UtilityWeekDetailPanelComponent,
+  type UtilityWeekDetail
+} from './utility-week-detail-panel.component';
 
 type ExportFormat = 'xlsx' | 'pdf';
 
@@ -54,17 +58,6 @@ interface UtilidadCliente {
   totales: UtilidadTotals;
 }
 
-interface UtilidadSemana {
-  anio: number;
-  numero_semana: number;
-  fecha_inicio: string;
-  fecha_fin: string;
-  label: string;
-  cantidad_viajes: number;
-  cantidad_mantenimientos: number;
-  totales: UtilidadTotals;
-}
-
 interface ReporteUtilidad {
   periodo: {
     anio: number;
@@ -83,7 +76,7 @@ interface ReporteUtilidad {
   vehiculos: UtilidadVehiculo[];
   clientes: UtilidadCliente[];
   transportistas: UtilidadTransportista[];
-  semanas: UtilidadSemana[];
+  semanas: UtilityWeekDetail[];
 }
 
 const monthOptions = [
@@ -106,15 +99,18 @@ const monthOptions = [
   imports: [
     ReactiveFormsModule,
     LucideDownload,
+    LucideEye,
     LucideFileSpreadsheet,
     LucideRefreshCw,
-    AutoDismissAlertDirective
+    AutoDismissAlertDirective,
+    UtilityWeekDetailPanelComponent
   ],
   templateUrl: './utility-report-page.component.html'
 })
 export class UtilityReportPageComponent {
   private readonly api = inject(ApiService);
   private readonly fb = inject(FormBuilder);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly error = signal<string | null>(null);
   readonly loading = signal(false);
@@ -122,6 +118,7 @@ export class UtilityReportPageComponent {
   readonly loadingCatalogs = signal(false);
   readonly report = signal<ReporteUtilidad | null>(null);
   readonly vehiculos = signal<VehiculoOption[]>([]);
+  readonly weekDetail = signal<UtilityWeekDetail | null>(null);
   readonly monthOptions = monthOptions;
   readonly clientColors = [
     '#40a36b',
@@ -133,6 +130,8 @@ export class UtilityReportPageComponent {
     '#ec4899',
     '#64748b'
   ];
+  private weekDetailHoverTimer: ReturnType<typeof setTimeout> | null = null;
+  private weekDetailHoverKey: string | null = null;
 
   readonly form = this.fb.nonNullable.group({
     anio: [new Date().getFullYear()],
@@ -143,6 +142,7 @@ export class UtilityReportPageComponent {
   constructor() {
     this.loadCatalogs();
     this.loadReport();
+    this.destroyRef.onDestroy(() => this.cancelWeekDetailPreview());
   }
 
   loadCatalogs() {
@@ -161,6 +161,7 @@ export class UtilityReportPageComponent {
   }
 
   loadReport() {
+    this.closeWeekDetail();
     this.loading.set(true);
     this.error.set(null);
 
@@ -214,6 +215,49 @@ export class UtilityReportPageComponent {
 
   dateOnly(value: unknown) {
     return formatDateOnly(value);
+  }
+
+  scheduleWeekDetailPreview(week: UtilityWeekDetail, event: PointerEvent) {
+    if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+
+    const target = event.target;
+    if (target instanceof Element && target.closest('.utility-week-actions-col, button, input, a')) {
+      this.cancelWeekDetailPreview();
+      return;
+    }
+
+    const key = this.weekKey(week);
+    if (this.weekDetail() || (this.weekDetailHoverTimer && this.weekDetailHoverKey === key)) {
+      return;
+    }
+
+    this.cancelWeekDetailPreview();
+    this.weekDetailHoverKey = key;
+    this.weekDetailHoverTimer = setTimeout(() => {
+      this.weekDetailHoverTimer = null;
+      this.weekDetailHoverKey = null;
+      this.openWeekDetail(week);
+    }, 2000);
+  }
+
+  cancelWeekDetailPreview() {
+    if (this.weekDetailHoverTimer) clearTimeout(this.weekDetailHoverTimer);
+    this.weekDetailHoverTimer = null;
+    this.weekDetailHoverKey = null;
+  }
+
+  openWeekDetail(week: UtilityWeekDetail) {
+    this.cancelWeekDetailPreview();
+    this.weekDetail.set(week);
+  }
+
+  closeWeekDetail() {
+    this.cancelWeekDetailPreview();
+    this.weekDetail.set(null);
+  }
+
+  weekKey(week: UtilityWeekDetail) {
+    return `${week.anio}-${week.numero_semana}`;
   }
 
   barWidth(value: unknown, max: number) {

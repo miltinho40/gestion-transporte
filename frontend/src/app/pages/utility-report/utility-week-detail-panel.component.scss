@@ -1,0 +1,137 @@
+.utility-week-panel {
+  width: min(840px, 96vw);
+}
+
+.utility-week-dates {
+  display: block;
+  margin-top: 0.2rem;
+  color: #667085;
+  font-size: 0.78rem;
+}
+
+.utility-week-body {
+  padding-top: 1rem;
+}
+
+.utility-week-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.utility-week-summary > div {
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid #b9dfee;
+  border-radius: 6px;
+  background: #e7f5fb;
+}
+
+.utility-week-summary .utility-week-summary-expense,
+.utility-week-summary .utility-week-summary-negative {
+  border-color: #efbbbb;
+  background: #fdecec;
+}
+
+.utility-week-summary span,
+.utility-week-summary strong {
+  display: block;
+}
+
+.utility-week-summary span {
+  margin-bottom: 0.3rem;
+  color: #667085;
+  font-size: 0.69rem;
+}
+
+.utility-week-summary strong {
+  overflow-wrap: anywhere;
+  color: #172033;
+  font-size: 0.95rem;
+}
+
+.utility-week-tabs {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  margin-top: 1rem;
+  border-bottom: 1px solid #dfe5ec;
+}
+
+.utility-week-tabs button {
+  flex: 0 0 auto;
+  padding: 0.65rem 0.85rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #667085;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.utility-week-tabs button.active {
+  border-bottom-color: #1477a3;
+  color: #075985;
+}
+
+.utility-week-section {
+  padding: 1rem 0;
+}
+
+.utility-week-section h3 {
+  margin: 0 0 0.75rem;
+  color: #344054;
+  font-size: 0.88rem;
+}
+
+.utility-week-table {
+  min-width: 680px;
+  margin-bottom: 0;
+  font-size: 0.76rem;
+}
+
+.utility-week-table th {
+  color: #667085;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.utility-week-table td > span {
+  display: block;
+  color: #667085;
+  font-size: 0.68rem;
+}
+
+.utility-week-description {
+  min-width: 180px;
+  white-space: normal;
+}
+
+.utility-week-calculation {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem 0 0.25rem;
+  border-top: 1px solid #dfe5ec;
+  font-size: 0.8rem;
+}
+
+.utility-week-calculation > div {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.utility-week-calculation-total {
+  margin-top: 0.25rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid #dfe5ec;
+  color: #075985;
+  font-size: 0.92rem;
+  text-transform: uppercase;
+}
+
+@media (max-width: 767.98px) {
+  .utility-week-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

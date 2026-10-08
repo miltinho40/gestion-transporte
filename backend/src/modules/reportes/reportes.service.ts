@@ -723,6 +723,20 @@ type UtilidadVehiculoAsignacion = {
   total_fletes: Prisma.Decimal;
 };
 
+type UtilidadVehiculoSemana = {
+  vehiculo: ReturnType<typeof buildReporteUtilidadVehiculo>;
+  cantidad_viajes: number;
+  cantidad_mantenimientos: number;
+  totales: ReturnType<typeof createReporteUtilidadTotales>;
+};
+
+type UtilidadTransportistaSemana = {
+  conductor: ReturnType<typeof buildReporteUtilidadConductor>;
+  vehiculo: ReturnType<typeof buildReporteUtilidadVehiculo> | null;
+  cantidad_viajes: number;
+  totales: ReturnType<typeof createReporteUtilidadTotales>;
+};
+
 const selectUtilidadVehiculoAsignado = (vehiculos: Map<string, UtilidadVehiculoAsignacion>) => {
   return [...vehiculos.values()].sort((left, right) => {
     if (right.cantidad_viajes !== left.cantidad_viajes) {
@@ -909,6 +923,23 @@ export const getReporteUtilidad = async (propietarioIdInput: unknown, input: unk
       totales: ReturnType<typeof createReporteUtilidadTotales>;
     }
   >();
+  const vehiculosPorSemana = new Map<string, Map<string, UtilidadVehiculoSemana>>();
+  const transportistasPorSemana = new Map<
+    string,
+    Map<string, UtilidadTransportistaSemana>
+  >();
+  const mantenimientosPorSemana = new Map<
+    string,
+    {
+      id: bigint;
+      fecha_mantenimiento: Date;
+      vehiculo: ReturnType<typeof buildReporteUtilidadVehiculo>;
+      tipo_mantenimiento: { id: bigint; nombre: string };
+      descripcion: string | null;
+      kilometraje_actual_vehiculo: number;
+      costo_total: Prisma.Decimal;
+    }[]
+  >();
 
   const getVehiculoGroup = (vehiculoInput: {
     id: bigint;
@@ -940,6 +971,51 @@ export const getReporteUtilidad = async (propietarioIdInput: unknown, input: unk
       totales: createReporteUtilidadTotales()
     };
     clientes.set(key, current);
+
+    return current;
+  };
+
+  const getVehiculoSemanaGroup = (
+    semana: SemanaReporte,
+    vehiculoInput: {
+      id: bigint;
+      placa: string;
+      marca: string;
+      modelo: string | null;
+    }
+  ) => {
+    const semanaKey = weekKey(semana.anio, semana.numero_semana);
+    const semanaVehiculos = vehiculosPorSemana.get(semanaKey) ?? new Map();
+    const vehiculoKey = vehiculoInput.id.toString();
+    const current = semanaVehiculos.get(vehiculoKey) ?? {
+      vehiculo: buildReporteUtilidadVehiculo(vehiculoInput),
+      cantidad_viajes: 0,
+      cantidad_mantenimientos: 0,
+      totales: createReporteUtilidadTotales()
+    };
+    semanaVehiculos.set(vehiculoKey, current);
+    vehiculosPorSemana.set(semanaKey, semanaVehiculos);
+
+    return current;
+  };
+
+  const getTransportistaSemanaGroup = (
+    semana: SemanaReporte,
+    conductorInput: { id: bigint; nombre: string; cedula: string },
+    vehiculo: ReturnType<typeof buildReporteUtilidadVehiculo> | null
+  ) => {
+    const semanaKey = weekKey(semana.anio, semana.numero_semana);
+    const semanaTransportistas = transportistasPorSemana.get(semanaKey) ?? new Map();
+    const conductorKey = conductorInput.id.toString();
+    const current = semanaTransportistas.get(conductorKey) ?? {
+      conductor: buildReporteUtilidadConductor(conductorInput),
+      vehiculo,
+      cantidad_viajes: 0,
+      totales: createReporteUtilidadTotales()
+    };
+    if (!current.vehiculo && vehiculo) current.vehiculo = vehiculo;
+    semanaTransportistas.set(conductorKey, current);
+    transportistasPorSemana.set(semanaKey, semanaTransportistas);
 
     return current;
   };
@@ -993,6 +1069,7 @@ export const getReporteUtilidad = async (propietarioIdInput: unknown, input: unk
       domingos: domingoGastos
     };
     const vehiculoGroup = getVehiculoGroup(viaje.vehiculo);
+    const vehiculoSemanaGroup = getVehiculoSemanaGroup(semana, viaje.vehiculo);
     const clienteGroup = getClienteGroup(viaje.cliente);
     const semanaGroup = getSemanaGroup(semana);
     const conductorKey = `${weekKey(semana.anio, semana.numero_semana)}:${viaje.conductor_id}`;
@@ -1012,10 +1089,12 @@ export const getReporteUtilidad = async (propietarioIdInput: unknown, input: unk
     };
 
     vehiculoGroup.cantidad_viajes += 1;
+    vehiculoSemanaGroup.cantidad_viajes += 1;
     clienteGroup.cantidad_viajes += 1;
     semanaGroup.cantidad_viajes += 1;
     addReporteUtilidadTotals(resumenTotales, amounts);
     addReporteUtilidadTotals(vehiculoGroup.totales, amounts);
+    addReporteUtilidadTotals(vehiculoSemanaGroup.totales, amounts);
     addReporteUtilidadTotals(clienteGroup.totales, amounts);
     addReporteUtilidadTotals(semanaGroup.totales, amounts);
 
@@ -1035,13 +1114,31 @@ export const getReporteUtilidad = async (propietarioIdInput: unknown, input: unk
   for (const { mantenimiento, semana } of mantenimientos) {
     const amounts = { mantenimientos: mantenimiento.costo_total };
     const vehiculoGroup = getVehiculoGroup(mantenimiento.vehiculo);
+    const vehiculoSemanaGroup = getVehiculoSemanaGroup(semana, mantenimiento.vehiculo);
     const semanaGroup = getSemanaGroup(semana);
+    const semanaKey = weekKey(semana.anio, semana.numero_semana);
+    const semanaMantenimientos = mantenimientosPorSemana.get(semanaKey) ?? [];
 
     vehiculoGroup.cantidad_mantenimientos += 1;
+    vehiculoSemanaGroup.cantidad_mantenimientos += 1;
     semanaGroup.cantidad_mantenimientos += 1;
     addReporteUtilidadTotals(resumenTotales, amounts);
     addReporteUtilidadTotals(vehiculoGroup.totales, amounts);
+    addReporteUtilidadTotals(vehiculoSemanaGroup.totales, amounts);
     addReporteUtilidadTotals(semanaGroup.totales, amounts);
+    semanaMantenimientos.push({
+      id: mantenimiento.id,
+      fecha_mantenimiento: mantenimiento.fecha_mantenimiento,
+      vehiculo: buildReporteUtilidadVehiculo(mantenimiento.vehiculo),
+      tipo_mantenimiento: {
+        id: mantenimiento.tipo_mantenimiento.id,
+        nombre: mantenimiento.tipo_mantenimiento.nombre
+      },
+      descripcion: mantenimiento.descripcion,
+      kilometraje_actual_vehiculo: mantenimiento.kilometraje_actual_vehiculo,
+      costo_total: mantenimiento.costo_total
+    });
+    mantenimientosPorSemana.set(semanaKey, semanaMantenimientos);
   }
 
   const gastosGeneradosPorConductor = new Map<
@@ -1102,14 +1199,25 @@ export const getReporteUtilidad = async (propietarioIdInput: unknown, input: unk
     };
     const semanaGroup = getSemanaGroup(week);
     const transportistaGroup = getTransportistaGroup(conductorSemana.conductor);
+    const transportistaSemanaGroup = getTransportistaSemanaGroup(
+      week,
+      conductorSemana.conductor,
+      assignedVehicle ?? null
+    );
 
     transportistaGroup.cantidad_viajes += conductorSemana.cantidad_viajes;
+    transportistaSemanaGroup.cantidad_viajes += conductorSemana.cantidad_viajes;
     addReporteUtilidadTotals(resumenTotales, amounts);
     addReporteUtilidadTotals(semanaGroup.totales, amounts);
     addReporteUtilidadTotals(transportistaGroup.totales, amounts);
+    addReporteUtilidadTotals(transportistaSemanaGroup.totales, amounts);
 
     if (assignedVehicle) {
       addReporteUtilidadTotals(getVehiculoGroup(assignedVehicle).totales, amounts);
+      addReporteUtilidadTotals(
+        getVehiculoSemanaGroup(week, assignedVehicle).totales,
+        amounts
+      );
     }
   }
 
@@ -1124,11 +1232,19 @@ export const getReporteUtilidad = async (propietarioIdInput: unknown, input: unk
         ? { sueldos: monto }
         : { bonos: monto };
     const transportistaGroup = getTransportistaGroup(gasto.conductor);
+    const vehiculoMini = buildReporteUtilidadVehiculo(gasto.vehiculo);
+    const transportistaSemanaGroup = getTransportistaSemanaGroup(
+      semana,
+      gasto.conductor,
+      vehiculoMini
+    );
 
     addReporteUtilidadTotals(resumenTotales, amounts);
     addReporteUtilidadTotals(getSemanaGroup(semana).totales, amounts);
     addReporteUtilidadTotals(getVehiculoGroup(gasto.vehiculo).totales, amounts);
+    addReporteUtilidadTotals(getVehiculoSemanaGroup(semana, gasto.vehiculo).totales, amounts);
     addReporteUtilidadTotals(transportistaGroup.totales, amounts);
+    addReporteUtilidadTotals(transportistaSemanaGroup.totales, amounts);
   }
 
   finalizeReporteUtilidadTotales(resumenTotales);
@@ -1152,10 +1268,31 @@ export const getReporteUtilidad = async (propietarioIdInput: unknown, input: unk
     }))
     .sort((left, right) => right.totales.total_facturado.comparedTo(left.totales.total_facturado));
   const semanasItems = [...semanasResumen.values()]
-    .map((item) => ({
-      ...item,
-      totales: finalizeReporteUtilidadTotales(item.totales)
-    }))
+    .map((item) => {
+      const key = weekKey(item.anio, item.numero_semana);
+      const vehiculosSemana = [...(vehiculosPorSemana.get(key)?.values() ?? [])]
+        .map((vehiculo) => ({
+          ...vehiculo,
+          totales: finalizeReporteUtilidadTotales(vehiculo.totales)
+        }))
+        .sort((left, right) => left.vehiculo.placa.localeCompare(right.vehiculo.placa));
+      const transportistasSemana = [
+        ...(transportistasPorSemana.get(key)?.values() ?? [])
+      ]
+        .map((transportista) => ({
+          ...transportista,
+          totales: finalizeReporteUtilidadTotales(transportista.totales)
+        }))
+        .sort((left, right) => left.conductor.nombre.localeCompare(right.conductor.nombre));
+
+      return {
+        ...item,
+        totales: finalizeReporteUtilidadTotales(item.totales),
+        vehiculos: vehiculosSemana,
+        mantenimientos: mantenimientosPorSemana.get(key) ?? [],
+        transportistas: transportistasSemana
+      };
+    })
     .sort((left, right) => left.fecha_inicio.getTime() - right.fecha_inicio.getTime());
 
   return {

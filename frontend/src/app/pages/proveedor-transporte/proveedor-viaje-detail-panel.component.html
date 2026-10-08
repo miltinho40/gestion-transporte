@@ -1,0 +1,132 @@
+<button
+  class="viaje-detail-backdrop"
+  type="button"
+  aria-label="Cerrar detalle del viaje"
+  (click)="close()"
+></button>
+
+<aside
+  class="viaje-detail-panel"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="proveedor-viaje-detail-title"
+>
+  <header class="viaje-detail-header">
+    <div>
+      <span class="viaje-detail-eyebrow">Detalle del viaje de proveedor</span>
+      <h2 id="proveedor-viaje-detail-title">
+        @if (viaje(); as item) {
+          {{ item.tarifa_ruta.ruta.origen }} - {{ item.tarifa_ruta.ruta.destino }}
+        } @else {
+          Cargando información
+        }
+      </h2>
+    </div>
+    <button class="btn btn-outline-secondary viaje-detail-close" type="button" title="Cerrar" (click)="close()">
+      <svg lucideX size="18"></svg>
+    </button>
+  </header>
+
+  <div class="viaje-detail-body">
+    @if (loading()) {
+      <div class="viaje-detail-loading" aria-live="polite">
+        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        Cargando detalle...
+      </div>
+    } @else if (error()) {
+      <div class="alert alert-danger mb-0">{{ error() }}</div>
+    } @else if (viaje(); as item) {
+      <div class="viaje-detail-status-row">
+        <span class="badge text-bg-light">{{ estadoLabel(item.estado) }}</span>
+        <span class="badge" [class.text-bg-success]="item.cobrado" [class.text-bg-warning]="!item.cobrado">
+          {{ item.cobrado ? 'Cobrado' : 'Por cobrar' }}
+        </span>
+        <span
+          class="badge"
+          [class.text-bg-primary]="item.pagado_proveedor"
+          [class.text-bg-secondary]="!item.pagado_proveedor"
+        >
+          {{ item.pagado_proveedor ? 'Proveedor pagado' : 'Proveedor por pagar' }}
+        </span>
+      </div>
+
+      <section class="viaje-detail-section">
+        <h3>Operación</h3>
+        <dl class="viaje-detail-grid">
+          <div><dt>Fecha de salida</dt><dd>{{ dateOnly(item.fecha_salida) }}</dd></div>
+          <div><dt>Fecha de entrega</dt><dd>{{ dateOnly(item.fecha_llegada) }}</dd></div>
+          <div><dt>Cliente</dt><dd>{{ item.cliente.nombre }}</dd></div>
+          <div><dt>RUC/Cédula cliente</dt><dd>{{ item.cliente.ruc_cedula }}</dd></div>
+          <div><dt>Proveedor</dt><dd>{{ item.proveedor.nombre }}</dd></div>
+          <div><dt>RUC/Cédula proveedor</dt><dd>{{ item.proveedor.ruc_cedula }}</dd></div>
+        </dl>
+      </section>
+
+      <section class="viaje-detail-section">
+        <h3>Guías</h3>
+        <dl class="viaje-detail-grid">
+          <div class="viaje-detail-wide">
+            <dt>Guías de remisión</dt>
+            <dd>{{ item.numeros_guia_remision.join(', ') || '-' }}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="viaje-detail-section">
+        <h3>Valores</h3>
+        <dl class="viaje-detail-grid viaje-detail-money-grid">
+          <div><dt>Precio viaje</dt><dd>$ {{ money(item.precio_viaje) }}</dd></div>
+          <div>
+            <dt>Comisión cliente ({{ item.cliente.porcentaje_comision }}%)</dt>
+            <dd>$ {{ money(comisionCliente()) }}</dd>
+          </div>
+          <div><dt>A facturar</dt><dd>$ {{ money(item.valor_a_facturar) }}</dd></div>
+          <div><dt>A pagar al proveedor</dt><dd>$ {{ money(item.precio_pagar_proveedor) }}</dd></div>
+          <div><dt>Viáticos</dt><dd>$ {{ money(item.viaticos) }}</dd></div>
+          <div class="viaje-detail-total"><dt>Utilidad</dt><dd>$ {{ money(utilidadIntermediario()) }}</dd></div>
+        </dl>
+      </section>
+
+      <section class="viaje-detail-section">
+        <h3>Cobro al cliente</h3>
+        <dl class="viaje-detail-grid">
+          <div><dt>Estado</dt><dd>{{ item.cobrado ? 'Cobrado' : 'Por cobrar' }}</dd></div>
+          <div><dt>Fecha de cobro</dt><dd>{{ dateOnly(item.fecha_cobro) }}</dd></div>
+          <div class="viaje-detail-wide">
+            <dt>Factura / soporte</dt>
+            <dd>{{ item.sin_factura_cobro ? 'No se emitió factura' : (item.soporte_cobro || '-') }}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="viaje-detail-section">
+        <h3>Pago al proveedor</h3>
+        <dl class="viaje-detail-grid">
+          <div><dt>Estado</dt><dd>{{ item.pagado_proveedor ? 'Pagado' : 'Por pagar' }}</dd></div>
+          <div><dt>Fecha de pago</dt><dd>{{ dateOnly(item.fecha_pago_proveedor) }}</dd></div>
+          <div class="viaje-detail-wide">
+            <dt>Factura / soporte</dt>
+            <dd>{{ item.proveedor_sin_factura ? 'Proveedor no emitió factura' : (item.soporte_pago_proveedor || '-') }}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="viaje-detail-section viaje-detail-text-section">
+        <h3>Descripción de carga</h3>
+        <p>{{ item.descripcion_carga || 'Sin descripción de carga.' }}</p>
+      </section>
+
+      <section class="viaje-detail-section viaje-detail-text-section">
+        <h3>Observaciones</h3>
+        <p>{{ item.observaciones || 'Sin observaciones.' }}</p>
+      </section>
+
+      <section class="viaje-detail-section viaje-detail-register">
+        <dl class="viaje-detail-grid">
+          <div><dt>Creado</dt><dd>{{ dateTime(item.created_at) }}</dd></div>
+          <div><dt>Última actualización</dt><dd>{{ dateTime(item.updated_at) }}</dd></div>
+        </dl>
+      </section>
+    }
+  </div>
+</aside>

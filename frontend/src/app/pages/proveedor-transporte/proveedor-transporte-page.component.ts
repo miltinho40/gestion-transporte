@@ -4,6 +4,7 @@ import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angu
 import {
   LucideCheck,
   LucideCopy,
+  LucideEye,
   LucidePencil,
   LucidePlus,
   LucideRefreshCw,
@@ -23,6 +24,10 @@ import {
   type MultiSelectFilterValue
 } from '../../shared/multi-select-filter.component';
 import { PaginationControlsComponent } from '../../shared/pagination-controls.component';
+import {
+  ProveedorViajeDetailPanelComponent,
+  type ProveedorViajeDetail
+} from './proveedor-viaje-detail-panel.component';
 
 interface ClienteOption {
   id: string;
@@ -105,6 +110,7 @@ const tomorrowInputDate = () => {
     ReactiveFormsModule,
     LucideCheck,
     LucideCopy,
+    LucideEye,
     LucidePencil,
     LucidePlus,
     LucideRefreshCw,
@@ -113,7 +119,8 @@ const tomorrowInputDate = () => {
     LucideTrash2,
     AutoDismissAlertDirective,
     MultiSelectFilterComponent,
-    PaginationControlsComponent
+    PaginationControlsComponent,
+    ProveedorViajeDetailPanelComponent
   ],
   templateUrl: './proveedor-transporte-page.component.html',
   styleUrl: './proveedor-transporte-page.component.scss'
@@ -148,7 +155,16 @@ export class ProveedorTransportePageComponent {
   readonly clienteInput = signal('');
   readonly proveedorInput = signal('');
   readonly tarifaInput = signal('');
+  readonly detailOpen = signal(false);
+  readonly detailRowId = signal<string | null>(null);
+  readonly detailViaje = signal<ProveedorViajeDetail | null>(null);
+  readonly detailLoading = signal(false);
+  readonly detailError = signal<string | null>(null);
   private autoLoadTimer: ReturnType<typeof setTimeout> | null = null;
+  private detailHoverTimer: ReturnType<typeof setTimeout> | null = null;
+  private detailHoverTripId: string | null = null;
+  private detailRequestSequence = 0;
+  private readonly detailCache = new Map<string, ProveedorViajeDetail>();
 
   readonly filters = this.fb.nonNullable.group({
     search: [''],
@@ -264,6 +280,7 @@ export class ProveedorTransportePageComponent {
       );
     this.destroyRef.onDestroy(() => {
       if (this.autoLoadTimer) clearTimeout(this.autoLoadTimer);
+      this.cancelTripDetailPreview();
     });
   }
 
@@ -300,6 +317,8 @@ export class ProveedorTransportePageComponent {
   }
 
   load() {
+    this.detailCache.clear();
+    if (this.detailOpen()) this.closeTripDetail();
     this.loading.set(true);
     this.error.set(null);
     this.message.set(null);
@@ -333,7 +352,94 @@ export class ProveedorTransportePageComponent {
       });
   }
 
+  scheduleTripDetailPreview(row: ViajeProveedorRow, event: PointerEvent) {
+    if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest('.provider-select-cell, .actions-cell, button, input, a')
+    ) {
+      this.cancelTripDetailPreview();
+      return;
+    }
+
+    if (this.detailOpen() || (this.detailHoverTimer && this.detailHoverTripId === row.id)) {
+      return;
+    }
+
+    this.cancelTripDetailPreview();
+    this.detailHoverTripId = row.id;
+    this.detailHoverTimer = setTimeout(() => {
+      this.detailHoverTimer = null;
+      this.detailHoverTripId = null;
+      this.openTripDetail(row);
+    }, 2000);
+  }
+
+  cancelTripDetailPreview() {
+    if (this.detailHoverTimer) clearTimeout(this.detailHoverTimer);
+    this.detailHoverTimer = null;
+    this.detailHoverTripId = null;
+  }
+
+  openTripDetail(row: ViajeProveedorRow) {
+    this.cancelTripDetailPreview();
+    this.detailOpen.set(true);
+    this.detailRowId.set(row.id);
+    this.detailError.set(null);
+
+    const cached = this.detailCache.get(row.id);
+    if (cached) {
+      this.detailViaje.set(cached);
+      this.detailLoading.set(false);
+      return;
+    }
+
+    this.detailViaje.set(null);
+    this.detailLoading.set(true);
+    const requestSequence = ++this.detailRequestSequence;
+
+    this.api
+      .get<ProveedorViajeDetail>(`/viajes-proveedor/${row.id}`)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (detail) => {
+          this.detailCache.set(row.id, detail);
+          if (
+            requestSequence !== this.detailRequestSequence ||
+            !this.detailOpen() ||
+            this.detailRowId() !== row.id
+          ) {
+            return;
+          }
+
+          this.detailViaje.set(detail);
+          this.detailLoading.set(false);
+        },
+        error: (err) => {
+          if (requestSequence !== this.detailRequestSequence || this.detailRowId() !== row.id) {
+            return;
+          }
+
+          this.detailError.set(err?.error?.message ?? 'No se pudo cargar el detalle del viaje.');
+          this.detailLoading.set(false);
+        }
+      });
+  }
+
+  closeTripDetail() {
+    this.cancelTripDetailPreview();
+    this.detailRequestSequence += 1;
+    this.detailOpen.set(false);
+    this.detailRowId.set(null);
+    this.detailViaje.set(null);
+    this.detailLoading.set(false);
+    this.detailError.set(null);
+  }
+
   openCreate() {
+    this.closeTripDetail();
     this.editingRow.set(null);
     this.form.reset({
       cliente_id: '',
@@ -361,6 +467,7 @@ export class ProveedorTransportePageComponent {
   }
 
   openEdit(row: ViajeProveedorRow) {
+    this.closeTripDetail();
     this.editingRow.set(row);
     this.form.reset({
       cliente_id: row.cliente_id || row.cliente?.id || '',

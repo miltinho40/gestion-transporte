@@ -1,0 +1,226 @@
+.viaje-detail-backdrop {
+  position: fixed;
+  z-index: 1070;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.32);
+}
+
+.viaje-detail-panel {
+  position: fixed;
+  z-index: 1080;
+  top: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 94vw);
+  height: 100dvh;
+  border-left: 1px solid #d7dee8;
+  background: #fff;
+  box-shadow: -16px 0 36px rgba(15, 23, 42, 0.16);
+  animation: viaje-detail-enter 160ms ease-out;
+}
+
+.viaje-detail-header {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid #e4e9f0;
+}
+
+.viaje-detail-header h2 {
+  overflow-wrap: anywhere;
+  margin: 0.15rem 0 0;
+  color: #172033;
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.viaje-detail-eyebrow {
+  color: #667085;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.viaje-detail-close {
+  display: inline-flex;
+  flex: 0 0 34px;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+
+.viaje-detail-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0 1.1rem 1.25rem;
+}
+
+.viaje-detail-loading {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  color: #667085;
+}
+
+.viaje-detail-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.9rem 0 0.15rem;
+}
+
+.viaje-detail-section {
+  padding: 1rem 0;
+  border-bottom: 1px solid #e9edf3;
+}
+
+.viaje-detail-section h3 {
+  margin: 0 0 0.7rem;
+  color: #344054;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.viaje-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0;
+}
+
+.viaje-detail-grid > div {
+  min-width: 0;
+}
+
+.viaje-detail-grid dt {
+  margin-bottom: 0.15rem;
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.viaje-detail-grid dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: #172033;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.viaje-detail-wide,
+.viaje-detail-total {
+  grid-column: 1 / -1;
+}
+
+.viaje-detail-money-grid dd {
+  font-variant-numeric: tabular-nums;
+}
+
+.viaje-detail-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-top: 0.65rem;
+  border-top: 1px solid #dbe5ef;
+}
+
+.viaje-detail-total dt,
+.viaje-detail-total dd {
+  color: #075985;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.viaje-detail-section-heading,
+.viaje-detail-expense {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.viaje-detail-section-heading h3 {
+  margin-bottom: 0;
+}
+
+.viaje-detail-section-heading > strong {
+  color: #172033;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.viaje-detail-expenses {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.viaje-detail-expense {
+  padding-top: 0.6rem;
+  border-top: 1px solid #eef1f5;
+  font-size: 0.8rem;
+}
+
+.viaje-detail-expense > div {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.viaje-detail-expense span {
+  color: #667085;
+  font-size: 0.72rem;
+}
+
+.viaje-detail-text-section p {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: #344054;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+
+.viaje-detail-register {
+  border-bottom: 0;
+}
+
+@keyframes viaje-detail-enter {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .viaje-detail-panel {
+    width: 100vw;
+  }
+
+  .viaje-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .viaje-detail-wide,
+  .viaje-detail-total {
+    grid-column: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viaje-detail-panel {
+    animation: none;
+  }
+}

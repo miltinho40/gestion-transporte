@@ -263,11 +263,16 @@
             <th>Sueldos</th>
             <th>Bonos</th>
             <th>Ganancia neta</th>
+            <th class="utility-week-actions-col">Acciones</th>
           </tr>
         </thead>
         <tbody>
           @for (row of report.semanas; track row.anio + '-' + row.numero_semana) {
-            <tr>
+            <tr
+              [class.utility-week-row-active]="weekDetail() && weekKey(weekDetail()!) === weekKey(row)"
+              (pointerover)="scheduleWeekDetailPreview(row, $event)"
+              (pointerleave)="cancelWeekDetailPreview()"
+            >
               <td class="fw-semibold">Semana {{ row.numero_semana }}</td>
               <td>{{ dateOnly(row.fecha_inicio) }} - {{ dateOnly(row.fecha_fin) }}</td>
               <td>{{ row.cantidad_viajes }}</td>
@@ -280,10 +285,21 @@
               <td class="fw-semibold" [class.text-danger]="number(row.totales.ganancia_neta) < 0">
                 $ {{ money(row.totales.ganancia_neta) }}
               </td>
+              <td class="utility-week-actions-col" (pointerenter)="cancelWeekDetailPreview()">
+                <button
+                  class="btn btn-outline-secondary btn-sm weekly-activity-icon-btn"
+                  type="button"
+                  title="Ver detalle semanal"
+                  aria-label="Ver detalle de la semana"
+                  (click)="openWeekDetail(row); $event.stopPropagation()"
+                >
+                  <svg lucideEye size="14"></svg>
+                </button>
+              </td>
             </tr>
           } @empty {
             <tr>
-              <td colspan="10" class="text-center text-secondary py-4">
+              <td colspan="11" class="text-center text-secondary py-4">
                 @if (loading()) {
                   Cargando reporte...
                 } @else {
@@ -311,4 +327,8 @@
 
 @if (downloading()) {
   <div class="text-secondary mt-3">Generando archivo...</div>
+}
+
+@if (weekDetail(); as week) {
+  <app-utility-week-detail-panel [week]="week" (closed)="closeWeekDetail()" />
 }

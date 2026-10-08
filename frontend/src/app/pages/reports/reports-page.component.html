@@ -205,8 +205,11 @@
               <tr
                 [class.reports-row-week-green]="isWeekGreen(row)"
                 [class.reports-row-cobrado]="row.cobrado"
+                [class.reports-row-detail-active]="detailOpen() && detailRowId() === row.id"
+                (pointerover)="scheduleTripDetailPreview(row, $event)"
+                (pointerleave)="cancelTripDetailPreview()"
               >
-                <td class="reports-select-col">
+                <td class="reports-select-col" (pointerenter)="cancelTripDetailPreview()">
                   <input
                     class="form-check-input"
                     type="checkbox"
@@ -227,7 +230,7 @@
                 <td>$ {{ money(row.valor_facturar) }}</td>
                 <td>$ {{ money(row.viaticos) }}</td>
                 <td class="fw-semibold">$ {{ money(row.utilidad) }}</td>
-                <td class="reports-actions-col">
+                <td class="reports-actions-col" (pointerenter)="cancelTripDetailPreview()">
                   @if (!row.cobrado && guideEditTripId() === row.id) {
                     <div class="reports-guide-inline">
                       <input
@@ -253,6 +256,15 @@
                     </div>
                   } @else {
                     <div class="reports-row-actions">
+                      <button
+                        class="btn btn-outline-secondary btn-sm weekly-activity-icon-btn"
+                        type="button"
+                        title="Ver detalle del viaje"
+                        aria-label="Ver detalle del viaje"
+                        (click)="openTripDetail(row); $event.stopPropagation()"
+                      >
+                        <svg lucideEye size="14"></svg>
+                      </button>
                       <button
                         class="btn btn-outline-secondary btn-sm weekly-activity-icon-btn"
                         type="button"
@@ -333,6 +345,16 @@
 
 @if (downloading()) {
   <div class="text-secondary mt-3">Generando archivo...</div>
+}
+
+@if (detailOpen()) {
+  <app-viaje-detail-panel
+    [viaje]="detailViaje()"
+    [gastos]="detailGastos()"
+    [loading]="detailLoading()"
+    [error]="detailError()"
+    (closed)="closeTripDetail()"
+  />
 }
 
 <app-viaje-editor-modal (saved)="onTripSaved()" />

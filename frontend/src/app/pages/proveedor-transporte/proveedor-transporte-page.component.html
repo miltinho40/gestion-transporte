@@ -173,8 +173,11 @@
             [class.provider-row-balanced]="row.cobrado && row.pagado_proveedor"
             [class.provider-row-paid-uncollected]="!row.cobrado && row.pagado_proveedor"
             [class.provider-row-cancelado]="row.estado === 'cancelado'"
+            [class.provider-row-detail-active]="detailOpen() && detailRowId() === row.id"
+            (pointerover)="scheduleTripDetailPreview(row, $event)"
+            (pointerleave)="cancelTripDetailPreview()"
           >
-            <td>
+            <td class="provider-select-cell" (pointerenter)="cancelTripDetailPreview()">
               <input
                 class="form-check-input"
                 type="checkbox"
@@ -210,8 +213,17 @@
             <td>$ {{ money(row.precio_viaje) }}</td>
             <td>$ {{ money(row.valor_a_facturar) }}</td>
             <td>$ {{ money(row.viaticos) }}</td>
-            <td class="text-end actions-cell">
+            <td class="text-end actions-cell" (pointerenter)="cancelTripDetailPreview()">
               <div class="btn-group btn-group-sm">
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary"
+                  (click)="openTripDetail(row); $event.stopPropagation()"
+                  title="Ver detalle"
+                  aria-label="Ver detalle del viaje"
+                >
+                  <svg lucideEye size="15"></svg>
+                </button>
                 <button type="button" class="btn btn-outline-secondary" (click)="openDuplicate(row)" title="Duplicar">
                   <svg lucideCopy size="15"></svg>
                 </button>
@@ -262,6 +274,15 @@
     (limitChange)="changeLimit($event)"
   />
 </div>
+
+@if (detailOpen()) {
+  <app-proveedor-viaje-detail-panel
+    [viaje]="detailViaje()"
+    [loading]="detailLoading()"
+    [error]="detailError()"
+    (closed)="closeTripDetail()"
+  />
+}
 
 @if (formOpen()) {
   <div class="modal d-block" tabindex="-1" role="dialog">

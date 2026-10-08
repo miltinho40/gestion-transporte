@@ -1,0 +1,203 @@
+<button
+  class="viaje-detail-backdrop"
+  type="button"
+  aria-label="Cerrar detalle semanal"
+  (click)="close()"
+></button>
+
+<aside
+  class="viaje-detail-panel utility-week-panel"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="utility-week-detail-title"
+>
+  <header class="viaje-detail-header">
+    <div>
+      <span class="viaje-detail-eyebrow">Detalle semanal</span>
+      <h2 id="utility-week-detail-title">Semana {{ week().numero_semana }}</h2>
+      <span class="utility-week-dates">
+        {{ dateOnly(week().fecha_inicio) }} - {{ dateOnly(week().fecha_fin) }}
+      </span>
+    </div>
+    <button class="btn btn-outline-secondary viaje-detail-close" type="button" title="Cerrar" (click)="close()">
+      <svg lucideX size="18"></svg>
+    </button>
+  </header>
+
+  <div class="viaje-detail-body utility-week-body">
+    <section class="utility-week-summary" aria-label="Resumen semanal">
+      <div>
+        <span>Total facturado</span>
+        <strong>$ {{ money(week().totales.total_facturado) }}</strong>
+      </div>
+      <div>
+        <span>Utilidad viajes</span>
+        <strong>$ {{ money(week().totales.utilidad_viajes) }}</strong>
+      </div>
+      <div class="utility-week-summary-expense">
+        <span>Egresos</span>
+        <strong>$ {{ money(egresosTotales()) }}</strong>
+      </div>
+      <div [class.utility-week-summary-negative]="number(week().totales.ganancia_neta) < 0">
+        <span>Ganancia neta</span>
+        <strong>$ {{ money(week().totales.ganancia_neta) }}</strong>
+      </div>
+    </section>
+
+    <nav class="utility-week-tabs" aria-label="Detalle semanal">
+      <button
+        type="button"
+        [class.active]="activeTab() === 'vehiculos'"
+        (click)="selectTab('vehiculos')"
+      >
+        Vehículos ({{ week().vehiculos.length }})
+      </button>
+      <button
+        type="button"
+        [class.active]="activeTab() === 'mantenimientos'"
+        (click)="selectTab('mantenimientos')"
+      >
+        Mantenimientos ({{ week().mantenimientos.length }})
+      </button>
+      <button
+        type="button"
+        [class.active]="activeTab() === 'sueldos'"
+        (click)="selectTab('sueldos')"
+      >
+        Sueldos ({{ week().transportistas.length }})
+      </button>
+    </nav>
+
+    @if (activeTab() === 'vehiculos') {
+      <section class="utility-week-section">
+        <h3>Detalle por vehículo</h3>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle utility-week-table">
+            <thead>
+              <tr>
+                <th>Vehículo</th>
+                <th class="text-end">Viajes</th>
+                <th class="text-end">Facturado</th>
+                <th class="text-end">Utilidad</th>
+                <th class="text-end">Mant.</th>
+                <th class="text-end">Sueldos</th>
+                <th class="text-end">Ganancia</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (item of week().vehiculos; track item.vehiculo.id) {
+                <tr>
+                  <td>
+                    <strong>{{ item.vehiculo.placa }}</strong>
+                    <span>{{ item.vehiculo.marca }} {{ item.vehiculo.modelo ?? '' }}</span>
+                  </td>
+                  <td class="text-end">{{ item.cantidad_viajes }}</td>
+                  <td class="text-end">$ {{ money(item.totales.total_facturado) }}</td>
+                  <td class="text-end">$ {{ money(item.totales.utilidad_viajes) }}</td>
+                  <td class="text-end">$ {{ money(item.totales.mantenimientos) }}</td>
+                  <td class="text-end">$ {{ money(sueldosYBonos(item.totales)) }}</td>
+                  <td class="text-end fw-semibold" [class.text-danger]="number(item.totales.ganancia_neta) < 0">
+                    $ {{ money(item.totales.ganancia_neta) }}
+                  </td>
+                </tr>
+              } @empty {
+                <tr><td colspan="7" class="text-center text-secondary py-4">Sin vehículos en esta semana.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    } @else if (activeTab() === 'mantenimientos') {
+      <section class="utility-week-section">
+        <h3>Mantenimientos realizados</h3>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle utility-week-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Vehículo</th>
+                <th>Tipo</th>
+                <th>Descripción</th>
+                <th class="text-end">Km actual</th>
+                <th class="text-end">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (item of week().mantenimientos; track item.id) {
+                <tr>
+                  <td>{{ dateOnly(item.fecha_mantenimiento) }}</td>
+                  <td class="fw-semibold">{{ item.vehiculo.placa }}</td>
+                  <td>{{ item.tipo_mantenimiento.nombre }}</td>
+                  <td class="utility-week-description">{{ item.descripcion || '-' }}</td>
+                  <td class="text-end">{{ item.kilometraje_actual_vehiculo }}</td>
+                  <td class="text-end fw-semibold">$ {{ money(item.costo_total) }}</td>
+                </tr>
+              } @empty {
+                <tr><td colspan="6" class="text-center text-secondary py-4">Sin mantenimientos en esta semana.</td></tr>
+              }
+            </tbody>
+            @if (week().mantenimientos.length) {
+              <tfoot>
+                <tr>
+                  <th colspan="5">Total mantenimientos</th>
+                  <th class="text-end">$ {{ money(week().totales.mantenimientos) }}</th>
+                </tr>
+              </tfoot>
+            }
+          </table>
+        </div>
+      </section>
+    } @else {
+      <section class="utility-week-section">
+        <h3>Pago a transportistas</h3>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle utility-week-table">
+            <thead>
+              <tr>
+                <th>Transportista</th>
+                <th>Vehículo</th>
+                <th class="text-end">Viajes</th>
+                <th class="text-end">Sueldo</th>
+                <th class="text-end">Bono</th>
+                <th class="text-end">Retornos</th>
+                <th class="text-end">Domingo</th>
+                <th class="text-end">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (item of week().transportistas; track item.conductor.id) {
+                <tr>
+                  <td>
+                    <strong>{{ item.conductor.nombre }}</strong>
+                    <span>{{ item.conductor.cedula }}</span>
+                  </td>
+                  <td>{{ item.vehiculo?.placa ?? '-' }}</td>
+                  <td class="text-end">{{ item.cantidad_viajes }}</td>
+                  <td class="text-end">$ {{ money(item.totales.sueldos) }}</td>
+                  <td class="text-end">$ {{ money(item.totales.bonos) }}</td>
+                  <td class="text-end">$ {{ money(item.totales.retornos) }}</td>
+                  <td class="text-end">$ {{ money(item.totales.domingos) }}</td>
+                  <td class="text-end fw-semibold">$ {{ money(item.totales.pago_transportistas) }}</td>
+                </tr>
+              } @empty {
+                <tr><td colspan="8" class="text-center text-secondary py-4">Sin transportistas en esta semana.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    }
+
+    <section class="utility-week-calculation">
+      <div><span>Utilidad de viajes</span><strong>$ {{ money(week().totales.utilidad_viajes) }}</strong></div>
+      <div><span>(-) Mantenimientos</span><strong>$ {{ money(week().totales.mantenimientos) }}</strong></div>
+      <div><span>(-) Sueldos y bonos</span><strong>$ {{ money(sueldosYBonos(week().totales)) }}</strong></div>
+      <div class="utility-week-calculation-total">
+        <span>Ganancia neta</span>
+        <strong [class.text-danger]="number(week().totales.ganancia_neta) < 0">
+          $ {{ money(week().totales.ganancia_neta) }}
+        </strong>
+      </div>
+    </section>
+  </div>
+</aside>
