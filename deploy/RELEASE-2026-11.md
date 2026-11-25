@@ -1,14 +1,47 @@
-# Preparacion de despliegue: facturacion y cierres
+# Despliegue: facturacion y cierres
+
+## Publicado el 2026-11-25
+
+- Codigo publicado: `6a4c3b7569594eda2564f65f99f70c52eccb3539`.
+- GitHub CI: run `45623432247`, backend, frontend y E2E correctos.
+- Cloud Build: `afdfbb5c-6e5b-48f1-969a-5c2e7b17833d`, SUCCESS, Node 22.
+- Imagen: `us-central1-docker.pkg.dev/disco-song-382013/cloud-run-source-deploy/gestion-transporte-api:release-20261125-6a4c3b7`.
+- Digest: `sha256:d870612fead545d2d2fdf9fe2d523e6fcf4f7ffda9df42c55929f53b0909a38a`.
+- Revision nueva: `gestion-transporte-api-rel-6a4c3b7`, trafico 100%.
+- Hosting nuevo: version `dfe9b74d548a7cec`, release `1795613524650000`.
+- Publicacion Hosting: `2026-11-25T13:32:04.650Z` (08:32 en Ecuador).
+- API y BD: health correcto a traves de la URL publica de Hosting.
+- Red privada, subred y cuenta de servicio verificadas sin cambios.
+- Logs de la nueva revision: sin eventos ERROR al comprobar la publicacion.
+
+Respaldo final ANTES de migrar:
+
+- VM: `/var/tmp/transporte-release-20261125-final-9fc29564/`.
+- Local: `backups/transporte-release-20261125-final-9fc29564/`, fuera de Git.
+- SHA-256 del dump, listado e inventario verificados despues de descargar.
+- Respaldo final restaurado otra vez en una BD local desechable: ensayo de las
+  ocho migraciones e integridad correctos; base de ensayo eliminada.
+- Comparacion en produccion: las 35 tablas originales conservaron numero y
+  huella de sus filas; 32 migraciones aplicadas, sin fallidas.
+- Nuevas tablas: cero facturas, cero detalles y cero abonos; cuatro registros
+  iniciales de configuracion. Destinatarios de viajes historicos: todos NULL.
+- `inventory-after.ndjson` conserva el inventario posterior en el respaldo local.
+
+Comprobacion publica ejecutada con `deploy/smoke-production.mjs`: build servido
+`main-3FBCQMLG.js`, siete assets con SHA-256 identico al build local, API nueva
+con autenticacion obligatoria y login web/movil renderizado sin errores.
+No se probaron credenciales de usuarios ni se crearon datos de negocio.
+El tunel SSH temporal fue cerrado al terminar las operaciones de BD.
 
 ## Destino confirmado
 
 - Proyecto: `disco-song-382013`.
 - Cuenta consultada: `gerencia@dacecia.com`.
 - Cloud Run: `gestion-transporte-api`, region `us-central1`.
-- Revision actualmente activa: `gestion-transporte-api-00009-lh6`, trafico 100%.
+- Revision anterior, conservada para rollback: `gestion-transporte-api-00009-lh6`.
 - Firebase Hosting: `https://disco-song-382013.web.app`.
-- Release Hosting activa: `1795035622532000`, publicada el `2026-11-18T21:00:22.532Z`.
-- Version Hosting activa: `172041ef1ff52cbe` (registrada para recuperacion).
+- Release Hosting anterior: `1795035622532000`, publicada el `2026-11-18T21:00:22.532Z`.
+- Version Hosting anterior: `172041ef1ff52cbe` (registrada para recuperacion).
 - PostgreSQL 15: VM `vm-dace-cia`, zona `us-central1-a`, base `transporte`.
 - La aplicacion debe conservar la conexion privada existente a `10.128.0.16`.
 - Red y subred: `default`; salida VPC: `private-ranges-only`.
@@ -37,7 +70,7 @@ Este respaldo sirve para el ensayo. Crear otro inmediatamente antes de publicar,
 en la ventana acordada sin escrituras. Si hubo nuevas migraciones o cambios en
 su SQL desde el ensayo, repetirlo antes de autorizar produccion.
 
-## Migraciones pendientes
+## Migraciones aplicadas en esta entrega
 
 1. `20261119001000_add_facturacion`: tablas de configuracion, facturas, detalles y abonos.
 2. `20261119002000_facturacion_indices`: unicidad y restricciones de facturacion.
@@ -92,10 +125,10 @@ npx playwright test e2e/weekly-closure.spec.ts e2e/proveedor-transporte.spec.ts 
 ```
 
 El build conserva advertencias conocidas de tamano inicial y SweetAlert2 CommonJS.
-Docker Desktop no estaba iniciado al preparar esta entrega: el contenedor debe
-validarse mediante un build separado antes de mover trafico.
+Docker Desktop no estaba iniciado. El contenedor se valido en Cloud Build y
+se comprobo como candidato de Cloud Run sin trafico antes de publicar.
 
-## Orden de publicacion, aun pendiente
+## Procedimiento de publicacion
 
 1. Revisar el diff final y excluir credenciales, logs, respaldos y ajustes de IDE.
 2. Crear commit, push y etiqueta de version; registrar SHA exacto y verificar CI.
