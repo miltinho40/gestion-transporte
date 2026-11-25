@@ -1,0 +1,39 @@
+:host { color: #172b43; }
+.modal-content { background: #fff; border-radius: 8px; }
+.trip-parties-grid, .trip-operation-grid { display: grid; gap: 16px; }
+.trip-parties-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 120px; align-items: end; }
+.trip-operation-grid { grid-template-columns: 162px minmax(0, calc(50% - 194px)) repeat(2, 139.5px); }
+.viaje-costos-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.viaje-middle-grid, .viaje-third-grid { gap: 16px; }
+.trip-disclosure { min-width: 0; border-top: 1px solid #d0d5dd; padding-top: 12px; }
+.trip-disclosure summary { cursor: pointer; font-weight: 600; color: #172b43; }
+.form-control, .form-select { border-color: #d0d5dd; }
+.modal-viajes { max-width: 980px; }
+.trip-operation-grid .viaje-field-date-130 { width: auto; max-width: none; }
+.trip-operation-grid .form-control { width: 100%; }
+.trip-operation-grid > div { min-width: 0; }
+.trip-route-grid { display: grid; grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.trip-route-main { display: grid; gap: 16px; min-width: 0; }
+.trip-route-values { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.trip-route-values .viaje-field-number { width: auto; min-width: 0; }
+.trip-tall-field { display: flex; flex-direction: column; min-width: 0; }
+.trip-tall-field textarea.form-control { flex: 1; width: 100%; height: 108px; min-height: 108px; resize: none; }
+.viaje-middle-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.viaje-middle-grid textarea { width: 100%; max-width: none; }
+.viaje-gastos-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.viaje-summary-stack { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.viaje-summary-stack > div { border: 0; border-radius: 0; background: #f4f6f9; padding: 10px; }
+hr.my-4 { margin: 12px 0 !important; }
+@media(max-width:767.98px) {
+  .trip-parties-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .trip-operation-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .viaje-costos-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trip-route-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trip-route-main { grid-column: 1 / -1; }
+}
+@media(max-width:575.98px) {
+  .trip-parties-grid, .trip-operation-grid, .trip-route-grid { grid-template-columns: minmax(0, 1fr); }
+  .trip-operation-grid .viaje-field-date-130 { min-width: 0; }
+  .viaje-costos-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media(max-width:575.98px) { .viaje-summary-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

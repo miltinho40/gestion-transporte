@@ -45,7 +45,10 @@ interface UtilityMaintenanceDetail {
   costo_total: string | number;
 }
 
-interface UtilityDriverDetail {
+export interface UtilityDriverDetail {
+  total_precio_fletes: string | number;
+  provisional: boolean;
+  viajes: { id: string; fecha: string; placa: string; ruta: string; retorno: boolean; domingo: boolean; valor: string | number }[];
   conductor: {
     id: string;
     nombre: string;

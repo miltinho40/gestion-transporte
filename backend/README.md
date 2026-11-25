@@ -80,3 +80,11 @@ npm test
 
 El pipeline `.github/workflows/ci.yml` levanta PostgreSQL, aplica migraciones y
 ejecuta pruebas backend, frontend y E2E en escritorio y movil.
+
+## Preparacion de despliegue
+
+La guia de esta entrega, respaldo verificado, reglas para registros historicos
+y recuperacion estan en [deploy/RELEASE-2026-11.md](../deploy/RELEASE-2026-11.md).
+`npm run release:check` revisa los archivos candidatos a Git y
+`npm run release:rehearse -- ../backups/<respaldo>/database.dump` prueba las
+migraciones en una base local desechable, nunca en la base original.

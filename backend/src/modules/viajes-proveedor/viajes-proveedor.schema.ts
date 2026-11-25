@@ -50,6 +50,7 @@ const soporteOperacionSchema = z
 
 const viajeProveedorBaseSchema = z.object({
   cliente_id: idSchema,
+  facturar_a_id: idSchema.optional().nullable(),
   proveedor_id: idSchema,
   tarifa_ruta_id: idSchema,
   fecha_salida: dateOnlySchema.optional(),

@@ -1,0 +1,246 @@
+<h1 class="h3 mb-3">Facturación</h1>
+@if (error() && !detail() && !billingOpen()) {
+  <div class="alert alert-danger" role="alert">{{ error() }}</div>
+}
+@if (success()) {
+  <div class="alert alert-success" role="status">{{ success() }}</div>
+}
+<nav class="nav nav-tabs mb-3" aria-label="Facturación">
+  <button class="nav-link" [class.active]="tab === 'preparar'" (click)="tab = 'preparar'">
+    Preparar factura
+  </button>
+  <button class="nav-link" [class.active]="tab === 'facturas'" (click)="tab = 'facturas'">
+    Facturas y cobros
+  </button>
+  <button class="nav-link" [class.active]="tab === 'configuracion'" (click)="tab = 'configuracion'">
+    Valores predeterminados
+  </button>
+</nav>
+@if (tab === 'preparar') {
+  <app-facturacion-trip-list
+    [trips]="trips()"
+    [selected]="selected()"
+    [clientes]="clientes()"
+    [vehiculos]="vehiculos()"
+    [search]="search"
+    [ownOnly]="ownOnly"
+    [page]="page"
+    [tripLimit]="tripLimit()"
+    [total]="total"
+    [busy]="busy()"
+    [canWrite]="canWrite()"
+    [selectedClientIds]="selectedClientIds()"
+    [selectedVehicleIds]="selectedVehicleIds()"
+    [selectedWeeks]="selectedWeeks()"
+    (searchChange)="search = $event; searchChanged()"
+    (ownOnlyChange)="ownOnly = $event; loadTrips(true)"
+    (clientIdsChange)="setSelectedClients($event)"
+    (vehicleIdsChange)="setSelectedVehicles($event)"
+    (weeksChange)="setSelectedWeeks($event)"
+    (pageChange)="page = $event; loadTrips()"
+    (limitChange)="changeTripLimit($event)"
+    (toggled)="toggle($event)"
+    (pageToggled)="togglePageSelection()"
+    (previewed)="previewTrip($event)"
+    (edited)="editTrip($event)"
+    (billed)="openBilling()"
+  />
+}
+@if (tab === 'configuracion') {
+  <div class="table-responsive">
+    <table class="table align-middle">
+      <thead>
+        <tr>
+          <th>Cliente</th>
+          <th>Facturar a por defecto</th>
+          <th>Comisión %</th>
+          <th>IR cliente</th>
+          <th>Aplicación de comisión</th>
+          <th>IR como destinatario</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (c of clientes(); track c.id) {
+          <tr>
+            <td>{{ c.nombre }}</td>
+            <td>
+              <select
+                class="form-select form-select-sm"
+                aria-label="Destinatario predeterminado"
+                [(ngModel)]="c.configuracion_facturacion.destinatario_id"
+              >
+                <option [ngValue]="null">Directo al cliente</option>
+                @for (d of clientes(); track d.id) {
+                  <option [value]="d.id">{{ d.nombre }}</option>
+                }
+              </select>
+            </td>
+            <td>
+              <input
+                style="width: 100px"
+                class="form-control form-control-sm"
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                aria-label="Comisión predeterminada"
+                [(ngModel)]="c.porcentaje_comision"
+              />
+            </td>
+            <td>
+              <input
+                type="checkbox"
+                aria-label="IR cliente predeterminado"
+                [(ngModel)]="c.configuracion_facturacion.ir_cliente"
+              />
+            </td>
+            <td>
+              <select
+                class="form-select form-select-sm"
+                aria-label="Aplicación de comisión predeterminada"
+                [(ngModel)]="c.configuracion_facturacion.modalidad_comision"
+              >
+                <option value="AL_PAGAR">Descontar al pagar</option>
+                <option value="EN_FACTURA">Descontar en factura</option>
+              </select>
+            </td>
+            <td>
+              <input
+                type="checkbox"
+                aria-label="IR empresa predeterminado"
+                [(ngModel)]="c.configuracion_facturacion.ir_empresa"
+              />
+            </td>
+            <td>
+              @if (canWrite()) {
+                <button
+                  class="btn btn-outline-primary btn-sm"
+                  title="Guardar predeterminados"
+                  [disabled]="busy()"
+                  (click)="saveConfig(c)"
+                >
+                  <svg lucideSave size="16"></svg>
+                </button>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}
+@if (tab === 'facturas') {
+  <div class="table-responsive">
+    <table class="table align-middle">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Número</th>
+          <th>Destinatario</th>
+          <th>A facturar</th>
+          <th>Neto</th>
+          <th>Recibido</th>
+          <th>Saldo</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (f of invoices(); track f.id) {
+          <tr>
+            <td>{{ f.fecha.slice(0, 10) }}</td>
+            <td>{{ f.numero || 'Borrador #' + f.id }}</td>
+            <td>{{ f.destinatario.nombre }}</td>
+            <td>$ {{ money(f.total_facturar) }}</td>
+            <td>$ {{ money(f.neto) }}</td>
+            <td>$ {{ money(f.recibido) }}</td>
+            <td>$ {{ money(f.saldo) }}</td>
+            <td>
+              {{
+                f.estado === 'PREPARACION'
+                  ? 'En preparación'
+                  : +f.saldo === 0
+                    ? 'Cobrada'
+                    : +f.recibido > 0
+                      ? 'Abono parcial'
+                      : 'Facturada / por cobrar'
+              }}
+            </td>
+            <td>
+              <div class="d-flex gap-1">
+                <button
+                  class="btn btn-outline-secondary btn-sm"
+                  title="Ver factura y abonos"
+                  (click)="openInvoice(f)"
+                >
+                  <svg lucideEye size="16"></svg>
+                </button>
+                @if (canWrite()) {
+                  <button
+                    type="button"
+                    class="btn btn-outline-danger btn-sm"
+                    aria-label="Deshacer factura"
+                    [title]="undoBlockedReason(f) || 'Deshacer factura'"
+                    [disabled]="busy() || !!undoBlockedReason(f)"
+                    (click)="undoInvoice(f)"
+                  >
+                    <svg lucideUndo2 size="16"></svg>
+                  </button>
+                }
+              </div>
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="9" class="text-center text-secondary">Sin facturas registradas.</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  <div class="d-flex gap-3 align-items-center">
+    <button
+      class="btn btn-outline-secondary btn-sm"
+      [disabled]="invoicePage === 1"
+      (click)="invoicePage = invoicePage - 1; loadInvoices()"
+    >
+      Anterior</button
+    ><span>Página {{ invoicePage }} · {{ invoiceTotal }} facturas</span
+    ><button
+      class="btn btn-outline-secondary btn-sm"
+      [disabled]="invoicePage * 25 >= invoiceTotal"
+      (click)="invoicePage = invoicePage + 1; loadInvoices()"
+    >
+      Siguiente
+    </button>
+  </div>
+}
+
+@if (detail(); as invoice) {
+  <app-facturacion-detail-modal
+    [invoice]="invoice"
+    [canWrite]="canWrite()"
+    (closed)="detail.set(null)"
+    (saved)="paymentSaved()"
+    (continuePreparation)="openBilling($event)"
+  />
+}
+@if (tripDetail(); as trip) {
+  <app-viaje-detail-panel [viaje]="trip" [gastos]="tripExpenses()" (closed)="closeTripPreview()" />
+}
+@if (providerDetail(); as trip) {
+  <app-proveedor-viaje-detail-panel [viaje]="trip" (closed)="closeTripPreview()" />
+}
+
+@if (billingOpen()) {
+  <app-facturacion-preparation-modal
+    [initialSelected]="selected()"
+    [initialInvoice]="billingInvoice()"
+    [clientes]="clientes()"
+    (closed)="billingOpen.set(false)"
+    (saved)="billingSaved($event)"
+    (removed)="removeSelected($event)"
+    (changed)="loadInvoices(); loadTrips()"
+  />
+}

@@ -1,0 +1,225 @@
+@if (formOpen()) {
+  <div class="modal d-block" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow">
+        <form [formGroup]="form" (ngSubmit)="save()">
+          <div class="modal-header">
+            <div>
+              <h2 class="modal-title h5 mb-0">
+                @if (editingRow()) {
+                  Editar viaje de proveedor
+                } @else {
+                  Nuevo viaje de proveedor
+                }
+              </h2>
+              <span class="text-secondary small"
+                >Registra el proveedor, cliente, ruta y valores del viaje.</span
+              >
+            </div>
+            <button
+              type="button"
+              class="btn-close"
+              aria-label="Cerrar"
+              (click)="closeForm()"
+            ></button>
+          </div>
+
+          <div class="modal-body">
+            @if (error() || catalogError()) {
+              <div class="alert alert-danger" [appAutoDismissAlert]="error() || catalogError()">
+                {{ error() || catalogError() }}
+              </div>
+            }
+
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label" for="cliente_id">Cliente</label>
+                <input
+                  id="cliente_id"
+                  class="form-control"
+                  type="search"
+                  list="proveedor-transporte-clientes"
+                  placeholder="Buscar cliente o RUC"
+                  [ngModel]="clienteInput()"
+                  [ngModelOptions]="{ standalone: true }"
+                  (ngModelChange)="setClienteInput($event)"
+                />
+                <datalist id="proveedor-transporte-clientes">
+                  @for (cliente of clientes(); track cliente.id) {
+                    <option [value]="clienteLabel(cliente)"></option>
+                  }
+                </datalist>
+              </div>
+              <div class="col-md-4">
+                <app-facturar-a-field
+                  inputId="proveedor-facturar-a"
+                  [clienteId]="form.controls.cliente_id.value"
+                  [value]="form.controls.facturar_a_id.value"
+                  (selected)="form.controls.facturar_a_id.setValue($event)"
+                />
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="proveedor_id">Proveedor</label>
+                <input
+                  id="proveedor_id"
+                  class="form-control"
+                  type="search"
+                  list="proveedor-transporte-proveedores"
+                  placeholder="Buscar proveedor o RUC"
+                  [ngModel]="proveedorInput()"
+                  [ngModelOptions]="{ standalone: true }"
+                  (ngModelChange)="setProveedorInput($event)"
+                />
+                <datalist id="proveedor-transporte-proveedores">
+                  @for (proveedor of proveedores(); track proveedor.id) {
+                    <option [value]="proveedorLabel(proveedor)"></option>
+                  }
+                </datalist>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="tarifa_ruta_id">Tarifa ruta</label>
+                <input
+                  id="tarifa_ruta_id"
+                  class="form-control"
+                  type="search"
+                  list="proveedor-transporte-tarifas"
+                  placeholder="Buscar ruta, carga o precio"
+                  [ngModel]="tarifaInput()"
+                  [ngModelOptions]="{ standalone: true }"
+                  (ngModelChange)="setTarifaInput($event)"
+                />
+                <datalist id="proveedor-transporte-tarifas">
+                  @for (tarifa of tarifasRuta(); track tarifa.id) {
+                    <option [value]="tarifaLabel(tarifa)"></option>
+                  }
+                </datalist>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="fecha_salida">Fecha salida</label>
+                <input
+                  id="fecha_salida"
+                  class="form-control"
+                  type="date"
+                  formControlName="fecha_salida"
+                />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="fecha_llegada">Fecha llegada</label>
+                <input
+                  id="fecha_llegada"
+                  class="form-control"
+                  type="date"
+                  formControlName="fecha_llegada"
+                />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="precio_viaje">Precio viaje</label>
+                <input
+                  id="precio_viaje"
+                  class="form-control"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  formControlName="precio_viaje"
+                  (change)="recalculateFinancials()"
+                />
+              </div>
+
+              <div class="col-md-3">
+                <label class="form-label" for="precio_pagar_proveedor">Precio a pagar</label>
+                <input
+                  id="precio_pagar_proveedor"
+                  class="form-control"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  formControlName="precio_pagar_proveedor"
+                />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="viaticos">Viáticos</label>
+                <input
+                  id="viaticos"
+                  class="form-control"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  formControlName="viaticos"
+                />
+              </div>
+
+              <div class="col-md-3 d-flex align-items-end">
+                <div class="form-check mb-2">
+                  <input
+                    id="pagado_proveedor"
+                    class="form-check-input"
+                    type="checkbox"
+                    formControlName="pagado_proveedor"
+                  />
+                  <label class="form-check-label" for="pagado_proveedor">Pagado proveedor</label>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="fecha_pago_proveedor">Fecha pago</label>
+                <input
+                  id="fecha_pago_proveedor"
+                  class="form-control"
+                  type="date"
+                  formControlName="fecha_pago_proveedor"
+                />
+              </div>
+
+              <div class="col-md-8">
+                <label class="form-label" for="numeros_guia_remision">Guías de remisión</label>
+                <input
+                  id="numeros_guia_remision"
+                  class="form-control"
+                  type="text"
+                  placeholder="Separadas por coma o guion"
+                  formControlName="numeros_guia_remision"
+                />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="descripcion_carga">Detalle / carga</label>
+                <textarea
+                  id="descripcion_carga"
+                  class="form-control"
+                  rows="2"
+                  formControlName="descripcion_carga"
+                ></textarea>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="observaciones">Observaciones</label>
+                <textarea
+                  id="observaciones"
+                  class="form-control"
+                  rows="2"
+                  formControlName="observaciones"
+                ></textarea>
+              </div>
+              <div class="col-12">
+                <div class="provider-form-result">
+                  Utilidad calculada: <strong>$ {{ money(utilidadFormulario()) }}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeForm()">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">
+              @if (saving()) {
+                Guardando...
+              } @else {
+                Guardar
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop fade show"></div>
+}

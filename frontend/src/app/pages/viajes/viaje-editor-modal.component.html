@@ -12,7 +12,7 @@
                   Nuevo Viaje
                 }
               </h2>
-              <span class="text-secondary small">Completa los datos del viaje, costos y gastos.</span>
+
             </div>
             <button type="button" class="btn-close" aria-label="Cerrar" (click)="closeForm()"></button>
           </div>
@@ -23,8 +23,64 @@
             }
 
             <div class="viaje-form-stack">
-              <div class="viaje-top-grid">
-                @for (field of ['cliente_id', 'vehiculo_id', 'conductor_id']; track field) {
+              <div class="trip-parties-grid">
+                @for (field of ['cliente_id']; track field) {
+                  <div>
+                    <label class="form-label" [for]="field">
+                      {{ field === 'cliente_id' ? 'Cliente' : field === 'vehiculo_id' ? 'Vehículo' : 'Conductor' }}
+                      <span class="text-danger">*</span>
+                    </label>
+                    <div class="catalog-combobox">
+                      <input
+                        [id]="field"
+                        class="form-control"
+                        type="search"
+                        autocomplete="off"
+                        [placeholder]="'Buscar ' + (field === 'cliente_id' ? 'cliente' : field === 'vehiculo_id' ? 'vehículo' : 'conductor') + '...'"
+                        [ngModel]="catalogInputValue($any(field))"
+                        [ngModelOptions]="{ standalone: true }"
+                        (focus)="openCatalog($any(field))"
+                        (blur)="closeCatalogSoon($any(field))"
+                        (ngModelChange)="setCatalogInput($any(field), $event)"
+                      />
+                      @if (catalogOpen($any(field))) {
+                        <div class="catalog-options shadow-sm">
+                          @for (option of limitedCatalogOptions($any(field)); track option.value) {
+                            <button
+                              type="button"
+                              class="catalog-option"
+                              (mousedown)="selectCatalogOption($any(field), option, $event)"
+                            >
+                              {{ option.label }}
+                            </button>
+                          } @empty {
+                            <span class="catalog-empty">Sin coincidencias</span>
+                          }
+                        </div>
+                      }
+                    </div>
+                  </div>
+                }
+
+
+                <app-facturar-a-field [clienteId]="form.controls.cliente_id.value" [value]="form.controls.facturar_a_id.value" (selected)="form.controls.facturar_a_id.setValue($event)" />
+                <div class="trip-return-field">
+                  <label class="form-label d-block" for="retorno">Retorno</label>
+                  <div class="form-check form-switch viaje-switch-box">
+                    <input id="retorno" class="form-check-input" type="checkbox" formControlName="retorno" />
+                    <label class="form-check-label" for="retorno">
+                      @if (form.controls.retorno.value) {
+                        Sí
+                      } @else {
+                        No
+                      }
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <h3 class="h6 mb-0">Operación</h3>
+              <div class="trip-operation-grid">
+                @for (field of ['vehiculo_id', 'conductor_id']; track field) {
                   <div>
                     <label class="form-label" [for]="field">
                       {{ field === 'cliente_id' ? 'Cliente' : field === 'vehiculo_id' ? 'Vehículo' : 'Conductor' }}
@@ -67,14 +123,15 @@
                   <input id="fecha_salida" class="form-control" type="date" formControlName="fecha_salida" (change)="onFechaSalidaChange()" />
                 </div>
                 <div class="viaje-field-date-130">
-                  <label class="form-label" for="fecha_llegada">Fecha llegada</label>
+                  <label class="form-label" for="fecha_llegada">Fecha entrega</label>
                   <input id="fecha_llegada" class="form-control" type="date" formControlName="fecha_llegada" (change)="onFechaLlegadaChange()" />
                 </div>
               </div>
 
-              <div class="viaje-middle-grid">
+              <div class="trip-route-grid">
+                <div class="trip-route-main">
                 <div>
-                  <label class="form-label" for="tarifa_ruta_id">Tarifa Ruta <span class="text-danger">*</span></label>
+                  <label class="form-label" for="tarifa_ruta_id">Ruta / precio <span class="text-danger">*</span></label>
                   <div class="catalog-combobox">
                     <input
                       id="tarifa_ruta_id"
@@ -101,20 +158,37 @@
                     }
                   </div>
                 </div>
-                <div class="viaje-field-state">
-                  <label class="form-label" for="estado">Estado <span class="text-danger">*</span></label>
-                  <select id="estado" class="form-select" formControlName="estado">
-                    <option value="programado">Programado</option>
-                    <option value="en_curso">En curso</option>
-                    <option value="completado">Completado</option>
-                    <option value="cancelado">Cancelado</option>
-                  </select>
+                  <div class="trip-route-values">
+                <div class="viaje-cost-field">
+                  <label class="form-label" for="precio_flete">Precio viaje</label>
+                  <input id="precio_flete" class="form-control" type="number" min="0.01" step="0.01" formControlName="precio_flete" (input)="onPrecioFleteChanged()" />
                 </div>
-                <div>
+
+                <div class="viaje-cost-field">
+                  <label class="form-label" for="viaticos">Viáticos</label>
+                  <input id="viaticos" class="form-control" type="number" min="0" step="0.01" formControlName="viaticos" (input)="onCostoRealChanged()" />
+                </div>
+                <div class="viaje-field-number">
+                  <label class="form-label" for="peso_carga_kg">Peso kg</label>
+                  <input id="peso_carga_kg" class="form-control" type="number" min="0" step="0.01" formControlName="peso_carga_kg" />
+                </div>
+                  </div>
+                </div>
+                <div class="trip-tall-field">
+                  <label class="form-label" for="numeros_guia_remision">Guías de remisión</label>
+                  <textarea
+                    id="numeros_guia_remision"
+                    class="form-control"
+                    rows="1"
+                    placeholder="Separadas por coma, guion o línea"
+                    formControlName="numeros_guia_remision"
+                  ></textarea>
+                </div>
+                <div class="trip-tall-field">
                   <label class="form-label" for="descripcion_carga">Descripción de carga</label>
                   <textarea
                     id="descripcion_carga"
-                    class="form-control viaje-textarea-compact"
+                    class="form-control"
                     rows="1"
                     placeholder="Descripción de la carga..."
                     formControlName="descripcion_carga"
@@ -122,84 +196,13 @@
                 </div>
               </div>
 
-              <div class="viaje-third-grid">
-                <div>
-                  <label class="form-label" for="numeros_guia_remision">Guías de remisión</label>
-                  <textarea
-                    id="numeros_guia_remision"
-                    class="form-control viaje-textarea-compact"
-                    rows="1"
-                    placeholder="Separadas por coma, guion o línea"
-                    formControlName="numeros_guia_remision"
-                  ></textarea>
-                </div>
-                <div class="viaje-field-number">
-                  <label class="form-label" for="peso_carga_kg">Peso kg</label>
-                  <input id="peso_carga_kg" class="form-control" type="number" min="0" step="0.01" formControlName="peso_carga_kg" />
-                </div>
-                <div class="viaje-field-fixed-120">
-                  <label class="form-label d-block" for="cobrado">Cobrado</label>
-                  <div class="form-check form-switch viaje-switch-box">
-                    <input id="cobrado" class="form-check-input" type="checkbox" formControlName="cobrado" />
-                    <label class="form-check-label" for="cobrado">
-                      @if (form.controls.cobrado.value) {
-                        Sí
-                      } @else {
-                        No
-                      }
-                    </label>
-                  </div>
-                </div>
-
-                <div class="viaje-field-fixed-120">
-                  <label class="form-label d-block" for="retorno">Retorno</label>
-                  <div class="form-check form-switch viaje-switch-box">
-                    <input id="retorno" class="form-check-input" type="checkbox" formControlName="retorno" />
-                    <label class="form-check-label" for="retorno">
-                      @if (form.controls.retorno.value) {
-                        Sí
-                      } @else {
-                        No
-                      }
-                    </label>
-                  </div>
-                </div>
-
-                <div class="viaje-field-date-130">
-                  <label class="form-label" for="fecha_cobro">Fecha cobro</label>
-                  <input id="fecha_cobro" class="form-control" type="date" formControlName="fecha_cobro" />
-                </div>
-              </div>
-
-              <hr class="my-4" />
-
-              <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
-                <div>
-                  <h3 class="h6 mb-1">Flete y costos</h3>
-                  <p class="text-secondary small mb-0">Los valores se calculan al seleccionar cliente, vehículo y tarifa.</p>
-                </div>
-                @if (calculating()) {
-                  <span class="badge text-bg-light d-inline-flex align-items-center gap-1">
-                    <svg lucideCalculator size="14"></svg>
-                    Calculando
-                  </span>
-                }
-              </div>
-
-              <div class="viaje-costos-grid">
-                <div class="viaje-cost-field">
-                  <label class="form-label" for="precio_flete">Precio viaje</label>
-                  <input id="precio_flete" class="form-control" type="number" min="0.01" step="0.01" formControlName="precio_flete" (input)="onPrecioFleteChanged()" />
-                </div>
-                <div class="viaje-cost-field">
-                  <label class="form-label" for="precio_real_flete">A facturar</label>
-                  <input id="precio_real_flete" class="form-control" type="number" min="0" step="0.01" formControlName="precio_real_flete" (input)="onPrecioRealChanged()" />
-                </div>
-                <div class="viaje-cost-field">
-                  <label class="form-label" for="viaticos">Viáticos</label>
-                  <input id="viaticos" class="form-control" type="number" min="0" step="0.01" formControlName="viaticos" (input)="onCostoRealChanged()" />
-                </div>
-                <div class="viaje-cost-field">
+              @if (calculating()) {
+                <span class="badge text-bg-light d-inline-flex align-items-center gap-1">
+                  <svg lucideCalculator size="14"></svg>
+                  Calculando
+                </span>
+              }
+              <details class="trip-disclosure"><summary>Diésel, peajes y estimación</summary><div class="viaje-costos-grid mt-3">                <div class="viaje-cost-field">
                   <label class="form-label" for="galones_diesel">Galones diésel</label>
                   <input id="galones_diesel" class="form-control" type="number" min="0" step="0.01" formControlName="galones_diesel" (input)="onCalculationInputChanged()" />
                 </div>
@@ -215,13 +218,11 @@
                   <label class="form-label" for="costo_estimado_gastos">Gastos estimados</label>
                   <input id="costo_estimado_gastos" class="form-control" type="number" readonly formControlName="costo_estimado_gastos" />
                 </div>
-              </div>
-
+</div></details>
               <hr class="my-4" />
 
               <div class="viaje-gastos-layout">
-                <section>
-                  <h3 class="h6 mb-2">Gastos adicionales</h3>
+                <details class="trip-disclosure"><summary>Gastos adicionales · {{ gastos().length }} gastos · $ {{ money(totalGastosRealesAdicionales()) }}</summary><div class="mt-3">
                   <div class="viaje-gasto-form-grid mb-3" [formGroup]="gastoForm">
                     <div class="catalog-combobox">
                       <input
@@ -246,9 +247,8 @@
                     </div>
                     <input class="form-control" type="number" min="0.01" step="0.01" placeholder="Monto" formControlName="monto" />
                     <input class="form-control" placeholder="Descripción" formControlName="descripcion" />
-                    <button type="button" class="btn btn-outline-primary" (click)="addGasto()">
+                    <button type="button" class="btn btn-outline-primary" title="Agregar gasto" aria-label="Agregar gasto" (click)="addGasto()">
                       <svg lucidePlus size="14"></svg>
-                      Agregar
                     </button>
                   </div>
 
@@ -260,8 +260,8 @@
                           @for (gasto of gastos(); track gasto.id ?? $index; let index = $index) {
                             <tr>
                               <td>{{ gasto.tipo_gasto_nombre }}</td>
-                              <td>$ {{ money(gasto.monto) }}</td>
-                              <td>{{ gasto.descripcion || '-' }}</td>
+                              <td><input class="form-control form-control-sm" style="width:110px" type="number" min="0.01" step="0.01" aria-label="Importe del gasto" [ngModel]="gasto.monto" [ngModelOptions]="{standalone:true}" (ngModelChange)="updateGasto(index, 'monto', $event)" /></td>
+                              <td><input class="form-control form-control-sm" aria-label="Descripción del gasto" [ngModel]="gasto.descripcion" [ngModelOptions]="{standalone:true}" (ngModelChange)="updateGasto(index, 'descripcion', $event)" /></td>
                               <td class="text-end">
                                 <button type="button" class="btn btn-outline-danger btn-sm" title="Quitar gasto" (click)="removeGasto(index)">
                                   <svg lucideTrash2 size="14"></svg>
@@ -273,7 +273,7 @@
                       </table>
                     </div>
                   }
-                </section>
+                </div></details>
 
                 <aside class="viaje-summary-stack viaje-summary-compact">
                   <div><span>Viáticos</span><strong>$ {{ money(form.controls.viaticos.value) }}</strong></div>
@@ -283,10 +283,6 @@
                 </aside>
               </div>
 
-              <div>
-                <label class="form-label" for="observaciones">Observaciones</label>
-                <textarea id="observaciones" class="form-control" rows="2" formControlName="observaciones"></textarea>
-              </div>
             </div>
           </div>
 

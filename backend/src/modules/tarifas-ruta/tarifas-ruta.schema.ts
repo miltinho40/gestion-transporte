@@ -16,6 +16,7 @@ const capacidadSchema = z.preprocess((value) => {
 
 const tarifaRutaBaseSchema = z.object({
   ruta_id: idSchema,
+  ruta_inversa: z.boolean().optional(),
   tipo_carga_id: idSchema,
   capacidad: capacidadSchema.optional(),
   toneladas: z.coerce.number().positive().optional().nullable(),

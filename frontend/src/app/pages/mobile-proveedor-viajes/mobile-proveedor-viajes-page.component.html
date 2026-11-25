@@ -47,6 +47,7 @@
     </div>
   </div>
 
+  <label class="form-check mb-3"><input type="checkbox" class="form-check-input" [ngModel]="mostrarFinalizados()" (ngModelChange)="setMostrarFinalizados($event)">Mostrar cobrados y pagados</label>
   <div class="viajes-list">
     @for (row of filteredRows(); track row.id) {
       <article
@@ -76,10 +77,6 @@
           <div>
             <span>Precio viaje</span>
             <strong>$ {{ money(row.precio_viaje) }}</strong>
-          </div>
-          <div>
-            <span>A facturar</span>
-            <strong>$ {{ money(row.valor_a_facturar) }}</strong>
           </div>
           <div>
             <span>Utilidad</span>
@@ -161,7 +158,6 @@
   <app-pagination-controls
     [meta]="pagination()"
     [loading]="loading()"
-    [pageSizeOptions]="[10, 25, 50]"
     (pageChange)="changePage($event)"
     (limitChange)="changeLimit($event)"
   />

@@ -11,6 +11,7 @@ export const MENU_PERMISSIONS: MenuPermission[] = [
   { key: 'asistente', label: 'Asistente', group: 'General' },
   { key: 'dashboard', label: 'Alertas', group: 'General' },
   { key: 'clientes', label: 'Clientes', group: 'General' },
+  { key: 'facturacion', label: 'Facturación', group: 'General' },
   { key: 'viajes', label: 'Viajes', group: 'Transporte', requiresOwnFleet: true },
   { key: 'cierre_semanal', label: 'Cierre semanal', group: 'Transporte', requiresOwnFleet: true },
   { key: 'reporte_viajes', label: 'Reporte de viajes', group: 'Transporte', requiresOwnFleet: true },

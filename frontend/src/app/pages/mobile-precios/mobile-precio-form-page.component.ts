@@ -46,6 +46,7 @@ export class MobilePrecioFormPageComponent implements OnDestroy {
 
   readonly form = this.fb.nonNullable.group({
     ruta_id: ['', Validators.required],
+    ruta_inversa: [false],
     tipo_carga_id: ['', Validators.required],
     capacidad: [''],
     toneladas: this.fb.control<number | null>(null),
@@ -158,6 +159,7 @@ export class MobilePrecioFormPageComponent implements OnDestroy {
   private fillForm(row: TarifaRutaRow, options: { duplicate?: boolean } = {}) {
     this.form.reset({
       ruta_id: String(row.ruta_id),
+      ruta_inversa: row.ruta_inversa ?? false,
       tipo_carga_id: String(row.tipo_carga_id),
       capacidad: row.capacidad ?? '',
       toneladas: row.toneladas === null || row.toneladas === undefined ? null : numberValue(row.toneladas),
@@ -174,6 +176,7 @@ export class MobilePrecioFormPageComponent implements OnDestroy {
 
     return {
       ruta_id: value.ruta_id,
+      ruta_inversa: value.ruta_inversa,
       tipo_carga_id: value.tipo_carga_id,
       capacidad: value.capacidad || null,
       toneladas: value.toneladas === null || value.toneladas === undefined || value.toneladas === 0 ? null : numberValue(value.toneladas),

@@ -1,0 +1,110 @@
+@use './facturacion-summary';
+.billing-invoice-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) 155px 120px 80px;
+  gap: 12px;
+  align-items: end;
+}
+.billing-invoice-controls > * {
+  min-width: 0;
+}
+.billing-ir-control {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+}
+.billing-commission-mode {
+  min-width: 0;
+}
+.billing-commission-mode legend {
+  float: none;
+  font-size: inherit;
+}
+.billing-commission-mode .btn-group {
+  max-width: 100%;
+}
+.billing-commission-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+.billing-commission-actions > button {
+  white-space: nowrap;
+}
+.billing-group-selection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.billing-group-selection input {
+  flex: none;
+}
+.billing-modal-trips {
+  table-layout: fixed;
+  width: 896px;
+  min-width: 896px;
+}
+.billing-preparation-dialog {
+  max-width: 930px;
+  width: calc(100% - 32px);
+  margin-inline: auto;
+}
+.billing-modal-select {
+  width: 26px;
+}
+.billing-modal-week {
+  width: 40px;
+}
+.billing-modal-date {
+  width: 96px;
+}
+.billing-modal-client {
+  width: 140px;
+}
+.billing-modal-route {
+  width: 180px;
+}
+.billing-modal-guides {
+  width: 100px;
+}
+.billing-modal-price {
+  width: 92px;
+}
+.billing-modal-commission {
+  width: 65.6px;
+}
+.billing-modal-ir {
+  width: 30px;
+}
+.billing-modal-amount {
+  width: 90px;
+}
+.billing-modal-action {
+  width: 36px;
+}
+.billing-modal-trips td {
+  overflow-wrap: anywhere;
+}
+.billing-guide {
+  white-space: nowrap;
+}
+.billing-remove {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (max-width: 991.98px) {
+  .billing-invoice-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 575.98px) {
+  .billing-invoice-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

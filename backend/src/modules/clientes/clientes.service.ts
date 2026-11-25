@@ -18,6 +18,7 @@ interface ListClientesFilters {
 }
 
 const includePropietario = {
+  configuracion_facturacion: true,
   propietario: {
     select: {
       id: true,
@@ -25,6 +26,17 @@ const includePropietario = {
     }
   }
 } satisfies Prisma.ClienteInclude;
+
+const formatCliente = <T extends Prisma.ClienteGetPayload<{ include: typeof includePropietario }>>(cliente: T) => {
+  const config = cliente.configuracion_facturacion;
+  const modalidad = config?.modalidad_comision ?? (/TRANSPALFRA/i.test(cliente.nombre) ? 'EN_FACTURA' : 'AL_PAGAR');
+  return {
+    ...cliente,
+    modalidad_comision: modalidad,
+    modalidad_comision_nombre: modalidad === 'EN_FACTURA' ? 'En factura' : 'Al pagar',
+    ir_facturacion: config?.ir_empresa ?? true
+  };
+};
 
 const buildWhere = (
   scopeInput: JwtPayload | unknown,
@@ -91,11 +103,12 @@ export const listClientes = async (
   const pagination = parsePagination(filters as Record<string, unknown>);
 
   if (!pagination) {
-    return prisma.cliente.findMany({
+    const rows = await prisma.cliente.findMany({
       where,
       include: includePropietario,
       orderBy
     });
+    return rows.map(formatCliente);
   }
 
   const [data, total] = await prisma.$transaction([
@@ -109,7 +122,7 @@ export const listClientes = async (
     prisma.cliente.count({ where })
   ]);
 
-  return buildPaginatedResult(data, total, pagination);
+  return buildPaginatedResult(data.map(formatCliente), total, pagination);
 };
 
 export const getClienteById = async (scopeInput: JwtPayload | unknown, idInput: unknown) => {
@@ -128,7 +141,7 @@ export const getClienteById = async (scopeInput: JwtPayload | unknown, idInput: 
     throw new AppError('Cliente no encontrado', 404);
   }
 
-  return cliente;
+  return formatCliente(cliente);
 };
 
 export const createCliente = async (
@@ -139,7 +152,7 @@ export const createCliente = async (
 
   await ensureRucAvailable(propietarioId, input.ruc_cedula);
 
-  return prisma.cliente.create({
+  const cliente = await prisma.cliente.create({
     data: {
       propietario_id: propietarioId,
       nombre: input.nombre,
@@ -149,9 +162,16 @@ export const createCliente = async (
       email: input.email,
       direccion: input.direccion,
       porcentaje_comision: input.porcentaje_comision ?? 0,
-      activo: input.activo ?? true
-    }
+      activo: input.activo ?? true,
+      configuracion_facturacion: { create: {
+        propietario_id: propietarioId,
+        modalidad_comision: input.modalidad_comision ?? 'AL_PAGAR',
+        ir_empresa: input.ir_facturacion ?? true
+      } }
+    },
+    include: includePropietario
   });
+  return formatCliente(cliente);
 };
 
 export const updateCliente = async (
@@ -162,16 +182,30 @@ export const updateCliente = async (
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
 
-  await getClienteById(propietarioId, id);
+  const current = await getClienteById(propietarioId, id);
 
   if (input.ruc_cedula) {
     await ensureRucAvailable(propietarioId, input.ruc_cedula, id);
   }
 
-  return prisma.cliente.update({
+  const { modalidad_comision, ir_facturacion, ...data } = input;
+  const billingChanged = modalidad_comision !== undefined || ir_facturacion !== undefined;
+  const cliente = await prisma.cliente.update({
     where: { id },
-    data: input
+    data: {
+      ...data,
+      ...(billingChanged ? { configuracion_facturacion: { upsert: {
+        create: {
+          propietario_id: propietarioId,
+          modalidad_comision: modalidad_comision ?? current.modalidad_comision,
+          ir_empresa: ir_facturacion ?? current.ir_facturacion
+        },
+        update: { modalidad_comision, ir_empresa: ir_facturacion }
+      } } } : {})
+    },
+    include: includePropietario
   });
+  return formatCliente(cliente);
 };
 
 export const updateEstadoCliente = async (
@@ -226,8 +260,18 @@ export const deactivateCliente = async (propietarioIdInput: unknown, idInput: un
     throw new AppError('El cliente ya esta usado en algunos viajes', 409);
   }
 
-  await prisma.cliente.delete({
-    where: { id }
+  await prisma.$transaction(async tx => {
+    const [facturas, destinatarios, propios, externos] = await Promise.all([
+      tx.facturaTransporte.count({ where: { destinatario_id: id } }),
+      tx.configuracionFacturacion.count({ where: { destinatario_id: id, cliente_id: { not: id } } }),
+      tx.viaje.count({ where: { facturar_a_id: id } }),
+      tx.viajeProveedor.count({ where: { facturar_a_id: id } })
+    ]);
+    if (facturas || destinatarios || propios || externos) {
+      throw new AppError('El cliente está asociado a facturación o se usa como destinatario de otros registros.', 409);
+    }
+    await tx.configuracionFacturacion.deleteMany({ where: { cliente_id: id, propietario_id: propietarioId } });
+    await tx.cliente.delete({ where: { id } });
   });
 
   return current;

@@ -59,6 +59,7 @@ export class MobileProveedorViajesPageComponent implements OnDestroy {
   readonly search = signal('');
   readonly cobrado = signal('');
   readonly pagado = signal('');
+  readonly mostrarFinalizados = signal(false);
   readonly markingCobroId = signal<string | null>(null);
   readonly markingPagoId = signal<string | null>(null);
   readonly savingGuidesId = signal<string | null>(null);
@@ -68,7 +69,7 @@ export class MobileProveedorViajesPageComponent implements OnDestroy {
   readonly message = signal<string | null>(null);
   readonly pagination = signal<PaginationMeta | null>(null);
   readonly page = signal(1);
-  readonly limit = signal(10);
+  readonly limit = signal(25);
   private filterTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
@@ -76,6 +77,7 @@ export class MobileProveedorViajesPageComponent implements OnDestroy {
     this.search.set(query.get('search') ?? '');
     this.cobrado.set(query.get('cobrado') ?? '');
     this.pagado.set(query.get('pagado_proveedor') ?? '');
+    this.mostrarFinalizados.set(query.get('mostrar_finalizados') === 'true');
     this.load();
   }
 
@@ -94,6 +96,7 @@ export class MobileProveedorViajesPageComponent implements OnDestroy {
           search: this.search().trim(),
           cobrado: this.cobrado(),
           pagado_proveedor: this.pagado(),
+          mostrar_finalizados: this.mostrarFinalizados(),
           cliente_ids: this.route.snapshot.queryParamMap.get('cliente_ids') ?? '',
           proveedor_ids: this.route.snapshot.queryParamMap.get('proveedor_ids') ?? '',
           numero_semana: this.route.snapshot.queryParamMap.get('numero_semana') ?? '',
@@ -144,6 +147,10 @@ export class MobileProveedorViajesPageComponent implements OnDestroy {
 
   setPagado(value: string) {
     this.pagado.set(value);
+    this.scheduleFilteredLoad();
+  }
+  setMostrarFinalizados(value: boolean) {
+    this.mostrarFinalizados.set(value);
     this.scheduleFilteredLoad();
   }
 

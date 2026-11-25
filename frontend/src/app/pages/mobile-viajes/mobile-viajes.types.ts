@@ -61,6 +61,7 @@ export interface GastoViajeItem {
 }
 
 export interface ViajeRow {
+  facturar_a_id?: string | null;
   id: string;
   cliente_id: string;
   vehiculo_id: string;

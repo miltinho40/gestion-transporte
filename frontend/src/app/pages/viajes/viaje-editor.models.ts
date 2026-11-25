@@ -54,6 +54,7 @@ export interface TarifaRutaOption {
 export interface TipoGastoOption extends BasicOption {}
 
 export interface ViajeRow {
+  facturar_a_id?: string | null;
   id: string;
   cliente_id: string;
   vehiculo_id: string;

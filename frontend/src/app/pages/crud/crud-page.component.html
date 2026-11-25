@@ -138,7 +138,7 @@
 
   @if (formOpen()) {
     <div class="modal d-block" tabindex="-1" role="dialog">
-      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable" [class.modal-precios]="cfg.endpoint === '/tarifas-ruta'">
         <div class="modal-content border-0 shadow">
           <form [formGroup]="form" (ngSubmit)="save()">
             <div class="modal-header">
@@ -162,7 +162,7 @@
 
               <div class="row g-3">
                 @for (field of visibleFields(cfg.fields); track field.name) {
-                  <div [class]="field.colClass ?? 'col-md-6'">
+                  <div [class]="field.colClass ?? 'col-md-6'" [attr.data-field]="field.name">
                     @if (field.type === 'checkbox') {
                       <div class="form-check form-switch mt-4">
                         <input

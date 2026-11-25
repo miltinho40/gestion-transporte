@@ -903,7 +903,17 @@ body {
 }
 
 .reports-travel-filters-annual {
-  grid-template-columns: 90px minmax(170px, 0.9fr) minmax(170px, 0.85fr) minmax(220px, 1.1fr) 130px;
+  // Preserve 40% of the former vehicle/week widths and 75% of the client width.
+  --reports-filter-flex-space: calc(100% - 220px - 3.4rem);
+  grid-template-columns:
+    minmax(180px, 1fr) 90px
+    minmax(68px, calc(var(--reports-filter-flex-space) * 0.1263157895))
+    minmax(68px, calc(var(--reports-filter-flex-space) * 0.1192982456))
+    minmax(165px, calc(var(--reports-filter-flex-space) * 0.2894736842)) 130px;
+}
+
+.reports-travel-filters-annual > * {
+  min-width: 0;
 }
 
 .reports-month-grid {
@@ -1322,6 +1332,10 @@ body {
 }
 
 @media (max-width: 1199.98px) {
+  .reports-travel-filters-annual {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .weekly-closure-header {
     align-items: stretch;
   }

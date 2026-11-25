@@ -64,14 +64,6 @@
             <span>Precio viaje</span>
             <strong>$ {{ money(row.precio_flete) }}</strong>
           </div>
-          <div>
-            <span>A facturar</span>
-            <strong>$ {{ money(row.precio_real_flete) }}</strong>
-          </div>
-          <div>
-            <span>Utilidad</span>
-            <strong>$ {{ money(utilidad(row)) }}</strong>
-          </div>
         </div>
 
         @if (guiasLabel(row)) {
@@ -134,7 +126,6 @@
   <app-pagination-controls
     [meta]="pagination()"
     [loading]="loading()"
-    [pageSizeOptions]="[10, 25, 50]"
     (pageChange)="changePage($event)"
     (limitChange)="changeLimit($event)"
   />

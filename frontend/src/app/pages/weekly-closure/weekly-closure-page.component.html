@@ -11,7 +11,13 @@
     </div>
     <div class="weekly-closure-field weekly-closure-field-week">
       <label class="form-label">Semana</label>
-      <input class="form-control form-control-sm" type="number" min="1" max="53" formControlName="numero_semana" />
+      <input
+        class="form-control form-control-sm"
+        type="number"
+        min="1"
+        max="53"
+        formControlName="numero_semana"
+      />
     </div>
     <div class="weekly-closure-field weekly-closure-field-vehicle">
       <label class="form-label">Placa</label>
@@ -34,7 +40,9 @@
         class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-2"
         type="button"
         (click)="copyAndSendReport()"
-        [disabled]="copyingReport() || loading() || loadingVehiculos() || !canCopyWeeklyImage(cierre())"
+        [disabled]="
+          copyingReport() || loading() || loadingVehiculos() || !canCopyWeeklyImage(cierre())
+        "
       >
         <svg lucideCopy size="15"></svg>
         {{ copyingReport() ? 'Copiando...' : 'Copiar y enviar' }}
@@ -95,7 +103,8 @@
 @if (cierre(); as c) {
   @if (cierreRequiereRevision(c)) {
     <div class="alert alert-warning py-2">
-      Este cierre tiene diferencias con el cálculo actual. Puedes regenerar los gastos para actualizar el cierre.
+      Este cierre tiene diferencias con el cálculo actual. Puedes regenerar los gastos para
+      actualizar el cierre.
     </div>
   }
 
@@ -106,60 +115,10 @@
   }
 
   @if (asistenteCierre(c); as asistente) {
-    <div class="card border-0 shadow-sm weekly-assistant-card mb-3">
-      <div class="card-header bg-white weekly-assistant-header">
-        <div class="d-flex align-items-center gap-2">
-          <span class="weekly-assistant-icon">
-            <svg lucideSparkles size="16"></svg>
-          </span>
-          <div>
-            <div class="fw-semibold">Asistente de cierre semanal</div>
-            <div class="small text-secondary">{{ asistente.resumen }}</div>
-          </div>
-        </div>
-        <span class="badge weekly-assistant-risk {{ assistantRiskClass(asistente.riesgo) }}">
-          Riesgo {{ assistantRiskLabel(asistente.riesgo) }}
-        </span>
-      </div>
-      <div class="card-body">
-        @if (asistente.alertas.length) {
-          <div class="weekly-assistant-alerts">
-            @for (alerta of asistente.alertas; track alerta.id) {
-              <div class="weekly-assistant-alert">
-                <div class="weekly-assistant-alert-main">
-                  <span class="badge {{ assistantSeverityClass(alerta.severidad) }}">
-                    {{ assistantSeverityLabel(alerta.severidad) }}
-                  </span>
-                  <div>
-                    <div class="fw-semibold">{{ alerta.titulo }}</div>
-                    <div class="text-secondary small">{{ alerta.mensaje }}</div>
-                    <div class="small weekly-assistant-action-text">
-                      {{ alerta.accion_sugerida }}
-                    </div>
-                  </div>
-                </div>
-                @if (alerta.source_id && (alerta.source_type === 'viaje' || alerta.source_type === 'mantenimiento')) {
-                  <button
-                    type="button"
-                    class="btn btn-outline-secondary btn-sm weekly-activity-icon-btn"
-                    (click)="editarAlertaAsistente(alerta)"
-                    title="Revisar registro"
-                    aria-label="Revisar registro"
-                  >
-                    <svg lucidePencil size="13"></svg>
-                  </button>
-                }
-              </div>
-            }
-          </div>
-        } @else {
-          <div class="weekly-assistant-empty">
-            <svg lucideCheck size="16"></svg>
-            No se detectaron novedades relevantes para este cierre.
-          </div>
-        }
-      </div>
-    </div>
+    <app-weekly-closure-assistant
+      [asistente]="asistente"
+      (revisar)="editarAlertaAsistente($event)"
+    />
   }
 
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
@@ -168,8 +127,8 @@
       <div class="h5 mb-0">{{ vehiculoLabel(c.vehiculo) }}</div>
     </div>
     <div class="text-secondary small">
-      <strong class="text-body">Semana {{ c.semana.numero_semana }}</strong>:
-      {{ dateOnly(c.semana.fecha_inicio) }} - {{ dateOnly(c.semana.fecha_fin) }}
+      <strong class="text-body">Semana {{ c.semana.numero_semana }}</strong
+      >: {{ dateOnly(c.semana.fecha_inicio) }} - {{ dateOnly(c.semana.fecha_fin) }}
     </div>
   </div>
 
@@ -232,84 +191,13 @@
     </div>
   </div>
 
-  <div class="card border-0 shadow-sm">
-    <div class="card-header bg-white fw-semibold">Viajes y mantenimientos realizados</div>
-    <div class="table-responsive">
-      <table class="table table-hover mb-0 align-middle">
-        <thead>
-          <tr>
-            <th class="weekly-activity-date-col">Fecha</th>
-            <th>Tipo</th>
-            <th class="weekly-activity-detail-col">Detalle</th>
-            <th>Referencia</th>
-            <th>Precio viaje</th>
-            <th>Precio a facturar</th>
-            <th class="weekly-activity-viatico-col">Viático</th>
-            <th>Utilidad / costo</th>
-            <th>Estado</th>
-            <th class="text-end weekly-activity-actions-col">Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (item of actividadSemanal(c); track item.trackId) {
-            <tr [class]="item.rowClass">
-              <td class="weekly-activity-date-col">{{ item.fecha }}</td>
-              <td><span class="badge text-bg-light">{{ item.tipo }}</span></td>
-              <td class="weekly-activity-detail-col">{{ item.titulo }}</td>
-              <td class="text-secondary small">{{ item.detalle }}</td>
-              <td>{{ moneyOrDash(item.flete) }}</td>
-              <td>{{ moneyOrDash(item.fleteReal) }}</td>
-              <td class="weekly-activity-viatico-col">{{ moneyOrDash(item.viaticos) }}</td>
-              <td>{{ moneyOrDash(item.resultado) }}</td>
-              <td><span class="badge {{ item.estadoClass }}">{{ item.estado }}</span></td>
-              <td class="text-end actions-cell weekly-activity-actions-col">
-                <div class="d-flex justify-content-end gap-1">
-                  @if (item.sourceType === 'viaje' && !item.cobrado) {
-                    <button
-                      type="button"
-                      class="btn btn-outline-success btn-sm weekly-activity-icon-btn"
-                      (click)="marcarCobradoActividad(item)"
-                      [disabled]="markingCobroId() === item.sourceId"
-                      title="Marcar cobrado"
-                      aria-label="Marcar cobrado"
-                    >
-                      <svg lucideCheck size="13"></svg>
-                    </button>
-                  }
-                  <button
-                    type="button"
-                    class="btn btn-outline-secondary btn-sm weekly-activity-icon-btn"
-                    (click)="editarActividad(item)"
-                    title="Modificar"
-                    aria-label="Modificar"
-                  >
-                    <svg lucidePencil size="13"></svg>
-                  </button>
-                  @if (item.copyText) {
-                    <button
-                      type="button"
-                      class="btn btn-outline-primary btn-sm weekly-activity-icon-btn"
-                      (click)="copiarViajeActividad(item)"
-                      title="Copiar"
-                      aria-label="Copiar"
-                    >
-                      <svg lucideCopy size="13"></svg>
-                    </button>
-                  }
-                </div>
-              </td>
-            </tr>
-          } @empty {
-            <tr>
-              <td colspan="10" class="text-center text-secondary py-4">
-                Sin viajes ni mantenimientos realizados en esta semana.
-              </td>
-            </tr>
-          }
-        </tbody>
-      </table>
-    </div>
-  </div>
+  <app-weekly-closure-activity
+    [cierre]="c"
+    [markingCobroId]="markingCobroId()"
+    (editar)="editarActividad($event)"
+    (copiar)="copiarViajeActividad($event)"
+    (cobrar)="marcarCobradoActividad($event)"
+  />
 } @else if (loading()) {
   <div class="text-secondary">Cargando cierre...</div>
 }

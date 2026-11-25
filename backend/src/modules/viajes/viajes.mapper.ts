@@ -1,5 +1,6 @@
 import { EstadoConductor, EstadoVehiculo, EstadoViaje } from '@prisma/client';
 import type { ViajeEstadoApi } from './viajes.schema.js';
+import { formatTarifaRuta, type TarifaConRuta } from '../tarifas-ruta/ruta-tarifa.js';
 
 const prismaToApiEstadoViaje = {
   [EstadoViaje.PROGRAMADO]: 'programado',
@@ -29,6 +30,7 @@ const prismaToApiEstadoConductor = {
 };
 
 type ViajeWithOptionalRelations = {
+  tarifa_ruta?: TarifaConRuta;
   estado: EstadoViaje;
   vehiculo?: { estado: EstadoVehiculo } | null;
   conductor?: { estado: EstadoConductor } | null;
@@ -39,9 +41,11 @@ export const toPrismaEstadoViaje = (estado?: ViajeEstadoApi) => {
 };
 
 export const formatViaje = <T extends ViajeWithOptionalRelations>(viaje: T) => {
+  const { estado, ...data } = viaje;
   return {
-    ...viaje,
-    estado: prismaToApiEstadoViaje[viaje.estado],
+    ...data,
+    ...(viaje.tarifa_ruta ? { tarifa_ruta: formatTarifaRuta(viaje.tarifa_ruta) } : {}),
+    estado: prismaToApiEstadoViaje[estado],
     vehiculo: viaje.vehiculo
       ? {
           ...viaje.vehiculo,

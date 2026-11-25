@@ -1,3 +1,4 @@
+import { rutaDeTarifa } from './ruta-tarifa.js';
 import { Prisma } from '@prisma/client';
 import type { JwtPayload } from '../../config/jwt.js';
 import { prisma } from '../../config/prisma.js';
@@ -115,12 +116,14 @@ const ensureTarifaRutaAvailable = async (
   capacidad: string | null,
   toneladas: Prisma.Decimal | number | null,
   vigenteDesde: Date,
+  rutaInversa: boolean,
   excludeId?: bigint
 ) => {
   const existing = await prisma.tarifaRuta.findFirst({
     where: {
       propietario_id: propietarioId,
       ruta_id: rutaId,
+      ruta_inversa: rutaInversa,
       tipo_carga_id: tipoCargaId,
       capacidad,
       toneladas,
@@ -130,7 +133,7 @@ const ensureTarifaRutaAvailable = async (
 
   if (existing && existing.id !== excludeId) {
     throw new AppError(
-      'Ya existe una tarifa para esa ruta, tipo de carga, capacidad, toneladas y fecha de vigencia',
+      'Ya existe una tarifa para esa ruta, sentido, tipo de carga, capacidad, toneladas y fecha de vigencia',
       409
     );
   }
@@ -218,13 +221,15 @@ export const createTarifaRuta = async (
     tipoCargaId,
     capacidad,
     toneladas,
-    vigenteDesde
+    vigenteDesde,
+    input.ruta_inversa ?? false
   );
 
   const tarifa = await prisma.tarifaRuta.create({
     data: {
       propietario_id: propietarioId,
       ruta_id: rutaId,
+      ruta_inversa: input.ruta_inversa ?? false,
       tipo_carga_id: tipoCargaId,
       capacidad,
       toneladas,
@@ -242,7 +247,7 @@ export const createTarifaRuta = async (
     entidad: 'tarifa_ruta',
     entidadId: tarifa.id,
     accion: 'crear',
-    resumen: `Tarifa creada ${tarifa.ruta.origen} - ${tarifa.ruta.destino}`,
+    resumen: `Tarifa creada ${rutaDeTarifa(tarifa).origen} - ${rutaDeTarifa(tarifa).destino}`,
     despues: tarifa
   });
 
@@ -290,6 +295,7 @@ export const updateTarifaRuta = async (
     capacidad,
     toneladas,
     vigenteDesde,
+    input.ruta_inversa ?? current.ruta_inversa,
     id
   );
 
@@ -297,6 +303,7 @@ export const updateTarifaRuta = async (
     where: { id },
     data: {
       ruta_id: input.ruta_id ? rutaId : undefined,
+      ruta_inversa: input.ruta_inversa,
       tipo_carga_id: input.tipo_carga_id ? tipoCargaId : undefined,
       capacidad: Object.hasOwn(input, 'capacidad') ? capacidad : undefined,
       toneladas: Object.hasOwn(input, 'toneladas') ? toneladas : undefined,
@@ -314,7 +321,7 @@ export const updateTarifaRuta = async (
     entidad: 'tarifa_ruta',
     entidadId: tarifa.id,
     accion: 'actualizar',
-    resumen: `Tarifa actualizada ${tarifa.ruta.origen} - ${tarifa.ruta.destino}`,
+    resumen: `Tarifa actualizada ${rutaDeTarifa(tarifa).origen} - ${rutaDeTarifa(tarifa).destino}`,
     antes: current,
     despues: tarifa
   });
@@ -376,7 +383,7 @@ export const deactivateTarifaRuta = async (
       entidad: 'tarifa_ruta',
       entidadId: tarifa.id,
       accion: 'desactivar',
-      resumen: `Tarifa desactivada ${tarifa.ruta.origen} - ${tarifa.ruta.destino}`,
+      resumen: `Tarifa desactivada ${rutaDeTarifa(tarifa).origen} - ${rutaDeTarifa(tarifa).destino}`,
       antes: { activa: current.activa },
       despues: { activa: tarifa.activa }
     });

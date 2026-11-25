@@ -1,3 +1,6 @@
+import { rutaDeTarifa } from '../tarifas-ruta/ruta-tarifa.js';
+import { resolveDestinatarioViaje } from '../facturacion/destinatario.js';
+import { assertViajeSinFactura } from '../facturacion/facturacion.guard.js';
 import { EstadoViaje, Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
@@ -28,6 +31,7 @@ interface ListViajesProveedorFilters {
   estado?: unknown;
   cobrado?: unknown;
   pagado_proveedor?: unknown;
+  mostrar_finalizados?: unknown;
   anio_semana?: unknown;
   numero_semana?: unknown;
   fecha_desde?: unknown;
@@ -302,6 +306,9 @@ const buildWhere = (
   if (filters.cobrado === 'false') where.cobrado = false;
   if (filters.pagado_proveedor === 'true') where.pagado_proveedor = true;
   if (filters.pagado_proveedor === 'false') where.pagado_proveedor = false;
+  if (filters.mostrar_finalizados === 'false' || filters.mostrar_finalizados === false) {
+    appendAnd(where, { NOT: { cobrado: true, pagado_proveedor: true } });
+  }
 
   if (filters.numero_semana) {
     const numeroSemana = parsePositiveIntegerFilter(filters.numero_semana, 'numero_semana');
@@ -693,6 +700,7 @@ export const createViajeProveedor = async (
     data: {
       propietario_id: propietarioId,
       cliente_id: clienteId,
+      facturar_a_id: await resolveDestinatarioViaje(propietarioId,clienteId,input.facturar_a_id),
       proveedor_id: proveedorId,
       tarifa_ruta_id: tarifaRutaId,
       fecha_salida: fechaSalida,
@@ -727,7 +735,7 @@ export const createViajeProveedor = async (
     entidad: 'viaje_proveedor',
     entidadId: viaje.id,
     accion: 'crear',
-    resumen: `Viaje proveedor creado ${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino}`,
+    resumen: `Viaje proveedor creado ${rutaDeTarifa(viaje.tarifa_ruta).origen} - ${rutaDeTarifa(viaje.tarifa_ruta).destino}`,
     despues: viaje
   });
 
@@ -743,6 +751,7 @@ export const updateViajeProveedor = async (
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
   const current = await getViajeProveedorById(propietarioId, id);
+  await assertViajeSinFactura(id, 'proveedor');
 
   const clienteId = input.cliente_id
     ? parseBigIntId(input.cliente_id, 'cliente_id')
@@ -830,6 +839,7 @@ export const updateViajeProveedor = async (
     where: { id },
     data: {
       cliente_id: input.cliente_id ? clienteId : undefined,
+      facturar_a_id: input.facturar_a_id !== undefined || clienteId !== current.cliente_id ? await resolveDestinatarioViaje(propietarioId,clienteId,input.facturar_a_id) : undefined,
       proveedor_id: input.proveedor_id ? proveedorId : undefined,
       tarifa_ruta_id: input.tarifa_ruta_id ? tarifaRutaId : undefined,
       fecha_salida: input.fecha_salida ? fechaSalida : undefined,
@@ -875,7 +885,7 @@ export const updateViajeProveedor = async (
     entidad: 'viaje_proveedor',
     entidadId: viaje.id,
     accion: 'actualizar',
-    resumen: `Viaje proveedor actualizado ${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino}`,
+    resumen: `Viaje proveedor actualizado ${rutaDeTarifa(viaje.tarifa_ruta).origen} - ${rutaDeTarifa(viaje.tarifa_ruta).destino}`,
     antes: current,
     despues: viaje
   });
@@ -892,6 +902,7 @@ export const updateEstadoViajeProveedor = async (
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
   const current = await getViajeProveedorById(propietarioId, id);
+  await assertViajeSinFactura(id, 'proveedor');
 
   const viaje = await prisma.viajeProveedor.update({
     where: { id },
@@ -924,6 +935,7 @@ export const updateCobroViajeProveedor = async (
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
   const current = await getViajeProveedorById(propietarioId, id);
+  await assertViajeSinFactura(id, 'proveedor');
   const cobroSupport = resolveSoporteOperacion(
     input.cobrado,
     input.soporte_cobro,
@@ -1074,6 +1086,7 @@ export const cancelViajeProveedor = async (
   const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
   const id = parseBigIntId(idInput);
   const current = await getViajeProveedorById(propietarioId, id);
+  await assertViajeSinFactura(id, 'proveedor');
 
   if (current.estado === EstadoViaje.CANCELADO) {
     await prisma.viajeProveedor.delete({

@@ -80,7 +80,7 @@ export class MobileViajesPageComponent implements OnDestroy {
   readonly guideInput = signal('');
   readonly pagination = signal<PaginationMeta | null>(null);
   readonly page = signal(1);
-  readonly limit = signal(10);
+  readonly limit = signal(25);
   private filterTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {

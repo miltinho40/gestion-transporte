@@ -1,0 +1,30 @@
+@media (min-width: 768px) {
+  .modal-dialog.modal-precios {
+    max-width: 850px;
+  }
+
+  .modal-precios .modal-body > .row {
+    align-items: end;
+  }
+
+  .modal-precios .modal-body > .row > div {
+    min-width: 0;
+  }
+
+  .modal-precios [data-field='ruta_id'],
+  .modal-precios [data-field='tipo_carga_id'] {
+    width: 28%;
+  }
+
+  .modal-precios [data-field='ruta_inversa'],
+  .modal-precios [data-field='activa'] {
+    width: 22%;
+    align-self: center;
+  }
+
+  .modal-precios [data-field='capacidad'] { width: 18%; }
+  .modal-precios [data-field='toneladas'] { width: 14%; }
+  .modal-precios [data-field='precio'] { width: 20%; }
+  .modal-precios [data-field='vigente_desde'],
+  .modal-precios [data-field='vigente_hasta'] { width: 24%; }
+}

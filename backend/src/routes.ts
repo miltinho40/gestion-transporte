@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { facturacionRouter } from './modules/facturacion/facturacion.routes.js';
 import { alertasRouter } from './modules/alertas/alertas.routes.js';
 import { asistenteRouter } from './modules/asistente/asistente.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
@@ -29,6 +30,7 @@ import { viajesProveedorRouter } from './modules/viajes-proveedor/viajes-proveed
 import { viajesRouter } from './modules/viajes/viajes.routes.js';
 
 export const apiRouter = Router();
+apiRouter.use('/facturacion', facturacionRouter);
 
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/alertas', alertasRouter);

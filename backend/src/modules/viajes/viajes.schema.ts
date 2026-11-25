@@ -35,6 +35,7 @@ const guiaRemisionSchema = z
 
 const viajeBaseSchema = z.object({
   cliente_id: idSchema,
+  facturar_a_id: idSchema.optional().nullable(),
   vehiculo_id: idSchema,
   conductor_id: idSchema,
   tarifa_ruta_id: idSchema,

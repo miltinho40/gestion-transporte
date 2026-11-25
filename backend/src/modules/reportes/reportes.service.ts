@@ -1,3 +1,4 @@
+import { rutaDeTarifa } from '../tarifas-ruta/ruta-tarifa.js';
 import {
   EstadoMantenimiento,
   EstadoVehiculo,
@@ -39,6 +40,7 @@ type MantenimientoReporte = Prisma.MantenimientoGetPayload<{
 }>;
 
 const viajeInclude = {
+  detalle_factura: { include: { factura: { select: { estado: true } } } },
   cliente: true,
   vehiculo: {
     include: {
@@ -59,6 +61,7 @@ type ViajeReporte = Prisma.ViajeGetPayload<{
 }>;
 
 const utilidadViajeInclude = {
+  detalle_factura: { include: { factura: { select: { estado: true } } } },
   cliente: true,
   vehiculo: {
     include: {
@@ -286,8 +289,8 @@ const selectedWeeksForMonths = (anio: number, meses: number[]) => {
 const viajeFechaReporte = (viaje: { fecha_salida: Date; fecha_llegada: Date | null }) =>
   viaje.fecha_llegada ?? viaje.fecha_salida;
 
-const viajeUtilidad = (viaje: { precio_real_flete: Prisma.Decimal; costo_real_gastos: Prisma.Decimal | null }) =>
-  toMoney(viaje.precio_real_flete).minus(toMoney(viaje.costo_real_gastos)).toDecimalPlaces(2);
+const viajeUtilidad = (viaje: { precio_real_flete: Prisma.Decimal; costo_real_gastos: Prisma.Decimal | null; detalle_factura?: { neto: Prisma.Decimal; factura?: { estado: string } } | null }) =>
+  toMoney(viaje.detalle_factura?.factura?.estado === 'FACTURADA' ? viaje.detalle_factura.neto : viaje.precio_real_flete).minus(toMoney(viaje.costo_real_gastos)).toDecimalPlaces(2);
 
 const createReporteViajesTotales = () => ({
   precio_viaje: toMoney(0),
@@ -347,9 +350,9 @@ const formatReporteViaje = (
     cedula: viaje.conductor.cedula
   },
   ruta: {
-    id: viaje.tarifa_ruta.ruta.id,
-    origen: viaje.tarifa_ruta.ruta.origen,
-    destino: viaje.tarifa_ruta.ruta.destino
+    id: rutaDeTarifa(viaje.tarifa_ruta).id,
+    origen: rutaDeTarifa(viaje.tarifa_ruta).origen,
+    destino: rutaDeTarifa(viaje.tarifa_ruta).destino
   },
   numeros_guia_remision: viaje.numeros_guia_remision,
   precio_viaje: viaje.precio_flete,
@@ -1267,6 +1270,10 @@ export const getReporteUtilidad = async (propietarioIdInput: unknown, input: unk
       totales: finalizeReporteUtilidadTotales(item.totales)
     }))
     .sort((left, right) => right.totales.total_facturado.comparedTo(left.totales.total_facturado));
+  const cierresPeriodo = await prisma.cierreSemanal.findMany({
+    where: { propietario_id: propietarioId, OR: weekConditions },
+    select: { vehiculo_id: true, anio: true, numero_semana: true }
+  });
   const semanasItems = [...semanasResumen.values()]
     .map((item) => {
       const key = weekKey(item.anio, item.numero_semana);
@@ -1281,6 +1288,18 @@ export const getReporteUtilidad = async (propietarioIdInput: unknown, input: unk
       ]
         .map((transportista) => ({
           ...transportista,
+          total_precio_fletes: viajes
+            .filter(v => weekKey(v.semana.anio, v.semana.numero_semana) === key && v.viaje.conductor_id === transportista.conductor.id)
+            .reduce((total, v) => addMoney(total, v.viaje.precio_flete), toMoney(0)),
+          provisional: !transportista.vehiculo || [
+            transportista.vehiculo.id,
+            ...viajes.filter(v => weekKey(v.semana.anio, v.semana.numero_semana) === key && v.viaje.conductor_id === transportista.conductor.id).map(v => v.viaje.vehiculo_id)
+          ].some(id => !cierresPeriodo.some(c => c.anio === item.anio && c.numero_semana === item.numero_semana && c.vehiculo_id === id)),
+          viajes: viajes.filter(v => weekKey(v.semana.anio, v.semana.numero_semana) === key && v.viaje.conductor_id === transportista.conductor.id)
+            .filter(v => v.viaje.retorno || v.fecha.getUTCDay() === 0)
+            .map(v => ({ id: v.viaje.id, fecha: v.fecha, placa: v.viaje.vehiculo.placa,
+              ruta: `${rutaDeTarifa(v.viaje.tarifa_ruta).origen} - ${rutaDeTarifa(v.viaje.tarifa_ruta).destino}`,
+              retorno: v.viaje.retorno, domingo: v.fecha.getUTCDay() === 0, valor: retornoGastosViaje(v.viaje) })),
           totales: finalizeReporteUtilidadTotales(transportista.totales)
         }))
         .sort((left, right) => left.conductor.nombre.localeCompare(right.conductor.nombre));

@@ -5,7 +5,7 @@
     </button>
     <div>
       <h1>{{ editing ? 'Editar viaje' : duplicating ? 'Duplicar viaje' : 'Nuevo viaje' }}</h1>
-      <p>Registro rápido para móvil</p>
+
     </div>
   </header>
 
@@ -34,6 +34,8 @@
           <option [value]="option.label"></option>
         }
       </datalist>
+      <app-facturar-a-field inputId="mobile-facturar-a" [clienteId]="form.controls.cliente_id.value" [value]="form.controls.facturar_a_id.value" (selected)="form.controls.facturar_a_id.setValue($event)" />
+
 
       <label class="mobile-field">
         <span>Vehículo</span>
@@ -119,7 +121,7 @@
         <textarea class="form-control" rows="2" formControlName="descripcion_carga"></textarea>
       </label>
 
-      <div class="three-columns">
+      <div class="two-columns">
         <label class="mobile-field">
           <span>Precio viaje</span>
           <input
@@ -131,17 +133,7 @@
             (change)="onPrecioFleteChanged()"
           />
         </label>
-        <label class="mobile-field">
-          <span>A facturar</span>
-          <input
-            class="form-control"
-            type="number"
-            min="0"
-            step="0.01"
-            formControlName="precio_real_flete"
-            (input)="onPrecioRealChanged()"
-          />
-        </label>
+
         <label class="mobile-field">
           <span>Viáticos</span>
           <input
@@ -155,24 +147,9 @@
         </label>
       </div>
 
-      <div class="summary-grid">
-        <div>
-          <span>Diesel</span>
-          <strong>$ {{ money(form.controls.costo_diesel.value) }}</strong>
-        </div>
-        <div>
-          <span>Peajes</span>
-          <strong>$ {{ money(form.controls.costo_peajes.value) }}</strong>
-        </div>
-        <div>
-          <span>Utilidad</span>
-          <strong>$ {{ money(utilidadViaje()) }}</strong>
-        </div>
-      </div>
     </section>
 
-    <section class="form-section">
-      <h2>Gastos adicionales</h2>
+    <details class="form-section trip-disclosure"><summary>Gastos adicionales · {{ gastos().length }} gastos · $ {{ money(totalGastosAdicionales()) }}</summary>
 
       <div class="gasto-box" [formGroup]="gastoForm">
         <label class="mobile-field">
@@ -216,10 +193,10 @@
             <div class="gasto-item">
               <div>
                 <strong>{{ gasto.tipo_gasto_nombre }}</strong>
-                <span>{{ gasto.descripcion || 'Sin detalle' }}</span>
+                <input class="form-control form-control-sm" aria-label="Descripción del gasto" [ngModel]="gasto.descripcion" [ngModelOptions]="{standalone:true}" (ngModelChange)="updateGasto(index, 'descripcion', $event)" />
               </div>
               <div class="gasto-amount">
-                <strong>$ {{ money(gasto.monto) }}</strong>
+                <input style="width:100px" class="form-control form-control-sm" type="number" min="0.01" step="0.01" aria-label="Importe del gasto" [ngModel]="gasto.monto" [ngModelOptions]="{standalone:true}" (ngModelChange)="updateGasto(index, 'monto', $event)" />
                 <button type="button" class="btn btn-outline-danger btn-sm" (click)="removeGasto(index)" aria-label="Quitar gasto">
                   <svg lucideTrash2 size="15"></svg>
                 </button>
@@ -239,7 +216,7 @@
           <strong>$ {{ money(totalGastosReales()) }}</strong>
         </div>
       </div>
-    </section>
+    </details>
 
     <section class="form-section">
       <h2>Guías</h2>
@@ -254,22 +231,10 @@
         ></textarea>
       </label>
 
-      <label class="switch-row">
-        <span>Cobrado</span>
-        <input class="form-check-input" type="checkbox" formControlName="cobrado" />
-      </label>
 
-      @if (form.controls.cobrado.value) {
-        <label class="mobile-field">
-          <span>Fecha cobro</span>
-          <input class="form-control" type="date" formControlName="fecha_cobro" />
-        </label>
-      }
 
-      <label class="mobile-field">
-        <span>Observaciones</span>
-        <textarea class="form-control" rows="2" formControlName="observaciones"></textarea>
-      </label>
+
+
     </section>
 
     <div class="save-bar">

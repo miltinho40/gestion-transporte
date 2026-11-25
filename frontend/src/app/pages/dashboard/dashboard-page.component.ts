@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { LucideRefreshCw } from '@lucide/angular';
+import { LucideEye, LucideRefreshCw } from '@lucide/angular';
 import { ApiService } from '../../core/api.service';
 import { formatDateOnly } from '../../core/date-only';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
@@ -17,12 +17,13 @@ interface AlertasResponse {
   licencias: unknown[];
   viajes_sin_cobrar: unknown[];
   cierres_semanales: unknown[];
+  cierres_pendientes: unknown[];
   actividad_reciente: unknown[];
 }
 
 @Component({
   selector: 'app-dashboard-page',
-  imports: [RouterLink, LucideRefreshCw, AutoDismissAlertDirective],
+  imports: [RouterLink, LucideEye, LucideRefreshCw, AutoDismissAlertDirective],
   templateUrl: './dashboard-page.component.html'
 })
 export class DashboardPageComponent {

@@ -141,25 +141,6 @@
       </div>
     </section>
 
-    <section class="form-section">
-      <h2>Seguimiento</h2>
-
-      <div class="two-columns">
-        <label class="mobile-field">
-          <span>Próx. km</span>
-          <input class="form-control" type="number" min="0" step="1" formControlName="proximo_mantenimiento_km" />
-        </label>
-        <label class="mobile-field">
-          <span>Próxima fecha</span>
-          <input class="form-control" type="date" formControlName="proximo_mantenimiento_fecha" />
-        </label>
-      </div>
-
-      <label class="switch-row">
-        <span>Actualizar km del vehículo</span>
-        <input class="form-check-input" type="checkbox" formControlName="actualizar_kilometraje_vehiculo" />
-      </label>
-    </section>
 
     <div class="save-bar">
       <button type="submit" class="btn btn-primary" [disabled]="saving() || loading()">

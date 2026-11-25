@@ -35,6 +35,7 @@ export interface TarifaRutaOption {
 }
 
 export interface ViajeProveedorRow {
+  facturar_a_id?: string | null;
   id: string;
   cliente_id: string;
   proveedor_id: string;

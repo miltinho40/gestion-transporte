@@ -1,3 +1,4 @@
+import { rutaDeTarifa } from '../tarifas-ruta/ruta-tarifa.js';
 import { EstadoConductor, EstadoMantenimiento, EstadoViaje, EstadoVehiculo } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { parseBigIntId } from '../../utils/ids.js';
@@ -262,9 +263,9 @@ export const listAlertasViajesSinCobrar = async (propietarioIdInput: unknown) =>
         estado: prismaToApiEstadoConductor[viaje.conductor.estado]
       },
       ruta: {
-        id: viaje.tarifa_ruta.ruta.id,
-        origen: viaje.tarifa_ruta.ruta.origen,
-        destino: viaje.tarifa_ruta.ruta.destino
+        id: rutaDeTarifa(viaje.tarifa_ruta).id,
+        origen: rutaDeTarifa(viaje.tarifa_ruta).origen,
+        destino: rutaDeTarifa(viaje.tarifa_ruta).destino
       },
       precio_flete: viaje.precio_flete,
       precio_real_flete: viaje.precio_real_flete,
@@ -327,7 +328,44 @@ const normalizeAuditIp = (value: string | null) => {
   return ip;
 };
 
+export const listCierresPendientes = async (propietarioIdInput: unknown) => {
+  const propietarioId = parseBigIntId(propietarioIdInput, 'propietario_id');
+  const today = new Date(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guayaquil' }).format(new Date()) + 'T00:00:00Z');
+  const monday = addDays(today, -((today.getUTCDay() + 6) % 7));
+  const inicio = new Date('1970-01-01T00:00:00Z');
+  const [viajes, cierres, mantenimientos] = await Promise.all([
+    prisma.viaje.findMany({
+      where: { propietario_id: propietarioId, estado: { not: EstadoViaje.CANCELADO },
+        OR: [{ fecha_llegada: { gte: inicio, lt: monday } }, { fecha_llegada: null, fecha_salida: { gte: inicio, lt: monday } }] },
+      select: { fecha_llegada: true, fecha_salida: true, vehiculo: { select: { id: true, placa: true } } }
+    }),
+    prisma.cierreSemanal.findMany({ where: { propietario_id: propietarioId, fecha_inicio: { gte: inicio, lt: monday } },
+      select: { vehiculo_id: true, anio: true, numero_semana: true } }),
+    prisma.mantenimiento.findMany({
+      where: { propietario_id: propietarioId, estado: EstadoMantenimiento.REALIZADO, fecha_mantenimiento: { lt: monday } },
+      select: { fecha_mantenimiento: true, vehiculo: { select: { id: true, placa: true } } }
+    })
+  ]);
+  const cerrados = new Set(cierres.map(c => `${c.vehiculo_id}:${c.anio}:${c.numero_semana}`));
+  const pendientes = new Map<string, { semana: { anio: number; numero_semana: number; fecha_inicio: Date; fecha_fin: Date }; vehiculo: { id: bigint; placa: string } }>();
+  const actividades = [
+    ...viajes.map(v => ({ fecha: v.fecha_llegada ?? v.fecha_salida, vehiculo: v.vehiculo })),
+    ...mantenimientos.map(m => ({ fecha: m.fecha_mantenimiento, vehiculo: m.vehiculo }))
+  ];
+  for (const viaje of actividades) {
+    const fecha = viaje.fecha;
+    const lunes = addDays(fecha, -((fecha.getUTCDay() + 6) % 7));
+    const jueves = addDays(lunes, 3);
+    const anio = jueves.getUTCFullYear();
+    const numero = Math.ceil(((jueves.getTime() - Date.UTC(anio, 0, 1)) / 86400000 + 1) / 7);
+    const key = `${viaje.vehiculo.id}:${anio}:${numero}`;
+    if (!cerrados.has(key)) pendientes.set(key, { semana: { anio, numero_semana: numero, fecha_inicio: lunes, fecha_fin: addDays(lunes, 6) }, vehiculo: viaje.vehiculo });
+  }
+  return [...pendientes.values()].sort((a, b) => a.semana.fecha_inicio.getTime() - b.semana.fecha_inicio.getTime() || a.vehiculo.placa.localeCompare(b.vehiculo.placa));
+};
+
 export const listAlertas = async (propietarioIdInput: unknown) => {
+  const cierresPendientes = await listCierresPendientes(propietarioIdInput);
   const [mantenimientos, licencias, viajesSinCobrar, cierresSemanales, actividadReciente] = await Promise.all([
     listAlertasMantenimientos(propietarioIdInput),
     listAlertasLicencias(propietarioIdInput),
@@ -342,7 +380,7 @@ export const listAlertas = async (propietarioIdInput: unknown) => {
         mantenimientos.total +
         licencias.total +
         viajesSinCobrar.total +
-        cierresSemanales.total,
+        cierresSemanales.total + cierresPendientes.length,
       mantenimientos: {
         total: mantenimientos.total,
         vencidos: mantenimientos.vencidos,
@@ -370,6 +408,7 @@ export const listAlertas = async (propietarioIdInput: unknown) => {
     licencias: licencias.items,
     viajes_sin_cobrar: viajesSinCobrar.items,
     cierres_semanales: cierresSemanales.items,
+    cierres_pendientes: cierresPendientes,
     actividad_reciente: actividadReciente
   };
 };

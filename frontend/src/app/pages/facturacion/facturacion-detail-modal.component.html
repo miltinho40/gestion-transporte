@@ -1,0 +1,190 @@
+@if (detail(); as f) {
+  <div class="modal-backdrop show" (click)="closed.emit()"></div>
+  <div
+    class="modal d-block"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Detalle de factura"
+    tabindex="-1"
+    (keydown.escape)="closed.emit()"
+    (click)="closed.emit()"
+  >
+    <div class="modal-dialog modal-xl modal-dialog-scrollable" (click)="$event.stopPropagation()">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="h5 modal-title">
+            {{ f.numero ? 'Factura ' + f.numero : 'Borrador #' + f.id }} ·
+            {{ f.destinatario.nombre }}
+          </h2>
+          <button class="btn-close" aria-label="Cerrar" (click)="closed.emit()"></button>
+        </div>
+        <div class="modal-body">
+          @if (error()) {
+            <div class="alert alert-danger">{{ error() }}</div>
+          }
+          <dl class="billing-totals mb-3">
+            <div class="billing-total-green">
+              <dt>A facturar</dt>
+              <dd>$ {{ money(f.total_facturar) }}</dd>
+            </div>
+            <div class="billing-total-red">
+              <dt>Comisión empresa</dt>
+              <dd>$ {{ money(f.total_comision) }}</dd>
+            </div>
+            <div class="billing-total-red">
+              <dt>IR empresa</dt>
+              <dd>$ {{ money(f.total_ir) }}</dd>
+            </div>
+            <div class="billing-total-blue">
+              <dt>Neto a recibir</dt>
+              <dd>$ {{ money(f.neto) }}</dd>
+            </div>
+            <div class="billing-total-green">
+              <dt>Recibido</dt>
+              <dd>$ {{ money(f.recibido) }}</dd>
+            </div>
+            <div class="billing-total-neutral">
+              <dt>Saldo pendiente</dt>
+              <dd>$ {{ money(f.saldo) }}</dd>
+            </div>
+          </dl>
+          @if (invoiceLoading()) {
+            <p class="small text-secondary" role="status">Cargando viajes de la factura…</p>
+          }
+          <div class="table-responsive">
+            <table class="table table-sm align-middle billing-invoice-trips">
+              <thead>
+                <tr>
+                  <th>SEM.</th>
+                  <th>Cliente</th>
+                  <th>Ruta</th>
+                  <th class="text-end">Precio</th>
+                  <th class="text-end">A facturar</th>
+                  <th class="text-end">Comisión empresa</th>
+                  <th class="text-end">IR empresa</th>
+                  <th class="text-end">Neto</th>
+                </tr>
+              </thead>
+              @for (group of invoiceGroups(); track group.key) {
+                <tbody [attr.aria-label]="group.label">
+                  <tr class="billing-group-heading">
+                    <th colspan="8" scope="rowgroup">
+                      {{ group.label }} ({{ group.rows.length }}
+                      {{ group.rows.length === 1 ? 'viaje' : 'viajes' }}, a facturar: $
+                      {{ money(group.total) }})
+                    </th>
+                  </tr>
+                  @for (row of group.rows; track key(row.trip)) {
+                    <tr>
+                      <td>{{ week(row.trip.fecha) }}</td>
+                      <td>{{ row.amounts.cliente_nombre }}</td>
+                      <td>{{ row.amounts.ruta }}</td>
+                      <td class="text-end text-nowrap">$ {{ money(row.amounts.precio) }}</td>
+                      <td class="text-end text-nowrap">$ {{ money(row.amounts.a_facturar) }}</td>
+                      <td class="text-end text-nowrap">
+                        $ {{ money(row.amounts.comision_empresa) }}
+                      </td>
+                      <td class="text-end text-nowrap">$ {{ money(row.amounts.ir_empresa) }}</td>
+                      <td class="text-end text-nowrap">$ {{ money(row.amounts.neto) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              }
+            </table>
+          </div>
+          <p class="small text-secondary">
+            Comisión de la empresa: {{ modalidadName(f.modalidad_comision) }}
+          </p>
+          @if (f.estado === 'PREPARACION' && canWrite()) {
+            <button
+              type="button"
+              class="btn btn-primary mb-3"
+              (click)="continuePreparation.emit(f)"
+            >
+              <svg lucidePencil size="16"></svg> Continuar preparación
+            </button>
+          }
+          <h3 class="h6">Abonos</h3>
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Soporte</th>
+                <th>Importe</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (a of f.abonos; track a.id) {
+                <tr>
+                  <td>{{ a.fecha.slice(0, 10) }}</td>
+                  <td>{{ a.soporte }}</td>
+                  <td>$ {{ money(a.monto) }}</td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="3">Sin abonos.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+          @if (f.estado === 'FACTURADA' && +f.saldo > 0 && canWrite()) {
+            @if (paymentError()) {
+              <div
+                class="alert alert-warning billing-payment-alert"
+                role="alert"
+                [appAutoDismissAlert]="paymentError()"
+              >
+                {{ paymentError() }}
+              </div>
+            }
+            <label class="form-check mb-2"
+              ><input
+                type="checkbox"
+                class="form-check-input"
+                [ngModel]="abonoTotal"
+                (ngModelChange)="setFullPayment($event)"
+                [disabled]="busy() || invoiceLoading()"
+              />Abonar todo el saldo pendiente</label
+            >
+            <div class="row g-2">
+              <div class="col-md-3">
+                <label
+                  >Fecha<input type="date" class="form-control" [(ngModel)]="abonoFecha"
+                /></label>
+              </div>
+              <div class="col-md-3">
+                <label
+                  >Importe<input
+                    type="number"
+                    min="0.01"
+                    [max]="f.saldo"
+                    step="0.01"
+                    class="form-control"
+                    [(ngModel)]="abonoMonto"
+                    [readonly]="abonoTotal"
+                /></label>
+              </div>
+              <div class="col-md-4">
+                <label
+                  >Factura / soporte<input
+                    maxlength="120"
+                    class="form-control"
+                    [(ngModel)]="abonoSoporte"
+                /></label>
+              </div>
+              <div class="col-md-2 d-flex align-items-end">
+                <button
+                  class="btn btn-primary"
+                  [disabled]="busy() || invoiceLoading()"
+                  (click)="addPayment()"
+                >
+                  <svg lucidePlus size="16"></svg> Abonar
+                </button>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+}

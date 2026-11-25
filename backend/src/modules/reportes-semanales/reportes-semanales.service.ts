@@ -1,3 +1,4 @@
+import { rutaDeTarifa } from '../tarifas-ruta/ruta-tarifa.js';
 import {
   EstadoConductor,
   EstadoMantenimiento,
@@ -136,9 +137,9 @@ const buildClienteMini = (cliente: { id: bigint; nombre: string; ruc_cedula: str
 });
 
 const buildRutaMini = (viaje: ViajeReporte) => ({
-  id: viaje.tarifa_ruta.ruta.id,
-  origen: viaje.tarifa_ruta.ruta.origen,
-  destino: viaje.tarifa_ruta.ruta.destino
+  id: rutaDeTarifa(viaje.tarifa_ruta).id,
+  origen: rutaDeTarifa(viaje.tarifa_ruta).origen,
+  destino: rutaDeTarifa(viaje.tarifa_ruta).destino
 });
 
 const buildSemana = (anio: number, numeroSemana: number) => {
@@ -218,8 +219,8 @@ const formatViajeConductor = (viaje: ViajeReporte) => ({
   fecha_llegada: viaje.fecha_llegada,
   fecha_semana: viajeFechaEntrega(viaje),
   cliente: buildClienteMini(viaje.cliente),
-  origen: viaje.tarifa_ruta.ruta.origen,
-  destino: viaje.tarifa_ruta.ruta.destino,
+  origen: rutaDeTarifa(viaje.tarifa_ruta).origen,
+  destino: rutaDeTarifa(viaje.tarifa_ruta).destino,
   precio_flete: viaje.precio_flete,
   vehiculo: buildVehiculoMini(viaje.vehiculo),
   descripcion_carga: viaje.descripcion_carga,
@@ -230,7 +231,7 @@ const formatViajeConductor = (viaje: ViajeReporte) => ({
 const formatViajeVehiculo = (viaje: ViajeReporte, numeroSemana: number) => {
   const costoRealGastos = toMoney(viaje.costo_real_gastos);
   const utilidad = toMoney(viaje.precio_real_flete).minus(costoRealGastos).toDecimalPlaces(2);
-  const destino = viaje.tarifa_ruta.ruta.destino;
+  const destino = rutaDeTarifa(viaje.tarifa_ruta).destino;
   const descripcionCarga = viaje.descripcion_carga?.trim() || 'carga';
   const guias = viaje.numeros_guia_remision.length
     ? viaje.numeros_guia_remision.join(', ')
@@ -544,7 +545,7 @@ const formatMovimientoViaje = (viaje: ViajeReporte) => {
     tipo: 'viaje',
     referencia_id: viaje.id,
     fecha: viajeFechaEntrega(viaje),
-    descripcion: `${viaje.cliente.nombre}-${viaje.tarifa_ruta.ruta.destino}`,
+    descripcion: `${viaje.cliente.nombre}-${rutaDeTarifa(viaje.tarifa_ruta).destino}`,
     precio: utilidad,
     naturaleza: 'ingreso',
     detalle: {

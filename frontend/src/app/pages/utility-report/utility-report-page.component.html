@@ -194,31 +194,6 @@
     </div>
 
     <div class="card border-0 shadow-sm">
-      <div class="card-header bg-white fw-semibold">Pago a transportistas</div>
-      <div class="card-body utility-chart-list">
-        @for (item of report.transportistas; track item.conductor.id) {
-          <div class="utility-bar-row">
-            <div class="utility-bar-label">
-              <strong>{{ item.conductor.nombre }}</strong>
-              <span>$ {{ money(item.totales.pago_transportistas) }}</span>
-            </div>
-            <div class="utility-bar-track">
-              <div
-                class="utility-bar utility-bar-blue"
-                [style.width]="barWidth(item.totales.pago_transportistas, maxTransportistaPago())"
-              ></div>
-            </div>
-            <div class="utility-bar-note">
-              Sueldo $ {{ money(item.totales.sueldos) }} · Bono $ {{ money(item.totales.bonos) }} · Retornos
-              $ {{ money(item.totales.retornos) }} · Domingo $ {{ money(item.totales.domingos) }}
-            </div>
-          </div>
-        } @empty {
-          <div class="text-secondary small">Sin transportistas para graficar.</div>
-        }
-      </div>
-    </div>
-    <div class="card border-0 shadow-sm">
       <div class="card-header bg-white fw-semibold">Clientes</div>
       <div class="card-body">
         @if (report.clientes.length) {
@@ -245,8 +220,40 @@
         }
       </div>
     </div>
+  <section class="card border-0 shadow-sm driver-chart-panel">
+    <h2 class="card-header bg-white fw-semibold h6 mb-0">Sueldo de transportista</h2>
+    <div class="card-body">
+    <div class="d-flex flex-wrap gap-3 mb-3">
+      @for (driver of report.transportistas; track driver.conductor.id; let index = $index) {
+        <span class="d-inline-flex align-items-center gap-2"><span class="driver-color" [style.background]="clientColor(index)"></span>{{ driver.conductor.nombre }} · $ {{ money(driverMonthTotal(driver.conductor.id)) }}</span>
+      }
+    </div>
+    @if (report.transportistas.length) {
+      <div class="driver-chart-scroll"><div class="driver-chart">
+        <div class="driver-axis">@for (tick of [450,300,150,0]; track tick) { <span>$ {{ money(tick) }}</span> }</div>
+        <div class="driver-groups">
+          @for (week of report.semanas; track week.anio + '-' + week.numero_semana) {
+            <div class="driver-group"><div class="driver-bars">
+              @for (driver of report.transportistas; track driver.conductor.id; let index = $index) {
+                <div class="driver-bar-slot">
+                  @if (driverWeek(week, driver.conductor.id); as detail) {
+                    <button type="button" class="driver-bar" [style.height.%]="number(detail.totales.pago_transportistas) / driverChartMax() * 100" [style.background]="clientColor(index)"
+                      [attr.aria-label]="driver.conductor.nombre + ', semana ' + week.numero_semana + ', $ ' + money(detail.totales.pago_transportistas)"
+                      [title]="driver.conductor.nombre + ' · Semana ' + week.numero_semana + ' · Sueldo $ ' + money(detail.totales.sueldos) + ' · Bono $ ' + money(detail.totales.bonos) + ' · Retornos $ ' + money(detail.totales.retornos) + ' · Domingos $ ' + money(detail.totales.domingos) + (detail.provisional ? ' · Provisional' : '')"
+                      (click)="driverDetail.set({ week: week, driver: detail })">
+                      <span class="driver-bar-value">$ {{ money(detail.totales.pago_transportistas) }}</span>
+                    </button>
+                  }
+                </div>
+              }
+            </div><div class="text-center small mt-2">Semana {{ week.numero_semana }}</div></div>
+          }
+        </div>
+      </div></div>
+    } @else { <p class="text-secondary">Sin transportistas para graficar.</p> }
+    </div>
+  </section>
   </div>
-
   <div class="card border-0 shadow-sm mb-3">
     <div class="card-header bg-white fw-semibold">Desglose por semana</div>
     <div class="table-responsive">
@@ -331,4 +338,29 @@
 
 @if (weekDetail(); as week) {
   <app-utility-week-detail-panel [week]="week" (closed)="closeWeekDetail()" />
+}
+
+@if (driverDetail(); as detail) {
+  <div class="modal-backdrop show" (click)="driverDetail.set(null)"></div>
+  <div class="modal d-block" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="driver-detail-title" (keydown.escape)="driverDetail.set(null)" (click)="driverDetail.set(null)">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" (click)="$event.stopPropagation()"><div class="modal-content">
+      <div class="modal-header"><h2 id="driver-detail-title" class="modal-title h5">{{ detail.driver.conductor.nombre }} · Semana {{ detail.week.numero_semana }}</h2><button type="button" class="btn-close" aria-label="Cerrar" (click)="driverDetail.set(null)"></button></div>
+      <div class="modal-body">
+        <p>{{ dateOnly(detail.week.fecha_inicio) }} - {{ dateOnly(detail.week.fecha_fin) }} · {{ detail.driver.provisional ? 'Provisional' : 'Cierre generado' }}</p>
+        <table class="table"><tbody>
+          <tr><th>Total precio de fletes de la semana</th><td>$ {{ money(detail.driver.total_precio_fletes) }}</td></tr>
+          <tr><th>Sueldo semanal</th><td>$ {{ money(detail.driver.totales.sueldos) }}</td></tr>
+          <tr><th>Bono</th><td>$ {{ money(detail.driver.totales.bonos) }}</td></tr>
+          <tr><th>Retornos ({{ driverTripCount(detail.driver, 'retorno') }} viajes)</th><td>$ {{ money(detail.driver.totales.retornos) }}</td></tr>
+          <tr><th>Viajes domingo ({{ driverTripCount(detail.driver, 'domingo') }} viajes)</th><td>$ {{ money(detail.driver.totales.domingos) }}</td></tr>
+          <tr class="fw-semibold"><th>Total ganado</th><td>$ {{ money(detail.driver.totales.pago_transportistas) }}</td></tr>
+        </tbody></table>
+        <div class="table-responsive"><table class="table"><thead><tr><th>Fecha</th><th>Placa</th><th>Ruta</th><th>Concepto</th><th>Valor por concepto</th></tr></thead><tbody>
+          @for (trip of detail.driver.viajes; track trip.id) {
+            <tr><td>{{ dateOnly(trip.fecha) }}</td><td>{{ trip.placa }}</td><td>{{ trip.ruta }}</td><td>{{ trip.retorno ? 'Retorno' : '' }}{{ trip.retorno && trip.domingo ? ' / ' : '' }}{{ trip.domingo ? 'Domingo' : '' }}</td><td>$ {{ money(trip.valor) }}</td></tr>
+          } @empty { <tr><td colspan="5">Sin viajes de retorno o domingo.</td></tr> }
+        </tbody></table></div>
+      </div>
+    </div></div>
+  </div>
 }

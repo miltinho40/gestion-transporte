@@ -410,7 +410,83 @@ model PreferenciaAsistente {
   @@map("preferencias_asistente")
 }
 
+model ConfiguracionFacturacion {
+  modalidad_comision String @default("AL_PAGAR") @db.VarChar(20)
+  id BigInt @id @default(autoincrement())
+  propietario_id BigInt
+  cliente_id BigInt @unique
+  destinatario_id BigInt?
+  ir_cliente Boolean @default(false)
+  ir_empresa Boolean @default(true)
+  cliente Cliente @relation("ClienteConfiguracion", fields: [cliente_id], references: [id])
+  destinatario Cliente? @relation("DestinoConfiguracion", fields: [destinatario_id], references: [id])
+  @@index([propietario_id])
+  @@map("configuracion_facturacion")
+}
+
+model FacturaTransporte {
+  modalidad_comision String @default("AL_PAGAR") @db.VarChar(20)
+  estado String @default("FACTURADA") @db.VarChar(20)
+  version Int @default(0)
+  id BigInt @id @default(autoincrement())
+  propietario_id BigInt
+  destinatario_id BigInt
+  numero String? @db.VarChar(80)
+  fecha DateTime @db.Date
+  comision_empresa Decimal @db.Decimal(5,2)
+  ir_empresa Boolean
+  total_facturar Decimal @db.Decimal(12,2)
+  total_comision Decimal @db.Decimal(12,2)
+  total_ir Decimal @db.Decimal(12,2)
+  neto Decimal @db.Decimal(12,2)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  destinatario Cliente @relation(fields: [destinatario_id], references: [id])
+  detalles DetalleFacturaTransporte[]
+  abonos AbonoFacturaTransporte[]
+  @@unique([propietario_id, numero])
+  @@index([propietario_id, fecha])
+  @@map("facturas_transporte")
+}
+
+model DetalleFacturaTransporte {
+  id BigInt @id @default(autoincrement())
+  factura_id BigInt
+  viaje_id BigInt? @unique
+  viaje_proveedor_id BigInt? @unique
+  cliente_nombre String
+  ruta String
+  precio Decimal @db.Decimal(12,2)
+  comision_cliente Decimal @db.Decimal(5,2)
+  ir_cliente Boolean
+  monto_comision_cliente Decimal @db.Decimal(12,2)
+  monto_ir_cliente Decimal @db.Decimal(12,2)
+  a_facturar Decimal @db.Decimal(12,2)
+  comision_empresa Decimal @db.Decimal(12,2)
+  ir_empresa Decimal @db.Decimal(12,2)
+  neto Decimal @db.Decimal(12,2)
+  factura FacturaTransporte @relation(fields: [factura_id], references: [id])
+  viaje Viaje? @relation(fields: [viaje_id], references: [id], onDelete: Restrict)
+  viaje_proveedor ViajeProveedor? @relation(fields: [viaje_proveedor_id], references: [id], onDelete: Restrict)
+  @@index([factura_id])
+  @@map("detalles_facturas_transporte")
+}
+
+model AbonoFacturaTransporte {
+  id BigInt @id @default(autoincrement())
+  factura_id BigInt
+  fecha DateTime @db.Date
+  monto Decimal @db.Decimal(12,2)
+  soporte String @db.VarChar(120)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  factura FacturaTransporte @relation(fields: [factura_id], references: [id])
+  @@index([factura_id])
+  @@map("abonos_facturas_transporte")
+}
+
 model Cliente {
+  configuracion_facturacion ConfiguracionFacturacion? @relation("ClienteConfiguracion")
+  destinos_facturacion ConfiguracionFacturacion[] @relation("DestinoConfiguracion")
+  facturas_emitidas FacturaTransporte[]
   id                  BigInt   @id @default(autoincrement())
   propietario_id      BigInt
   nombre              String   @db.VarChar(150)
@@ -425,14 +501,17 @@ model Cliente {
   updated_at          DateTime @updatedAt @db.Timestamptz(6)
 
   propietario      Propietario      @relation(fields: [propietario_id], references: [id])
-  viajes           Viaje[]
-  viajes_proveedor ViajeProveedor[]
+  viajes Viaje[] @relation("ViajeCliente")
+  viajes_proveedor ViajeProveedor[] @relation("ProveedorCliente")
 
   @@unique([propietario_id, ruc_cedula])
   @@index([propietario_id])
   @@index([propietario_id, activo, nombre], map: "idx_clientes_prop_activo_nombre")
   @@map("clientes")
+  viajes_a_facturar Viaje[] @relation("ViajeFacturarA")
+  proveedores_a_facturar ViajeProveedor[] @relation("ProveedorFacturarA")
 }
+
 
 model Proveedor {
   id                  BigInt   @id @default(autoincrement())
@@ -573,6 +652,7 @@ model TarifaRuta {
   id             BigInt    @id @default(autoincrement())
   propietario_id BigInt
   ruta_id        BigInt
+  ruta_inversa   Boolean   @default(false)
   tipo_carga_id  BigInt
   capacidad      String?   @db.VarChar(50)
   toneladas      Decimal?  @db.Decimal(10, 2)
@@ -652,6 +732,10 @@ model RutaPeaje {
 }
 
 model Viaje {
+  @@index([propietario_id,facturar_a_id],map:"viajes_facturar_a_idx")
+  facturar_a_id BigInt?
+  facturar_a Cliente? @relation("ViajeFacturarA", fields:[facturar_a_id], references:[id], onDelete:Restrict)
+  detalle_factura DetalleFacturaTransporte?
   id                           BigInt      @id @default(autoincrement())
   propietario_id               BigInt
   cliente_id                   BigInt
@@ -684,7 +768,7 @@ model Viaje {
   updated_at                   DateTime    @updatedAt @db.Timestamptz(6)
 
   propietario  Propietario  @relation(fields: [propietario_id], references: [id])
-  cliente      Cliente      @relation(fields: [cliente_id], references: [id])
+  cliente Cliente @relation("ViajeCliente", fields: [cliente_id], references: [id])
   vehiculo     Vehiculo     @relation(fields: [vehiculo_id], references: [id])
   conductor    Conductor    @relation(fields: [conductor_id], references: [id])
   tarifa_ruta  TarifaRuta   @relation(fields: [tarifa_ruta_id], references: [id])
@@ -706,6 +790,10 @@ model Viaje {
 }
 
 model ViajeProveedor {
+  @@index([propietario_id,facturar_a_id],map:"viajes_proveedor_facturar_a_idx")
+  facturar_a_id BigInt?
+  facturar_a Cliente? @relation("ProveedorFacturarA", fields:[facturar_a_id], references:[id], onDelete:Restrict)
+  detalle_factura DetalleFacturaTransporte?
   id                     BigInt      @id @default(autoincrement())
   propietario_id         BigInt
   cliente_id             BigInt
@@ -734,7 +822,7 @@ model ViajeProveedor {
   updated_at             DateTime    @updatedAt @db.Timestamptz(6)
 
   propietario Propietario @relation(fields: [propietario_id], references: [id])
-  cliente     Cliente     @relation(fields: [cliente_id], references: [id])
+  cliente Cliente @relation("ProveedorCliente", fields: [cliente_id], references: [id])
   proveedor   Proveedor   @relation(fields: [proveedor_id], references: [id])
   tarifa_ruta TarifaRuta  @relation(fields: [tarifa_ruta_id], references: [id])
 

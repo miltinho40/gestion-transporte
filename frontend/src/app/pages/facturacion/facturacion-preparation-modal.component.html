@@ -1,0 +1,326 @@
+@if (billingOpen()) {
+  <div class="modal-backdrop show"></div>
+  <div
+    class="modal d-block"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="billing-modal-title"
+    tabindex="-1"
+    (keydown.escape)="closeBilling()"
+    (click)="closeBilling()"
+  >
+    <div
+      class="modal-dialog modal-xl modal-dialog-scrollable billing-preparation-dialog"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="billing-modal-title" class="modal-title h5">Facturar viajes</h2>
+          <button
+            type="button"
+            class="btn-close"
+            aria-label="Cerrar preparación"
+            [disabled]="busy()"
+            (click)="closeBilling()"
+          ></button>
+        </div>
+        <div class="modal-body">
+          @if (error()) {
+            <div class="alert alert-danger" role="alert">{{ error() }}</div>
+          }
+          <dl class="billing-totals mb-3" aria-live="polite" [attr.aria-busy]="calculating()">
+            <div class="billing-total-neutral">
+              <dt>Viajes</dt>
+              <dd>{{ billingRows().length }}</dd>
+            </div>
+            <div class="billing-total-green">
+              <dt>Precio viajes</dt>
+              <dd>$ {{ money(billingPrice()) }}</dd>
+            </div>
+            <div class="billing-total-green">
+              <dt>A facturar</dt>
+              <dd>{{ preview() ? '$ ' + money(preview()!.total_facturar) : '—' }}</dd>
+            </div>
+            <div class="billing-total-red">
+              <dt>Comisión empresa</dt>
+              <dd>{{ preview() ? '$ ' + money(preview()!.total_comision) : '—' }}</dd>
+            </div>
+            <div class="billing-total-red">
+              <dt>IR empresa</dt>
+              <dd>{{ preview() ? '$ ' + money(preview()!.total_ir) : '—' }}</dd>
+            </div>
+            <div class="billing-total-blue">
+              <dt>Neto a recibir</dt>
+              <dd>{{ preview() ? '$ ' + money(preview()!.neto) : '—' }}</dd>
+            </div>
+          </dl>
+          <div class="billing-invoice-controls mb-3">
+            <app-facturar-a-field
+              inputId="billing-recipient"
+              [value]="recipient"
+              [disabled]="busy() || !!draftId"
+              (selected)="recipient = $event; chooseRecipient()"
+            />
+            <div>
+              <label for="billing-existing" class="form-label">Factura</label
+              ><select
+                id="billing-existing"
+                class="form-select"
+                [(ngModel)]="draftId"
+                (ngModelChange)="selectDraft()"
+                [disabled]="busy() || !recipient"
+              >
+                <option value="">Nueva factura</option>
+                @for (f of drafts(); track f.id) {
+                  <option [value]="f.id">{{ f.numero || 'Borrador #' + f.id }}</option>
+                }
+              </select>
+            </div>
+            <div>
+              <label for="billing-date" class="form-label">Fecha</label
+              ><input
+                id="billing-date"
+                class="form-control"
+                type="date"
+                [(ngModel)]="date"
+                (ngModelChange)="resetPreview()"
+                [disabled]="busy()"
+              />
+            </div>
+            <div>
+              <label for="billing-commission" class="form-label">Comisión %</label
+              ><input
+                id="billing-commission"
+                class="form-control"
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                [(ngModel)]="commission"
+                (ngModelChange)="resetPreview()"
+                [disabled]="busy()"
+              />
+            </div>
+            <div>
+              <span class="form-label d-block">IR</span>
+              <div class="billing-ir-control">
+                <label class="form-check mb-0"
+                  ><input
+                    id="billing-ir"
+                    class="form-check-input"
+                    type="checkbox"
+                    [(ngModel)]="ir"
+                    (ngModelChange)="resetPreview()"
+                    [disabled]="busy()"
+                  />1%</label
+                >
+              </div>
+            </div>
+          </div>
+          <div class="billing-commission-actions mb-3">
+            <fieldset class="billing-commission-mode mb-0" [disabled]="busy()">
+              <legend class="form-label">Aplicación de comisión de la empresa</legend>
+              <div class="btn-group" role="group" aria-label="Aplicación de comisión">
+                <input
+                  class="btn-check"
+                  id="commission-at-payment"
+                  type="radio"
+                  name="commission-mode"
+                  value="AL_PAGAR"
+                  [(ngModel)]="modalidad"
+                  (ngModelChange)="resetPreview()"
+                /><label class="btn btn-outline-primary btn-sm" for="commission-at-payment"
+                  >Descontar al pagar</label
+                >
+                <input
+                  class="btn-check"
+                  id="commission-in-invoice"
+                  type="radio"
+                  name="commission-mode"
+                  value="EN_FACTURA"
+                  [(ngModel)]="modalidad"
+                  (ngModelChange)="resetPreview()"
+                /><label class="btn btn-outline-primary btn-sm" for="commission-in-invoice"
+                  >Descontar en factura</label
+                >
+              </div>
+            </fieldset>
+            <button
+              type="button"
+              class="btn btn-outline-primary btn-sm"
+              [disabled]="!copyRows().length"
+              (click)="copyLegend()"
+            >
+              <svg lucideCopy size="16"></svg> Copiar leyenda ({{ copyRows().length }})
+            </button>
+            @if (calculating()) {
+              <span class="small text-secondary" role="status">Calculando…</span>
+            }
+          </div>
+          @if (billingMessage()) {
+            <div class="alert alert-info py-2" [appAutoDismissAlert]="billingMessage()">
+              {{ billingMessage() }}
+            </div>
+          }
+          <div class="table-responsive">
+            <table class="table table-sm align-middle billing-modal-trips">
+              <colgroup>
+                <col class="billing-modal-select" />
+                <col class="billing-modal-week" />
+                <col class="billing-modal-date" />
+                <col class="billing-modal-client" />
+                <col class="billing-modal-route" />
+                <col class="billing-modal-guides" />
+                <col class="billing-modal-price" />
+                <col class="billing-modal-commission" />
+                <col class="billing-modal-ir" />
+                <col class="billing-modal-amount" />
+                <col class="billing-modal-action" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      aria-label="Seleccionar todos para copiar leyenda"
+                      [checked]="allForCopy()"
+                      (change)="toggleAllForCopy()"
+                    />
+                  </th>
+                  <th>Sem.</th>
+                  <th>Fecha</th>
+                  <th>Cliente</th>
+                  <th>Ruta</th>
+                  <th>Guía</th>
+                  <th class="text-end">Precio</th>
+                  <th>COMISIÓN</th>
+                  <th class="text-center">IR</th>
+                  <th class="text-end">FACT.</th>
+                  <th><span class="visually-hidden">Quitar viaje</span></th>
+                </tr>
+              </thead>
+              @for (group of billingGroups(); track group.key) {
+                <tbody [attr.aria-label]="group.label">
+                  <tr class="billing-group-heading">
+                    <th colspan="11" scope="rowgroup">
+                      <label class="billing-group-selection"
+                        ><input
+                          type="checkbox"
+                          [attr.aria-label]="'Copiar todos los viajes de ' + group.label"
+                          [checked]="groupCopyState(group.rows).all"
+                          [indeterminate]="groupCopyState(group.rows).partial"
+                          (change)="toggleGroupCopy(group.rows)"
+                        /><span
+                          >{{ group.label }} ({{ group.rows.length }}
+                          {{ group.rows.length === 1 ? 'viaje' : 'viajes' }}, a facturar:
+                          {{ group.total === null ? '—' : '$ ' + money(group.total) }})</span
+                        ></label
+                      >
+                    </th>
+                  </tr>
+                  @for (row of group.rows; track key(row.trip)) {
+                    <tr [attr.data-trip-key]="key(row.trip)">
+                      <td>
+                        <input
+                          type="checkbox"
+                          [attr.aria-label]="
+                            'Copiar leyenda del viaje ' + row.trip.id + ' de ' + row.trip.cliente
+                          "
+                          [checked]="copyKeys().has(key(row.trip))"
+                          (change)="toggleCopy(row.trip)"
+                        />
+                      </td>
+                      <td>{{ week(row.trip.fecha) }}</td>
+                      <td class="text-nowrap">{{ row.trip.fecha.slice(0, 10) }}</td>
+                      <td>{{ row.trip.cliente }}</td>
+                      <td>{{ row.trip.ruta }}</td>
+                      <td class="billing-guide" [title]="guides(row.trip)">
+                        {{ shortGuides(row.trip) }}
+                      </td>
+                      <td class="text-end text-nowrap">$ {{ money(row.trip.precio) }}</td>
+                      <td>
+                        <input
+                          class="form-control form-control-sm"
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          [attr.aria-label]="'Comisión cliente del viaje ' + row.trip.id"
+                          [ngModel]="
+                            row.trip.cliente_id === recipient ? 0 : row.trip.comision_cliente
+                          "
+                          (ngModelChange)="setTripCommission(row.trip, $event)"
+                          [disabled]="busy() || row.trip.cliente_id === recipient"
+                        />
+                      </td>
+                      <td class="text-center">
+                        <input
+                          type="checkbox"
+                          [attr.aria-label]="'IR cliente del viaje ' + row.trip.id"
+                          [ngModel]="row.trip.cliente_id !== recipient && row.trip.ir_cliente"
+                          (ngModelChange)="setTripIR(row.trip, $event)"
+                          [disabled]="busy() || row.trip.cliente_id === recipient"
+                        />
+                      </td>
+                      <td class="text-end text-nowrap">
+                        {{
+                          preview() ? '$ ' + money(preview()!.detalles[row.index].a_facturar) : '—'
+                        }}
+                      </td>
+                      <td class="text-end">
+                        <button
+                          type="button"
+                          class="btn btn-outline-secondary btn-sm billing-remove"
+                          title="Quitar de esta factura"
+                          [attr.aria-label]="'Quitar viaje ' + row.trip.id + ' de la factura'"
+                          [disabled]="busy()"
+                          (click)="removeBillingTrip(row.trip)"
+                        >
+                          <svg lucideX size="16"></svg>
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              } @empty {
+                <tbody>
+                  <tr>
+                    <td colspan="11" class="text-center text-secondary">
+                      Sin viajes en la factura.
+                    </td>
+                  </tr>
+                </tbody>
+              }
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-outline-secondary"
+            [disabled]="busy()"
+            (click)="closeBilling()"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline-primary"
+            [disabled]="busy() || calculating() || !preview()"
+            (click)="saveBilling(false)"
+          >
+            <svg lucideSave size="16"></svg> Guardar en preparación
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="busy() || calculating() || !preview()"
+            (click)="saveBilling(true)"
+          >
+            Cerrar factura
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}

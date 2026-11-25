@@ -1,3 +1,4 @@
+import { FacturarAFieldComponent } from '../../shared/facturar-a-field.component';
 import { Component, OnDestroy, inject, output, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -34,6 +35,7 @@ import {
 @Component({
   selector: 'app-viaje-editor-modal',
   imports: [
+    FacturarAFieldComponent,
     FormsModule,
     ReactiveFormsModule,
     LucideCalculator,
@@ -41,7 +43,8 @@ import {
     LucideSave,
     LucideTrash2
   ],
-  templateUrl: './viaje-editor-modal.component.html'
+  templateUrl: './viaje-editor-modal.component.html',
+  styleUrl: './viaje-editor-modal.component.scss'
 })
 export class ViajeEditorModalComponent implements OnDestroy {
   private readonly api = inject(ApiService);
@@ -82,6 +85,7 @@ export class ViajeEditorModalComponent implements OnDestroy {
 
   readonly form = this.fb.nonNullable.group({
     cliente_id: ['', Validators.required],
+    facturar_a_id: [''],
     vehiculo_id: ['', Validators.required],
     conductor_id: ['', Validators.required],
     tarifa_ruta_id: ['', Validators.required],
@@ -233,6 +237,7 @@ export class ViajeEditorModalComponent implements OnDestroy {
     this.editingRow.set(row);
     this.form.reset({
       cliente_id: String(row.cliente_id),
+      facturar_a_id: row.facturar_a_id ?? '',
       vehiculo_id: String(row.vehiculo_id),
       conductor_id: String(row.conductor_id),
       tarifa_ruta_id: String(row.tarifa_ruta_id),
@@ -275,6 +280,7 @@ export class ViajeEditorModalComponent implements OnDestroy {
     this.editingRow.set(null);
     this.form.reset({
       cliente_id: String(row.cliente_id),
+      facturar_a_id: row.facturar_a_id ?? '',
       vehiculo_id: String(row.vehiculo_id),
       conductor_id: String(row.conductor_id),
       tarifa_ruta_id: String(row.tarifa_ruta_id),
@@ -423,6 +429,7 @@ export class ViajeEditorModalComponent implements OnDestroy {
       this.api
         .get<CalculoViaje>('/viajes/calculo', {
           cliente_id: value.cliente_id,
+      facturar_a_id: value.facturar_a_id || null,
           vehiculo_id: value.vehiculo_id,
           tarifa_ruta_id: value.tarifa_ruta_id,
           fecha_salida: value.fecha_salida,
@@ -500,6 +507,11 @@ export class ViajeEditorModalComponent implements OnDestroy {
       }
     ]);
     this.resetGastoForm();
+    this.recalculateTotals();
+  }
+
+  updateGasto(index: number, field: 'monto' | 'descripcion', value: string | number) {
+    this.gastos.update(rows => rows.map((row, i) => i === index ? { ...row, [field]: field === 'monto' ? roundMoney(Math.max(0.01, numberValue(value))) : String(value) } : row));
     this.recalculateTotals();
   }
 
@@ -693,6 +705,7 @@ export class ViajeEditorModalComponent implements OnDestroy {
 
     return {
       cliente_id: value.cliente_id,
+      facturar_a_id: value.facturar_a_id || null,
       vehiculo_id: value.vehiculo_id,
       conductor_id: value.conductor_id,
       tarifa_ruta_id: value.tarifa_ruta_id,
@@ -702,17 +715,13 @@ export class ViajeEditorModalComponent implements OnDestroy {
       numeros_guia_remision: splitGuiasRemision(value.numeros_guia_remision),
       peso_carga_kg: numberValue(value.peso_carga_kg),
       precio_flete: numberValue(value.precio_flete),
-      precio_real_flete: numberValue(value.precio_real_flete),
       galones_diesel: numberValue(value.galones_diesel),
       costo_diesel: numberValue(value.costo_diesel),
       costo_peajes: numberValue(value.costo_peajes),
       costo_estimado_gastos: numberValue(value.costo_estimado_gastos),
       viaticos: numberValue(value.viaticos),
       costo_real_gastos: this.totalGastosReales(),
-      cobrado: value.cobrado,
       retorno: value.retorno,
-      fecha_cobro: value.cobrado ? value.fecha_cobro || todayInputDate() : null,
-      estado: value.estado,
       observaciones: value.observaciones || null
     };
   }

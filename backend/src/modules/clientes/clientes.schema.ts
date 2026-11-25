@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { modalidadComisionSchema } from '../facturacion/facturacion.schema.js';
 
 const optionalTrimmedString = (max: number) =>
   z
@@ -17,6 +18,8 @@ export const clienteCreateSchema = z.object({
   email: z.string().trim().email().max(150).optional().nullable().transform((value) => value || null),
   direccion: optionalTrimmedString(255),
   porcentaje_comision: z.coerce.number().min(0).max(100).optional(),
+  modalidad_comision: modalidadComisionSchema.optional(),
+  ir_facturacion: z.boolean().optional(),
   activo: z.boolean().optional()
 });
 

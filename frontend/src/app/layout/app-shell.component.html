@@ -34,6 +34,9 @@
         </a>
       }
 
+      @if (hasPermission('facturacion')) {
+        <a routerLink="/app/facturacion" routerLinkActive="active"><svg lucideFileSpreadsheet size="17"></svg>Facturación</a>
+      }
       @if (showTransporte()) {
         <button
           type="button"

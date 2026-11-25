@@ -155,7 +155,7 @@ export class ReportsPageComponent {
   readonly selectedClientIds = signal<string[]>([]);
   readonly selectedTripIds = signal<string[]>([]);
   readonly travelPage = signal(1);
-  readonly travelLimit = signal(50);
+  readonly travelLimit = signal(25);
   readonly guideEditTripId = signal<string | null>(null);
   readonly guideInput = signal('');
   readonly detailOpen = signal(false);
@@ -750,7 +750,8 @@ export class ReportsPageComponent {
     const vehicles = this.splitQueryValues(params.get('vehiculos'));
     const clients = this.splitQueryValues(params.get('clientes'));
     const page = Math.max(Number(params.get('page') ?? 1), 1);
-    const limit = Math.max(Number(params.get('limit') ?? 50), 1);
+    const requestedLimit = Number(params.get('limit') ?? 25);
+    const limit = [25, 50, 100].includes(requestedLimit) ? requestedLimit : 25;
 
     this.travelForm.patchValue(
       {
@@ -792,7 +793,7 @@ export class ReportsPageComponent {
           clientes: this.selectedClientIds().join(',') || null,
           cobrado: this.travelForm.controls.cobrado.value || 'todos',
           page: this.travelPage() > 1 ? this.travelPage() : null,
-          limit: this.travelLimit() !== 50 ? this.travelLimit() : null
+          limit: this.travelLimit() !== 25 ? this.travelLimit() : null
         },
         queryParamsHandling: 'merge',
         replaceUrl: true

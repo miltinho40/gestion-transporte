@@ -1,0 +1,218 @@
+import 'dotenv/config';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { prisma } from '../src/config/prisma.js';
+import { signToken } from '../src/config/jwt.js';
+
+if (!['localhost', '127.0.0.1'].includes(new URL(process.env.DATABASE_URL!).hostname)) throw Error('Solo local');
+let sessionId: string | undefined;
+try {
+  const source = await prisma.viaje.findFirstOrThrow();
+  const user = await prisma.usuario.findFirstOrThrow({ where: { es_super_admin: true, activo: true, requiere_password: false } });
+  const session = await prisma.sesionUsuario.create({ data: { usuario_id: user.id, propietario_id: source.propietario_id, refresh_token_hash: randomUUID(), expira_en: new Date(Date.now() + 3600000) } }); sessionId = session.id;
+  const token = signToken({ usuario_id: String(user.id), sesion_id: session.id, propietario_id: String(source.propietario_id), es_super_admin: true });
+  for (const limit of [25, 50, 100]) {
+    const response = await fetch(`http://localhost:3000/api/facturacion/viajes?limit=${limit}`, { headers: { Authorization: `Bearer ${token}` } });
+    assert.equal(response.status, 200);
+    const data = await response.json() as any;
+    assert.equal(data.limit, limit); assert.ok(data.items.length <= limit);
+  }
+  const { chromium } = await import('../../frontend/node_modules/playwright/index.mjs');
+  const browser = await chromium.launch({ headless: true, channel: 'chrome' });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    await page.addInitScript("Object.defineProperty(navigator,'clipboard',{value:{writeText:async function(text){window.__copiedLegend=text;}}});");
+    const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+    await page.route('**/auth/refresh', route => route.fulfill({ json: { token, usuario: { id: String(user.id), nombre: 'Prueba local', es_super_admin: true }, contexto: { propietario_id: String(source.propietario_id), propietario_nombre: 'Prueba local', rol: 'admin', es_propietario: true, es_intermediario: true }, propietarios: [] } }));
+    for (const path of ['/app/reportes', '/app/proveedores/transporte', '/movil/viajes', '/movil/viajes-proveedores']) {
+      console.log('CHECK: '+path);
+      await page.setViewportSize(path.startsWith('/movil') ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
+      await page.goto('http://localhost:4200' + path);
+      const size = page.locator('app-pagination-controls select');
+      await size.waitFor();
+      assert.deepEqual(await size.locator('option').allTextContents(), ['25', '50', '100']);
+      for (const limit of [50, 100, 25]) {
+        await size.selectOption({ label: String(limit) });
+        await page.waitForFunction(expected => document.querySelector('.pagination-limit select')?.selectedOptions[0].textContent?.trim() === expected, String(limit));
+        await page.waitForFunction(() => !(document.querySelector('.pagination-limit select') as HTMLSelectElement)?.disabled);
+      }
+      if(path.includes('/proveedores/transporte')||path==='/movil/viajes-proveedores'){
+        const show=page.getByRole('checkbox',{name:'Mostrar cobrados y pagados',exact:true});
+        assert.equal(await show.isChecked(),false);
+        const reveal=page.waitForResponse(r=>r.url().includes('/api/viajes-proveedor?')&&new URL(r.url()).searchParams.get('mostrar_finalizados')==='true');
+        await show.check();assert.equal((await reveal).status(),200);
+        const hide=page.waitForResponse(r=>r.url().includes('/api/viajes-proveedor?')&&new URL(r.url()).searchParams.get('mostrar_finalizados')==='false');
+        await show.uncheck();const response=await hide;
+        const records=(await response.json()).data;
+        assert.ok(records.every((row:any)=>!row.cobrado||!row.pagado_proveedor));
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const firstLoad = page.waitForResponse(r => r.url().includes('/facturacion/viajes'));
+    await page.goto('http://localhost:4200/app/facturacion');
+    const firstPage = await (await firstLoad).json();
+    assert.equal(firstPage.items.length, 25);
+    const originals = [...firstPage.items];
+    const boxes = page.getByRole('checkbox', { name: /^Seleccionar viaje de / });
+    await boxes.first().waitFor();
+    for(const guide of await page.locator('.billing-trips-table .billing-guide').all()){
+      const full=await guide.getAttribute('title')??'';
+      assert.equal(await guide.innerText(),full.length>15?full.slice(0,15)+'...':full||'-');
+    }
+    const selectPage=page.getByRole('checkbox',{name:'Seleccionar todos los viajes de esta página',exact:true});
+    await selectPage.check();
+    await page.waitForFunction(()=>document.querySelectorAll('.billing-trips-table tbody input:checked').length===25);
+    await selectPage.uncheck();
+    await page.waitForFunction(()=>document.querySelectorAll('.billing-trips-table tbody input:checked').length===0);
+    await selectPage.check();
+    await page.waitForFunction(()=>document.querySelectorAll('.billing-trips-table tbody input:checked').length===25);
+    const secondLoad = page.waitForResponse(r => r.url().includes('/facturacion/viajes') && new URL(r.url()).searchParams.get('page') === '2');
+    await page.getByRole('button', { name: 'Siguiente', exact: true }).click();
+    const secondPage = await (await secondLoad).json(); originals.push(secondPage.items[0]);
+    await page.waitForFunction(key => document.querySelector('.billing-trips-table tbody tr')?.getAttribute('data-trip-key') === key, `${secondPage.items[0].tipo}:${secondPage.items[0].id}`);
+    await boxes.first().check();
+    await page.waitForFunction(()=>(document.querySelector('.billing-trips-table thead input') as HTMLInputElement)?.indeterminate);
+    await selectPage.check();
+    await page.waitForFunction(()=>document.querySelectorAll('.billing-trips-table tbody input:checked').length===25);
+    await selectPage.uncheck();
+    await page.waitForFunction(()=>document.querySelectorAll('.billing-trips-table tbody input:checked').length===0);
+    assert.equal(await page.getByRole('button',{name:'Facturar (25)',exact:true}).count(),1);
+    await boxes.first().check();
+    await page.getByRole('button', { name: 'Facturar (26)', exact: true }).click();
+    const modal = page.getByRole('dialog', { name: 'Facturar viajes', exact: true });
+    await modal.locator('.billing-modal-trips thead th').first().waitFor();
+    assert.equal(await modal.getByRole('button', { name: 'Revisar cálculo', exact: true }).count(), 0);
+    assert.deepEqual(await modal.locator('.billing-modal-trips thead th').allTextContents(), ['', 'Sem.', 'Fecha', 'Cliente', 'Ruta', 'Guía', 'Precio', 'COMISIÓN', 'IR', 'FACT.', 'Quitar viaje']);
+    const widths=await modal.locator('colgroup col').evaluateAll(cols=>cols.map(col=>col.getBoundingClientRect().width));
+    assert.ok(widths[3]<=141&&widths[4]<=181&&widths[7]<=67,JSON.stringify(widths));
+    assert.equal(await modal.locator('app-pagination-controls').count(), 0);
+    assert.equal(await modal.locator('tr[data-trip-key]').count(), 26);
+    const guides = await modal.locator('.billing-guide').evaluateAll(elements=>elements.map(e=>({text:e.textContent?.trim(),title:e.getAttribute('title')})));
+    for(const guide of guides){assert.equal(guide.text,guide.title!.length>10?guide.title!.slice(0,10)+'...':guide.title||'-');}
+    await page.locator('#billing-recipient').fill('TRASOSA');
+    await page.locator('#billing-recipient-options').getByRole('option').first().click();
+    await page.waitForFunction(() => !Array.from(document.querySelectorAll('button')).find(b => b.textContent?.includes('Guardar en preparación'))?.disabled);
+    const commissionInput=modal.locator('input[aria-label^="Comisión cliente del viaje "]:enabled').first();
+    const clientIR=commissionInput.locator('../..').locator('input[aria-label^="IR cliente del viaje "]');
+    const originalCommission=await commissionInput.inputValue(),originalIR=await clientIR.isChecked();
+    const tripId=(await commissionInput.getAttribute('aria-label'))!.replace('Comisión cliente del viaje ','');
+    const changedCommission=page.waitForResponse(r=>r.url().endsWith('/facturacion/previsualizar')&&r.request().postDataJSON().detalles.some((d:any)=>d.id===tripId&&d.comision_cliente===4));
+    await commissionInput.fill('4');
+    assert.equal((await changedCommission).status(),200);
+    const changedIR=page.waitForResponse(r=>r.url().endsWith('/facturacion/previsualizar')&&r.request().postDataJSON().detalles.some((d:any)=>d.id===tripId&&d.ir_cliente===!originalIR));
+    await clientIR.setChecked(!originalIR);
+    assert.equal((await changedIR).status(),200);
+    const restored=page.waitForResponse(r=>r.url().endsWith('/facturacion/previsualizar')&&r.request().postDataJSON().detalles.some((d:any)=>d.id===tripId&&d.comision_cliente===Number(originalCommission)&&d.ir_cliente===originalIR));
+    await commissionInput.fill(originalCommission);await clientIR.setChecked(originalIR);
+    assert.equal((await restored).status(),200);
+    await page.waitForFunction(() => !Array.from(document.querySelectorAll('button')).find(b => b.textContent?.includes('Guardar en preparación'))?.disabled);
+    const initialGroups = await modal.locator('.billing-modal-trips tbody[aria-label]').evaluateAll(elements => elements.map(e => e.getAttribute('aria-label')));
+    const copyBox = modal.getByRole('checkbox', { name: /^Copiar leyenda del viaje / }).first();
+    const firstKey = await copyBox.locator('..').locator('..').getAttribute('data-trip-key');
+    await copyBox.check();
+    const secondGroups = await modal.locator('.billing-modal-trips tbody[aria-label]').evaluateAll(elements => elements.map(e => e.getAttribute('aria-label')));
+    const secondBox = modal.getByRole('checkbox', { name: /^Copiar leyenda del viaje / }).last();
+    const secondKey = await secondBox.locator('..').locator('..').getAttribute('data-trip-key');
+    await secondBox.check();
+    await modal.getByRole('button', { name: 'Copiar leyenda (2)', exact: true }).click();
+    const copied = await page.evaluate('window.__copiedLegend');
+    const expected = originals.filter(t => [firstKey, secondKey].includes(`${t.tipo}:${t.id}`)).map(t => `1 viaje a ${t.destino} g#${t.guias.join(', ') || '-'}`);
+    assert.deepEqual(copied.split('\n').sort(), expected.sort());
+    const expectedGroups = new Set(originals.map(t => t.tipo === 'propio' ? `Placa ${t.placa}` : `Proveedor: ${t.proveedor}`));
+    assert.deepEqual(new Set([...initialGroups, ...secondGroups]), expectedGroups);
+    const latestCalculation = page.waitForResponse(r => r.url().endsWith('/facturacion/previsualizar') && r.request().postDataJSON().comision_empresa === 5);
+    await modal.locator('#billing-commission').fill('5');
+    const result = await latestCalculation;
+    assert.equal(result.request().postDataJSON().detalles.length, 26);
+    const amounts = await result.json();
+    await page.waitForFunction(() => !Array.from(document.querySelectorAll('button')).find(b => b.textContent?.includes('Guardar en preparación'))?.disabled);
+    assert.equal(await modal.locator('.billing-totals dd').first().innerText(), '26');
+    assert.equal((await modal.locator('.billing-totals dd').last().innerText()).trim(), '$ ' + Number(amounts.neto).toFixed(2));
+    assert.equal(await modal.getByRole('checkbox', { name: /^Copiar leyenda del viaje / }).first().isChecked(), true);
+    const group=modal.locator('.billing-modal-trips tbody[aria-label]').first();
+    const groupCheck=group.getByRole('checkbox',{name:/^Copiar todos los viajes de /});
+    assert.equal(await groupCheck.evaluate((input:HTMLInputElement)=>input.indeterminate),true);
+    await groupCheck.check();
+    await page.waitForFunction(()=>Array.from(document.querySelectorAll('.billing-modal-trips tbody[aria-label] input[aria-label^="Copiar leyenda del viaje "]')).filter(input=>input.closest('tbody')===document.querySelector('.billing-modal-trips tbody[aria-label]')).every(input=>(input as HTMLInputElement).checked));
+    for(const checkbox of await group.getByRole('checkbox',{name:/^Copiar leyenda del viaje /}).all())assert.equal(await checkbox.isChecked(),true);
+    assert.equal(await modal.locator('.billing-totals dd').first().innerText(),'26');
+    await page.waitForFunction(()=>(document.querySelector('.billing-modal-trips tbody[aria-label] input[aria-label^="Copiar todos los viajes de "]') as HTMLInputElement)?.checked);
+    await groupCheck.uncheck();
+    await page.waitForFunction(()=>!document.querySelector('.billing-modal-trips tbody[aria-label]')?.querySelector('input[aria-label^="Copiar leyenda del viaje "]:checked'));
+    for(const checkbox of await group.getByRole('checkbox',{name:/^Copiar leyenda del viaje /}).all())assert.equal(await checkbox.isChecked(),false);
+    await copyBox.check();
+    const actionPositions=await modal.locator('.billing-commission-actions').evaluate(element=>{
+      const mode=element.querySelector('.btn-group')!.getBoundingClientRect();
+      const copy=element.querySelector('button')!.getBoundingClientRect();
+      return {modeBottom:mode.bottom,copyBottom:copy.bottom};
+    });
+    assert.ok(Math.abs(actionPositions.modeBottom-actionPositions.copyBottom)<2);
+    const detailAmounts=new Map(originals.map((t,i)=>[`${t.tipo}:${t.id}`,Number(amounts.detalles[i].a_facturar)]));
+    for(const group of await modal.locator('.billing-modal-trips tbody[aria-label]').all()){
+      const keys=await group.locator('tr[data-trip-key]').evaluateAll(elements=>elements.map(e=>e.getAttribute('data-trip-key')!));
+      const sum=keys.reduce((sum,key)=>sum+Math.round(detailAmounts.get(key)!*100),0)/100;
+      assert.ok((await group.locator('th[scope="rowgroup"]').innerText()).endsWith(`(${keys.length} ${keys.length===1?'viaje':'viajes'}, a facturar: $ ${sum.toFixed(2)})`));
+    }
+    const removedKey=firstKey!;
+    const removalCalculation=page.waitForResponse(r=>r.url().endsWith('/facturacion/previsualizar')&&r.request().postDataJSON().detalles.length===25);
+    await modal.locator(`tr[data-trip-key="${removedKey}"] button`).click();
+    const recalculated=await removalCalculation;
+    assert.equal(recalculated.status(),200);
+    assert.equal(recalculated.request().postDataJSON().detalles.some((t:any)=>`${t.tipo}:${t.id}`===removedKey),false);
+    assert.equal(await modal.locator('tr[data-trip-key]').count(),25);
+    assert.equal(await modal.getByRole('button',{name:'Copiar leyenda (1)',exact:true}).count(),1);
+    await page.screenshot({ path: process.env.TEMP + '/transporte-facturar-grupos.png', fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: process.env.TEMP + '/transporte-facturar-grupos-movil.png', fullPage: true });
+    await modal.getByRole('button', { name: 'Cancelar', exact: true }).click();
+    assert.equal(await page.getByRole('button', { name: 'Facturar (25)', exact: true }).count(), 1);
+    const invoice={...amounts,id:'99999999',numero:'PRUEBA-VISUAL',fecha:'2026-11-24',destinatario:{id:'1',nombre:'TRASOSA S.A.'},recibido:100,saldo:Number(amounts.neto)-100,comision_empresa:5,ir_empresa:true,modalidad_comision:'AL_PAGAR',estado:'FACTURADA',version:1,viajes:originals,abonos:[{id:'1',fecha:'2026-11-24',monto:100,soporte:'PRUEBA'}]};
+    await page.route('**/facturacion?page=*',route=>route.fulfill({json:{items:[invoice],total:1}}));
+    await page.route('**/facturacion/99999999',route=>route.fulfill({json:invoice}));
+    await page.setViewportSize({width:1440,height:1000});
+    await page.reload();
+    await page.getByRole('button',{name:'Facturas y cobros',exact:true}).click();
+    await page.getByTitle('Ver factura y abonos').click();
+    const detail=page.getByRole('dialog',{name:'Detalle de factura',exact:true});
+    await detail.locator('.billing-invoice-trips tbody').first().waitFor();
+    assert.equal(await detail.locator('.billing-invoice-trips thead th').first().innerText(),'SEM.');
+    for(const cell of await detail.locator('.billing-invoice-trips tbody tr:not(.billing-group-heading) td:first-child').all())assert.match(await cell.innerText(),/^\d{1,2}$/);
+    assert.deepEqual(new Set(await detail.locator('.billing-invoice-trips tbody').evaluateAll(elements=>elements.map(e=>e.getAttribute('aria-label')))),expectedGroups);
+    assert.equal(await detail.locator('.billing-totals > div').count(),6);
+    const fullPayment=detail.getByRole('checkbox',{name:'Abonar todo el saldo pendiente',exact:true});
+    await fullPayment.check();
+    await page.waitForFunction(saldo=>Number((document.querySelector('[aria-label="Detalle de factura"] input[type="number"]') as HTMLInputElement)?.value)===saldo,invoice.saldo);
+    assert.equal(Number(await detail.getByRole('spinbutton').inputValue()),invoice.saldo);
+    assert.equal(await detail.getByRole('spinbutton').getAttribute('readonly'),'');
+    await fullPayment.uncheck();
+    await page.waitForFunction(()=>Number((document.querySelector('[aria-label="Detalle de factura"] input[type="number"]') as HTMLInputElement)?.value)===0);
+    assert.equal(Number(await detail.getByRole('spinbutton').inputValue()),0);
+    assert.equal(await detail.getByRole('spinbutton').getAttribute('readonly'),null);
+    await detail.getByRole('button',{name:'Abonar',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.billing-payment-alert')?.textContent?.includes('importe positivo'));
+    assert.match(await detail.locator('.billing-payment-alert').innerText(),/importe positivo/);
+    assert.equal(await page.locator('app-facturacion-page > [role="alert"]').count(),0);
+    await detail.getByLabel('Factura / soporte',{exact:true}).fill('SOPORTE-PRUEBA');
+    await detail.getByRole('spinbutton').fill(String(invoice.saldo+1));
+    await detail.getByRole('button',{name:'Abonar',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.billing-payment-alert')?.textContent?.includes('supera el saldo'));
+    assert.equal(await detail.locator('.billing-payment-alert').innerText(),'El abono supera el saldo pendiente.');
+    await detail.getByRole('spinbutton').fill('10');
+    await detail.getByLabel('Fecha',{exact:true}).fill('2026-11-23');
+    await detail.getByRole('button',{name:'Abonar',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.billing-payment-alert')?.textContent?.includes('anterior a la factura'));
+    assert.match(await detail.locator('.billing-payment-alert').innerText(),/anterior a la factura/);
+    await detail.getByLabel('Fecha',{exact:true}).fill('2026-11-24');
+    await page.route('**/facturacion/99999999/abonos',route=>route.fulfill({status:400,json:{message:'Error de abono simulado'}}));
+    await detail.getByRole('button',{name:'Abonar',exact:true}).click();
+    await page.getByRole('button',{name:'Registrar',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.billing-payment-alert')?.textContent?.includes('Error de abono simulado'));
+    assert.equal(await detail.locator('.billing-payment-alert').innerText(),'Error de abono simulado');
+    await page.screenshot({path:process.env.TEMP+'/transporte-factura-cerrada.png',fullPage:true});
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+  console.log('OK: paginación 25/50/100 en listas, modal sin paginación, guías abreviadas, subtotales por grupo, copia y exclusión de viajes con recálculo. Sin modificar viajes ni facturas existentes.');
+} finally {
+  if (sessionId) await prisma.sesionUsuario.delete({ where: { id: sessionId } });
+  await prisma.$disconnect();
+}

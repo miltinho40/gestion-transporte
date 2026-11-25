@@ -20,6 +20,7 @@ export interface TipoCargaOption {
 }
 
 export interface TarifaRutaRow {
+  ruta_inversa: boolean;
   id: string;
   ruta_id: string;
   tipo_carga_id: string;

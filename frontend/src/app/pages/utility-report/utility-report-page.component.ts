@@ -6,7 +6,8 @@ import { formatDateOnly } from '../../core/date-only';
 import { AutoDismissAlertDirective } from '../../shared/auto-dismiss-alert.directive';
 import {
   UtilityWeekDetailPanelComponent,
-  type UtilityWeekDetail
+  type UtilityWeekDetail,
+  type UtilityDriverDetail
 } from './utility-week-detail-panel.component';
 
 type ExportFormat = 'xlsx' | 'pdf';
@@ -105,7 +106,8 @@ const monthOptions = [
     AutoDismissAlertDirective,
     UtilityWeekDetailPanelComponent
   ],
-  templateUrl: './utility-report-page.component.html'
+  templateUrl: './utility-report-page.component.html',
+  styleUrl: './utility-report-page.component.scss'
 })
 export class UtilityReportPageComponent {
   private readonly api = inject(ApiService);
@@ -119,6 +121,19 @@ export class UtilityReportPageComponent {
   readonly report = signal<ReporteUtilidad | null>(null);
   readonly vehiculos = signal<VehiculoOption[]>([]);
   readonly weekDetail = signal<UtilityWeekDetail | null>(null);
+  readonly driverDetail = signal<{ week: UtilityWeekDetail; driver: UtilityDriverDetail } | null>(null);
+
+  driverWeek(week: UtilityWeekDetail, id: string) {
+    return week.transportistas.find(driver => driver.conductor.id === id);
+  }
+
+  driverMonthTotal(id: string) {
+    return (this.report()?.semanas ?? []).reduce((total, week) => total + this.number(this.driverWeek(week, id)?.totales.pago_transportistas), 0);
+  }
+
+  driverTripCount(driver: UtilityDriverDetail, concept: 'retorno' | 'domingo') {
+    return driver.viajes.filter(trip => trip[concept]).length;
+  }
   readonly monthOptions = monthOptions;
   readonly clientColors = [
     '#40a36b',
@@ -281,6 +296,10 @@ export class UtilityReportPageComponent {
     ) ?? [];
 
     return Math.max(0, ...values);
+  }
+
+  driverChartMax() {
+    return 450;
   }
 
   clientColor(index: number) {

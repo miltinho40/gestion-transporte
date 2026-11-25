@@ -84,7 +84,8 @@ const setPayloadValue = (payload: Row, field: CrudFieldConfig, value: unknown) =
     AutoDismissAlertDirective,
     PaginationControlsComponent
   ],
-  templateUrl: './crud-page.component.html'
+  templateUrl: './crud-page.component.html',
+  styleUrl: './crud-page.component.scss'
 })
 export class CrudPageComponent implements OnDestroy {
   private readonly api = inject(ApiService);

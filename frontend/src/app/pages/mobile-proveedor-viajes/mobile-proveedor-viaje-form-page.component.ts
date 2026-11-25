@@ -1,4 +1,5 @@
 import { Component, OnDestroy, inject, signal } from '@angular/core';
+import { FacturarAFieldComponent } from '../../shared/facturar-a-field.component';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { LucideArrowLeft, LucideSave } from '@lucide/angular';
@@ -24,6 +25,7 @@ import {
 @Component({
   selector: 'app-mobile-proveedor-viaje-form-page',
   imports: [
+    FacturarAFieldComponent,
     FormsModule,
     ReactiveFormsModule,
     LucideArrowLeft,
@@ -58,6 +60,7 @@ export class MobileProveedorViajeFormPageComponent implements OnDestroy {
 
   readonly form = this.fb.nonNullable.group({
     cliente_id: ['', Validators.required],
+    facturar_a_id: [''],
     proveedor_id: ['', Validators.required],
     tarifa_ruta_id: ['', Validators.required],
     fecha_salida: [todayInputDate(), Validators.required],
@@ -273,6 +276,7 @@ export class MobileProveedorViajeFormPageComponent implements OnDestroy {
   private fillForm(row: ViajeProveedorRow, options: { duplicate?: boolean } = {}) {
     this.form.reset({
       cliente_id: String(row.cliente_id || row.cliente?.id),
+      facturar_a_id: row.facturar_a_id ?? '',
       proveedor_id: String(row.proveedor_id || row.proveedor?.id),
       tarifa_ruta_id: String(row.tarifa_ruta_id || row.tarifa_ruta?.id),
       fecha_salida: options.duplicate ? todayInputDate() : dateInputValue(row.fecha_salida),
@@ -298,6 +302,7 @@ export class MobileProveedorViajeFormPageComponent implements OnDestroy {
 
     return {
       cliente_id: value.cliente_id,
+      facturar_a_id: value.facturar_a_id || null,
       proveedor_id: value.proveedor_id,
       tarifa_ruta_id: value.tarifa_ruta_id,
       fecha_salida: value.fecha_salida,
@@ -305,14 +310,10 @@ export class MobileProveedorViajeFormPageComponent implements OnDestroy {
       descripcion_carga: value.descripcion_carga || null,
       numeros_guia_remision: splitGuiasRemision(value.numeros_guia_remision),
       precio_viaje: numberValue(value.precio_viaje),
-      valor_a_facturar: numberValue(value.valor_a_facturar),
       precio_pagar_proveedor: numberValue(value.precio_pagar_proveedor),
       viaticos: numberValue(value.viaticos),
-      cobrado: value.cobrado,
-      fecha_cobro: value.cobrado ? value.fecha_cobro || todayInputDate() : null,
       pagado_proveedor: value.pagado_proveedor,
       fecha_pago_proveedor: value.pagado_proveedor ? value.fecha_pago_proveedor || todayInputDate() : null,
-      estado: value.estado,
       observaciones: value.observaciones || null
     };
   }

@@ -34,6 +34,8 @@
           <option [value]="option.label"></option>
         }
       </datalist>
+      <app-facturar-a-field inputId="mobile-facturar-a" [clienteId]="form.controls.cliente_id.value" [value]="form.controls.facturar_a_id.value" (selected)="form.controls.facturar_a_id.setValue($event)" />
+
 
       <label class="mobile-field">
         <span>Proveedor</span>
@@ -86,7 +88,7 @@
     <section class="form-section">
       <h2>Valores</h2>
 
-      <div class="three-columns">
+      <div class="two-columns">
         <label class="mobile-field">
           <span>Precio viaje</span>
           <input
@@ -98,27 +100,13 @@
             (change)="onPrecioViajeChanged()"
           />
         </label>
-        <label class="mobile-field">
-          <span>A facturar</span>
-          <input
-            class="form-control"
-            type="number"
-            min="0"
-            step="0.01"
-            formControlName="valor_a_facturar"
-            (change)="onValorFacturarChanged()"
-          />
-        </label>
+
         <label class="mobile-field">
           <span>Viáticos</span>
           <input class="form-control" type="number" min="0" step="0.01" formControlName="viaticos" />
         </label>
       </div>
 
-      <label class="mobile-field">
-        <span>Precio a pagar</span>
-        <input class="form-control" type="number" min="0" step="0.01" formControlName="precio_pagar_proveedor" />
-      </label>
 
       <div class="price-preview">
         <span>Utilidad</span>
@@ -146,19 +134,11 @@
     </section>
 
     <section class="form-section">
-      <h2>Cobro y pago</h2>
+      <h2>Pago al proveedor</h2>
 
-      <label class="switch-row">
-        <span>Cobrado</span>
-        <input class="form-check-input" type="checkbox" formControlName="cobrado" />
-      </label>
 
-      @if (form.controls.cobrado.value) {
-        <label class="mobile-field">
-          <span>Fecha cobro</span>
-          <input class="form-control" type="date" formControlName="fecha_cobro" />
-        </label>
-      }
+
+
 
       <label class="switch-row">
         <span>Pagado proveedor</span>
@@ -172,10 +152,6 @@
         </label>
       }
 
-      <label class="mobile-field">
-        <span>Observaciones</span>
-        <textarea class="form-control" rows="2" formControlName="observaciones"></textarea>
-      </label>
     </section>
 
     <div class="save-bar">

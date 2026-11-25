@@ -1,0 +1,157 @@
+<div class="billing-filters mb-3">
+  <div class="billing-search">
+    <label for="billing-search" class="form-label">Buscar viajes</label
+    ><input
+      id="billing-search"
+      aria-label="Buscar viajes"
+      class="form-control form-control-sm"
+      placeholder="Cliente, ruta, guía o placa"
+      [ngModel]="search()"
+      (ngModelChange)="searchChange.emit($event)"
+    />
+  </div>
+  <app-multi-select-filter
+    label="Vehículos"
+    emptyLabel="Todos los vehículos"
+    selectedLabel="vehículo(s)"
+    searchPlaceholder="Buscar placa"
+    [options]="vehiculoFilterOptions()"
+    [selectedValues]="selectedVehicleIds()"
+    (selectedValuesChange)="setSelectedVehicles($event)"
+  />
+  <app-multi-select-filter
+    label="Semanas"
+    emptyLabel="Todas las semanas"
+    selectedLabel="semana(s)"
+    searchPlaceholder="Buscar semana"
+    [options]="weekFilterOptions"
+    [selectedValues]="selectedWeeks()"
+    (selectedValuesChange)="setSelectedWeeks($event)"
+  />
+  <app-multi-select-filter
+    label="Clientes"
+    emptyLabel="Todos los clientes"
+    selectedLabel="cliente(s)"
+    searchPlaceholder="Buscar cliente"
+    [options]="clienteFilterOptions()"
+    [selectedValues]="selectedClientIds()"
+    (selectedValuesChange)="setSelectedClients($event)"
+  />
+  <div class="billing-own">
+    <label class="form-check mb-0"
+      ><input
+        type="checkbox"
+        class="form-check-input"
+        [ngModel]="ownOnly()"
+        (ngModelChange)="ownOnlyChange.emit($event)"
+      />Mis viajes</label
+    >
+  </div>
+  <div class="billing-default">
+    @if (canWrite()) {
+      <button
+        type="button"
+        class="btn btn-primary btn-sm"
+        [disabled]="!selected().length || busy()"
+        (click)="billed.emit()"
+      >
+        <svg lucideSave size="16"></svg> Facturar ({{ selected().length }})
+      </button>
+    }
+  </div>
+</div>
+<div class="table-responsive">
+  <table class="table table-sm align-middle billing-trips-table">
+    <colgroup>
+      <col class="billing-col-select" />
+      <col class="billing-col-week" />
+      <col class="billing-col-date" />
+      <col class="billing-col-type" />
+      <col class="billing-col-plate" />
+      <col class="billing-col-client" />
+      <col class="billing-col-route" />
+      <col class="billing-col-guides" />
+      <col class="billing-col-price" />
+      <col class="billing-col-action" />
+      <col class="billing-col-action" />
+    </colgroup>
+    <thead>
+      <tr>
+        <th>
+          <input
+            type="checkbox"
+            aria-label="Seleccionar todos los viajes de esta página"
+            title="Seleccionar o deseleccionar todos los viajes de esta página"
+            [checked]="pageSelection().all"
+            [indeterminate]="pageSelection().partial"
+            [disabled]="!trips().length || busy()"
+            (change)="pageToggled.emit()"
+          />
+        </th>
+        <th>Sem.</th>
+        <th>Fecha</th>
+        <th>Origen</th>
+        <th>Placa</th>
+        <th>Cliente</th>
+        <th>Ruta</th>
+        <th>Guías</th>
+        <th>Precio viaje</th>
+        <th aria-label="Vista previa"></th>
+        <th aria-label="Editar"></th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (t of trips(); track key(t)) {
+        <tr [attr.data-trip-key]="key(t)" [class.billing-week-blue]="week(t.fecha) % 2 === 1">
+          <td>
+            <input
+              type="checkbox"
+              [attr.aria-label]="'Seleccionar viaje de ' + t.cliente"
+              [checked]="isSelected(t)"
+              (change)="toggled.emit(t)"
+            />
+          </td>
+          <td>{{ week(t.fecha) }}</td>
+          <td class="text-nowrap">{{ t.fecha.slice(0, 10) }}</td>
+          <td>{{ t.tipo === 'propio' ? 'Propio' : 'Proveedor' }}</td>
+          <td class="text-nowrap">{{ t.placa || '—' }}</td>
+          <td>{{ t.cliente }}</td>
+          <td>{{ t.ruta }}</td>
+          <td class="billing-guide" [title]="guides(t)">{{ shortGuides(t, 15) }}</td>
+          <td class="text-nowrap">$ {{ money(t.precio) }}</td>
+          <td>
+            <button
+              class="btn btn-outline-secondary btn-sm"
+              title="Vista previa del viaje"
+              aria-label="Vista previa del viaje"
+              (click)="previewed.emit(t)"
+            >
+              <svg lucideEye size="16"></svg>
+            </button>
+          </td>
+          <td>
+            @if (canWrite()) {
+              <button
+                class="btn btn-outline-primary btn-sm"
+                title="Editar viaje"
+                aria-label="Editar viaje"
+                (click)="edited.emit(t)"
+              >
+                <svg lucidePencil size="16"></svg>
+              </button>
+            }
+          </td>
+        </tr>
+      } @empty {
+        <tr>
+          <td colspan="11" class="text-secondary text-center">Sin viajes disponibles.</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>
+<app-pagination-controls
+  [meta]="paginationMeta(page(), tripLimit(), total())"
+  (pageChange)="pageChange.emit($event)"
+  (limitChange)="limitChange.emit($event)"
+/>

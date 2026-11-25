@@ -1,3 +1,4 @@
+import { rutaDeTarifa, destinoTarifaWhere } from '../tarifas-ruta/ruta-tarifa.js';
 import { EstadoMantenimiento, EstadoViaje, Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/app-error.js';
@@ -340,7 +341,7 @@ type TarifaRutaMatch = Prisma.TarifaRutaGetPayload<{
 
 const tarifaOptionLabel = (tarifa: TarifaRutaMatch) =>
   [
-    `${tarifa.ruta.origen} - ${tarifa.ruta.destino}`,
+    `${rutaDeTarifa(tarifa).origen} - ${rutaDeTarifa(tarifa).destino}`,
     tarifa.tipo_carga.nombre,
     tarifa.capacidad ? `cap. ${tarifa.capacidad}` : null,
     tarifa.toneladas ? `${toMoney(tarifa.toneladas).toFixed(2)} ton` : null,
@@ -373,8 +374,8 @@ const findTarifaRutaMatches = async (propietarioId: bigint | null, normalized: s
   const normalizedWords = textWords(normalized);
   const matches = tarifas.filter((tarifa) => {
     const optionText = normalizeText(tarifaOptionLabel(tarifa));
-    const origenWords = normalizeText(tarifa.ruta.origen).split(/\s+/).filter((word) => word.length >= 3);
-    const destinoWords = normalizeText(tarifa.ruta.destino).split(/\s+/).filter((word) => word.length >= 3);
+    const origenWords = normalizeText(rutaDeTarifa(tarifa).origen).split(/\s+/).filter((word) => word.length >= 3);
+    const destinoWords = normalizeText(rutaDeTarifa(tarifa).destino).split(/\s+/).filter((word) => word.length >= 3);
     const tipoCargaWords = normalizeText(tarifa.tipo_carga.nombre)
       .split(/\s+/)
       .filter((word) => word.length >= 3);
@@ -434,8 +435,8 @@ const narrowTarifaRutaMatches = (
 
   return matches.filter(
     (tarifa) =>
-      routeFieldMatches(tarifa.ruta.origen, entities.origen) &&
-      routeFieldMatches(tarifa.ruta.destino, entities.destino) &&
+      routeFieldMatches(rutaDeTarifa(tarifa).origen, entities.origen) &&
+      routeFieldMatches(rutaDeTarifa(tarifa).destino, entities.destino) &&
       routeFieldMatches(tarifa.tipo_carga.nombre, entities.tipo_carga) &&
       capacityFieldMatches(tarifa.capacidad, entities.capacidad)
   );
@@ -1264,7 +1265,7 @@ const buildViajeDraftFromQuery = async (query: Record<string, string>) => {
       fecha_salida: query['fecha_salida'] ?? 'Por confirmar',
       fecha_entrega: query['fecha_llegada'] ?? 'Por confirmar',
       cliente: cliente?.nombre ?? 'Por confirmar',
-      ruta: tarifa ? `${tarifa.ruta.origen} - ${tarifa.ruta.destino}` : 'Por confirmar',
+      ruta: tarifa ? `${rutaDeTarifa(tarifa).origen} - ${rutaDeTarifa(tarifa).destino}` : 'Por confirmar',
       conductor: conductor?.nombre ?? 'Por confirmar',
       vehiculo: vehiculo?.placa ?? 'Por confirmar',
       guias: query['numeros_guia_remision'] ?? 'Por confirmar',
@@ -1323,7 +1324,7 @@ const buildViajeProveedorDraftFromQuery = async (query: Record<string, string>) 
         fecha_llegada: query['fecha_llegada'] ?? 'Por confirmar',
         cliente: cliente?.nombre ?? 'Por confirmar',
         proveedor: proveedor?.nombre ?? 'Por confirmar',
-        ruta: tarifa ? `${tarifa.ruta.origen} - ${tarifa.ruta.destino}` : 'Por confirmar',
+        ruta: tarifa ? `${rutaDeTarifa(tarifa).origen} - ${rutaDeTarifa(tarifa).destino}` : 'Por confirmar',
         tipo_carga: tarifa?.tipo_carga.nombre ?? 'Por confirmar',
         guias: query['numeros_guia_remision'] ?? 'No indicadas',
         precio_viaje: query['precio_viaje'] ?? 'Por confirmar',
@@ -1983,7 +1984,7 @@ const buildDraftFromText = async (
           fecha_salida: dateOnly(fechaSalida),
           fecha_entrega: dateOnly(fechaLlegada),
           cliente: cliente?.nombre ?? 'Por confirmar',
-          ruta: tarifa ? `${tarifa.ruta.origen} - ${tarifa.ruta.destino}` : 'Por confirmar',
+          ruta: tarifa ? `${rutaDeTarifa(tarifa).origen} - ${rutaDeTarifa(tarifa).destino}` : 'Por confirmar',
           conductor: conductor?.nombre ?? 'Por confirmar',
           vehiculo: vehiculo?.placa ?? 'Por confirmar',
           guias: guias.join(', ') || 'Por confirmar',
@@ -2054,7 +2055,7 @@ const pendingOwnTrips = async (propietarioId: bigint | null) => {
     detalle: topRowsText(
       rows.map(
         (viaje) =>
-          `${dateOnly(viaje.fecha_llegada ?? viaje.fecha_salida)} | ${viaje.cliente.nombre} | ${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino} | ${viaje.vehiculo.placa} | ${money(viaje.precio_real_flete)}`
+          `${dateOnly(viaje.fecha_llegada ?? viaje.fecha_salida)} | ${viaje.cliente.nombre} | ${rutaDeTarifa(viaje.tarifa_ruta).origen} - ${rutaDeTarifa(viaje.tarifa_ruta).destino} | ${viaje.vehiculo.placa} | ${money(viaje.precio_real_flete)}`
       )
     )
   };
@@ -2211,7 +2212,7 @@ const providerTripsSummary = async (
     ...(filters.cliente_id ? { cliente_id: BigInt(filters.cliente_id) } : {}),
     ...(filters.proveedor_id ? { proveedor_id: BigInt(filters.proveedor_id) } : {}),
     ...(filters.destino
-      ? { tarifa_ruta: { ruta: { destino: { contains: filters.destino, mode: 'insensitive' } } } }
+      ? { tarifa_ruta: destinoTarifaWhere(filters.destino) }
       : {}),
     ...(typeof filters.cobrado === 'boolean' ? { cobrado: filters.cobrado } : {}),
     ...(typeof filters.pagado_proveedor === 'boolean'
@@ -2264,7 +2265,7 @@ const providerTripsSummary = async (
       const key = plan.agregacion.agrupar_por === 'cliente'
         ? trip.cliente.nombre
         : plan.agregacion.agrupar_por === 'destino'
-          ? trip.tarifa_ruta.ruta.destino
+          ? rutaDeTarifa(trip.tarifa_ruta).destino
           : trip.proveedor.nombre;
       const value = plan.agregacion.metrica === 'cantidad_viajes'
         ? toMoney(1)
@@ -2333,7 +2334,7 @@ const providerTripsSummary = async (
     detalle: topRowsText(
       rows.map(
         (viaje) =>
-          `${dateOnly(viaje.fecha_salida)} | ${viaje.cliente.nombre} | ${viaje.proveedor.nombre} | ${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino} | facturar: ${money(viaje.valor_a_facturar)} | pagar: ${money(viaje.precio_pagar_proveedor)} | ${viaje.cobrado ? 'cobrado' : 'por cobrar'} | ${viaje.pagado_proveedor ? 'pagado' : 'por pagar'}`
+          `${dateOnly(viaje.fecha_salida)} | ${viaje.cliente.nombre} | ${viaje.proveedor.nombre} | ${rutaDeTarifa(viaje.tarifa_ruta).origen} - ${rutaDeTarifa(viaje.tarifa_ruta).destino} | facturar: ${money(viaje.valor_a_facturar)} | pagar: ${money(viaje.precio_pagar_proveedor)} | ${viaje.cobrado ? 'cobrado' : 'por cobrar'} | ${viaje.pagado_proveedor ? 'pagado' : 'por pagar'}`
       )
     ),
     actions: [
@@ -2381,7 +2382,7 @@ const pendingProviderTripsLegacy = async (propietarioId: bigint | null) => {
     detalle: topRowsText(
       rows.map(
         (viaje) =>
-          `${dateOnly(viaje.fecha_llegada ?? viaje.fecha_salida)} | ${viaje.cliente.nombre} | ${viaje.proveedor.nombre} | ${viaje.tarifa_ruta.ruta.destino} | cobrar: ${viaje.cobrado ? 'si' : 'no'} | pagar: ${viaje.pagado_proveedor ? 'si' : 'no'}`
+          `${dateOnly(viaje.fecha_llegada ?? viaje.fecha_salida)} | ${viaje.cliente.nombre} | ${viaje.proveedor.nombre} | ${rutaDeTarifa(viaje.tarifa_ruta).destino} | cobrar: ${viaje.cobrado ? 'si' : 'no'} | pagar: ${viaje.pagado_proveedor ? 'si' : 'no'}`
       )
     )
   };
@@ -2608,7 +2609,7 @@ const travelSummary = async (propietarioId: bigint | null, input: string, normal
     detalle: topRowsText(
       rows.slice(0, 6).map(
         (viaje) =>
-          `${dateOnly(viaje.fecha_llegada ?? viaje.fecha_salida)} | ${viaje.cliente.nombre} | ${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino} | ${money(viaje.precio_real_flete)}`
+          `${dateOnly(viaje.fecha_llegada ?? viaje.fecha_salida)} | ${viaje.cliente.nombre} | ${rutaDeTarifa(viaje.tarifa_ruta).origen} - ${rutaDeTarifa(viaje.tarifa_ruta).destino} | ${money(viaje.precio_real_flete)}`
       )
     )
   };
@@ -2955,7 +2956,7 @@ const analyticsTravelQuery = async (
       ...(plan.destino
         ? {
             tarifa_ruta: {
-              ruta: { destino: { contains: plan.destino, mode: 'insensitive' } }
+              ...destinoTarifaWhere(plan.destino)
             }
           }
         : {}),
@@ -2971,8 +2972,9 @@ const analyticsTravelQuery = async (
       conductor: { select: { nombre: true } },
       tarifa_ruta: {
         select: {
+          ruta_inversa: true,
           ruta: {
-            select: { destino: true }
+            select: { origen: true, destino: true }
           }
         }
       }
@@ -2987,7 +2989,7 @@ const analyticsTravelQuery = async (
         : plan.agrupar_por === 'conductor'
           ? trip.conductor.nombre
           : plan.agrupar_por === 'destino'
-            ? trip.tarifa_ruta.ruta.destino
+            ? rutaDeTarifa(trip.tarifa_ruta).destino
             : trip.vehiculo.placa;
     const current = groups.get(key) ?? { total: toMoney(0), count: 0 };
     current.total = current.total.plus(analyticsTripValue(plan.metrica, trip));
@@ -3093,7 +3095,7 @@ const analyticsWeekTotal = async (
       ...(plan.vehiculo_id ? { vehiculo_id: BigInt(plan.vehiculo_id) } : {}),
       ...(plan.conductor_id ? { conductor_id: BigInt(plan.conductor_id) } : {}),
       ...(plan.destino
-        ? { tarifa_ruta: { ruta: { destino: { contains: plan.destino, mode: 'insensitive' } } } }
+        ? { tarifa_ruta: destinoTarifaWhere(plan.destino) }
         : {}),
       ...(typeof plan.cobrado === 'boolean' ? { cobrado: plan.cobrado } : {})
     },
@@ -3235,7 +3237,7 @@ const travelSummaryWithFilters = async (
       ...(filters.destino
         ? {
             tarifa_ruta: {
-              ruta: { destino: { contains: filters.destino, mode: 'insensitive' } }
+              ...destinoTarifaWhere(filters.destino)
             }
           }
         : {}),
@@ -3270,7 +3272,7 @@ const travelSummaryWithFilters = async (
     detalle: topRowsText(
       rows.slice(0, 12).map(
         (viaje) =>
-          `${dateOnly(viaje.fecha_llegada ?? viaje.fecha_salida)} | ${viaje.cliente.nombre} | ${viaje.vehiculo.placa} | ${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino} | ${money(viaje.precio_real_flete)} | ${viaje.cobrado ? 'cobrado' : 'por cobrar'}`
+          `${dateOnly(viaje.fecha_llegada ?? viaje.fecha_salida)} | ${viaje.cliente.nombre} | ${viaje.vehiculo.placa} | ${rutaDeTarifa(viaje.tarifa_ruta).origen} - ${rutaDeTarifa(viaje.tarifa_ruta).destino} | ${money(viaje.precio_real_flete)} | ${viaje.cobrado ? 'cobrado' : 'por cobrar'}`
       )
     ),
     contexto: {
@@ -3337,7 +3339,7 @@ const structuredTravelSummary = async (
     ...(filters.vehiculo_id ? { vehiculo_id: BigInt(filters.vehiculo_id) } : {}),
     ...(filters.conductor_id ? { conductor_id: BigInt(filters.conductor_id) } : {}),
     ...(filters.destino
-      ? { tarifa_ruta: { ruta: { destino: { contains: filters.destino, mode: 'insensitive' } } } }
+      ? { tarifa_ruta: destinoTarifaWhere(filters.destino) }
       : {}),
     ...(typeof filters.cobrado === 'boolean' ? { cobrado: filters.cobrado } : {})
   };
@@ -3391,7 +3393,7 @@ const structuredTravelSummary = async (
     detalle: topRowsText(
       rows.map(
         (viaje) =>
-          `${dateOnly(viaje.fecha_llegada ?? viaje.fecha_salida)} | ${viaje.cliente.nombre} | ${viaje.conductor.nombre} | ${viaje.vehiculo.placa} | ${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino} | ${money(viaje.precio_real_flete)} | ${viaje.cobrado ? 'cobrado' : 'por cobrar'}`
+          `${dateOnly(viaje.fecha_llegada ?? viaje.fecha_salida)} | ${viaje.cliente.nombre} | ${viaje.conductor.nombre} | ${viaje.vehiculo.placa} | ${rutaDeTarifa(viaje.tarifa_ruta).origen} - ${rutaDeTarifa(viaje.tarifa_ruta).destino} | ${money(viaje.precio_real_flete)} | ${viaje.cobrado ? 'cobrado' : 'por cobrar'}`
       )
     ),
     actions: rows.slice(0, 10).map((viaje, index) => ({
@@ -3750,7 +3752,7 @@ const latestTripForVehicleDestinationLegacy = async (propietarioId: bigint | nul
   });
 
   const viaje = viajes.find((item) => {
-    const destinoWords = normalizeText(item.tarifa_ruta.ruta.destino)
+    const destinoWords = normalizeText(rutaDeTarifa(item.tarifa_ruta).destino)
       .split(/\s+/)
       .filter((word) => word.length >= 3);
     return targetWords.length
@@ -3767,11 +3769,11 @@ const latestTripForVehicleDestinationLegacy = async (propietarioId: bigint | nul
     };
   }
 
-  const ruta = `${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino}`;
+  const ruta = `${rutaDeTarifa(viaje.tarifa_ruta).origen} - ${rutaDeTarifa(viaje.tarifa_ruta).destino}`;
   const guias = viaje.numeros_guia_remision?.length ? viaje.numeros_guia_remision.join(', ') : 'Sin guías';
 
   return {
-    respuesta: `El último viaje de ${vehiculo.placa} a ${viaje.tarifa_ruta.ruta.destino} fue el ${dateOnly(
+    respuesta: `El último viaje de ${vehiculo.placa} a ${rutaDeTarifa(viaje.tarifa_ruta).destino} fue el ${dateOnly(
       viaje.fecha_llegada ?? viaje.fecha_salida
     )}.`,
     cards: [
@@ -3836,7 +3838,7 @@ const latestTripByEntity = async (
             ]
           }
         : {},
-      select: { destino: true },
+      select: { origen: true, destino: true },
       orderBy: { destino: 'asc' },
       take: 5000
     })
@@ -3858,7 +3860,7 @@ const latestTripByEntity = async (
   const destinationSearch = destinationSearchFromMessage(normalized, entities?.destino);
   const destinosUnicos = [
     ...new Map(
-      rutas.map((ruta) => [normalizeText(ruta.destino), { nombre: ruta.destino }])
+      rutas.flatMap((ruta) => [ruta.origen, ruta.destino].map(nombre => [normalizeText(nombre), { nombre }] as const))
     ).values()
   ];
   const destinationMatches = destinationSearch
@@ -3934,7 +3936,7 @@ const latestTripByEntity = async (
       ...(destino
         ? {
             tarifa_ruta: {
-              ruta: { destino: { contains: destino, mode: 'insensitive' } }
+              ...destinoTarifaWhere(destino)
             }
           }
         : {})
@@ -3981,7 +3983,7 @@ const latestTripByEntity = async (
       ],
       detalle: viajes
         .map((viaje, index) => {
-          const rutaViaje = `${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino}`;
+          const rutaViaje = `${rutaDeTarifa(viaje.tarifa_ruta).origen} - ${rutaDeTarifa(viaje.tarifa_ruta).destino}`;
           const guiasViaje = viaje.numeros_guia_remision?.length
             ? viaje.numeros_guia_remision.join(', ')
             : 'Sin guías';
@@ -3998,7 +4000,7 @@ const latestTripByEntity = async (
 
   const viaje = viajes[0]!;
 
-  const ruta = `${viaje.tarifa_ruta.ruta.origen} - ${viaje.tarifa_ruta.ruta.destino}`;
+  const ruta = `${rutaDeTarifa(viaje.tarifa_ruta).origen} - ${rutaDeTarifa(viaje.tarifa_ruta).destino}`;
   const guias = viaje.numeros_guia_remision?.length
     ? viaje.numeros_guia_remision.join(', ')
     : 'Sin guías';

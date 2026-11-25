@@ -1,24 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import {
-  EstadoConductor,
-  EstadoVehiculo,
-  EstadoViaje,
-  Prisma
-} from '@prisma/client';
+import { EstadoConductor, EstadoVehiculo, EstadoViaje, Prisma } from '@prisma/client';
 
 process.env.NODE_ENV = 'test';
-process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/gestion_transporte_test';
+process.env.DATABASE_URL ??=
+  'postgresql://postgres:postgres@localhost:5432/gestion_transporte_test';
 process.env.JWT_SECRET ??= 'test-secret-with-enough-length';
 
-const {
-  __testing,
-  calculateBonificacion,
-  calculatePagoSemanalConductor,
-  getIsoWeekRange
-} = await import(
-  './cierres-semanales.service.js'
-);
+const { __testing, calculateBonificacion, calculatePagoSemanalConductor, getIsoWeekRange } =
+  await import('./cierres-semanales.service.js');
 
 const dateOnly = (value: Date) => value.toISOString().slice(0, 10);
 const decimal = (value: number | string) => new Prisma.Decimal(value);
@@ -177,8 +167,14 @@ describe('cierres semanales', () => {
     const salida = utcDate('2026-06-20');
     const llegada = utcDate('2026-06-21');
 
-    assert.equal(__testing.viajeFechaEntrega({ fecha_salida: salida, fecha_llegada: llegada }), llegada);
-    assert.equal(__testing.viajeFechaEntrega({ fecha_salida: salida, fecha_llegada: null }), salida);
+    assert.equal(
+      __testing.viajeFechaEntrega({ fecha_salida: salida, fecha_llegada: llegada }),
+      llegada
+    );
+    assert.equal(
+      __testing.viajeFechaEntrega({ fecha_salida: salida, fecha_llegada: null }),
+      salida
+    );
 
     const where = __testing.buildViajeSemanaWhere(utcDate('2026-06-15'), utcDate('2026-06-21'));
 
@@ -214,6 +210,20 @@ describe('cierres semanales', () => {
     assert.equal(totales.precio_real_flete.toFixed(2), '360.00');
     assert.equal(totales.costo_real_gastos.toFixed(2), '76.00');
     assert.equal(totales.utilidad.toFixed(2), '284.00');
+  });
+
+  it('una factura cerrada cambia la utilidad por su neto, un borrador no', () => {
+    const closed = mockViaje({
+      detalle_factura: { neto: decimal('340.00'), factura: { estado: 'FACTURADA' } }
+    });
+    const draft = mockViaje({
+      detalle_factura: { neto: decimal('340.00'), factura: { estado: 'PREPARACION' } }
+    });
+    assert.equal(__testing.formatViajeCierre(closed, 25).utilidad.toFixed(2), '264.00');
+    assert.equal(__testing.formatViajeCierre(draft, 25).utilidad.toFixed(2), '284.00');
+    const totals = __testing.createTotalesViajes();
+    __testing.addViajeToTotales(totals, closed);
+    assert.equal(totals.utilidad.toFixed(2), '264.00');
   });
 
   it('detecta diferencias cuando cambia un mantenimiento o la ganancia semanal', () => {

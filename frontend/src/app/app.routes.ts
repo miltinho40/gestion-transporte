@@ -564,6 +564,8 @@ export const routes: Routes = [
             { label: 'RUC/Cédula', path: 'ruc_cedula' },
             { label: 'Teléfono', path: 'telefono' },
             { label: 'Comisión %', path: 'porcentaje_comision' },
+            { label: 'Aplicación', path: 'modalidad_comision_nombre' },
+            { label: 'IR facturación', path: 'ir_facturacion', type: 'boolean' },
             { label: 'Activo', path: 'activo', type: 'boolean' }
           ],
           fields: [
@@ -582,7 +584,9 @@ export const routes: Routes = [
               step: '0.01',
               colClass: 'col-md-3'
             },
-            { name: 'activo', label: 'Activo', type: 'checkbox', defaultValue: true, colClass: 'col-md-3' },
+            { name: 'modalidad_comision', label: 'Aplicación de comisión', type: 'select', defaultValue: 'AL_PAGAR', colClass: 'col-md-5', options: [{value:'AL_PAGAR',label:'Descontar al pagar'}, {value:'EN_FACTURA',label:'Descontar en factura'}] },
+            { name: 'ir_facturacion', label: 'IR 1%', type: 'checkbox', defaultValue: true, colClass: 'col-md-2' },
+            { name: 'activo', label: 'Activo', type: 'checkbox', defaultValue: true, colClass: 'col-md-2' },
             { name: 'direccion', label: 'Dirección', type: 'textarea', rows: 2, colClass: 'col-12' }
           ]
         }
@@ -1215,6 +1219,7 @@ export const routes: Routes = [
           columns: [
             { label: 'Origen', path: 'ruta.origen' },
             { label: 'Destino', path: 'ruta.destino' },
+            { label: 'Ruta inversa', path: 'ruta_inversa', type: 'boolean' },
             { label: 'Propietario', path: 'propietario.nombre', superAdminOnly: true },
             { label: 'Tipo de carga', path: 'tipo_carga.nombre' },
             { label: 'Capacidad', path: 'capacidad' },
@@ -1229,7 +1234,7 @@ export const routes: Routes = [
               label: 'Ruta',
               type: 'select',
               required: true,
-              colClass: 'col-md-6',
+              colClass: 'col-md-4',
               catalog: {
                 endpoint: '/rutas',
                 valuePath: 'id',
@@ -1243,7 +1248,7 @@ export const routes: Routes = [
               label: 'Tipo de carga',
               type: 'select',
               required: true,
-              colClass: 'col-md-6',
+              colClass: 'col-md-4',
               catalog: {
                 endpoint: '/tipos-carga',
                 valuePath: 'id',
@@ -1251,28 +1256,30 @@ export const routes: Routes = [
                 params: { activo: true, solo_propios: true }
               }
             },
-            { name: 'capacidad', label: 'Capacidad cartones', type: 'text', colClass: 'col-md-3' },
-            { name: 'toneladas', label: 'Toneladas', type: 'number', min: 0, step: '0.01', colClass: 'col-md-3' },
-            { name: 'precio', label: 'Precio', type: 'number', required: true, min: 0, step: '0.01', colClass: 'col-md-3' },
-            { name: 'activa', label: 'Activa', type: 'checkbox', defaultValue: true, colClass: 'col-md-3' },
+            { name: 'ruta_inversa', label: 'Ruta inversa', type: 'checkbox', defaultValue: false, colClass: 'col-md-2' },
+            { name: 'activa', label: 'Activa', type: 'checkbox', defaultValue: true, colClass: 'col-md-2' },
+            { name: 'capacidad', label: 'Capacidad cartones', type: 'text', colClass: 'col-md-2' },
+            { name: 'toneladas', label: 'Toneladas', type: 'number', min: 0, step: '0.01', colClass: 'col-md-2' },
+            { name: 'precio', label: 'Precio', type: 'number', required: true, min: 0, step: '0.01', colClass: 'col-md-2' },
             {
               name: 'vigente_desde',
               label: 'Vigente desde',
               type: 'date',
               defaultValue: todayInputDate,
-              colClass: 'col-md-6'
+              colClass: 'col-md-3'
             },
             {
               name: 'vigente_hasta',
               label: 'Vigente hasta',
               type: 'date',
               defaultValue: () => yearsFromTodayInputDate(3),
-              colClass: 'col-md-6'
+              colClass: 'col-md-3'
             }
           ]
         }
       },
       { path: 'cierre-semanal', loadComponent: loadWeeklyClosurePage },
+      { path: 'facturacion', loadComponent: () => import('./pages/facturacion/facturacion-page.component').then(m => m.FacturacionPageComponent) },
       { path: 'reportes', loadComponent: loadReportsPage },
       { path: 'utilidad', loadComponent: loadUtilityReportPage },
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' }

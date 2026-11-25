@@ -302,7 +302,7 @@ export class MobileMantenimientoFormPageComponent implements OnDestroy {
       proximo_mantenimiento_km: nullableNumberValue(value.proximo_mantenimiento_km),
       proximo_mantenimiento_fecha: value.proximo_mantenimiento_fecha || null,
       estado: value.estado,
-      actualizar_kilometraje_vehiculo: Boolean(value.actualizar_kilometraje_vehiculo),
+      actualizar_kilometraje_vehiculo: true,
       repuestos: this.repuestos().map((repuesto) => ({
         nombre_repuesto: repuesto.nombre_repuesto,
         cantidad: numberValue(repuesto.cantidad),
